@@ -53,6 +53,13 @@ void HubConfig::toJson(JsonObject o) const {
     j["dryPct"] = x.dryPct;
     j["sense"] = x.useSense;
   }
+  JsonArray vic = o["vic"].to<JsonArray>();
+  for (auto &v : victron) {
+    JsonObject j = vic.add<JsonObject>();
+    j["src"] = v.src;
+    j["addr"] = v.addr;
+    j["key"] = v.key;
+  }
   JsonObject inv = o["inv"].to<JsonObject>();
   inv["mode"] = inverter.mode;
   inv["pulse"] = inverter.pulseMs;
@@ -103,6 +110,13 @@ void HubConfig::fromJson(JsonObjectConst o) {
     pumps[i].dryTank = j["dryTank"] | pumps[i].dryTank;
     pumps[i].dryPct = j["dryPct"] | pumps[i].dryPct;
     pumps[i].useSense = j["sense"] | pumps[i].useSense;
+  }
+  for (int i = 0; i < cv::NUM_SOLAR; i++) {
+    JsonObjectConst j = o["vic"][i];
+    if (j.isNull()) continue;
+    victron[i].src = j["src"] | victron[i].src;
+    if (j["addr"].is<const char *>()) copyStr(victron[i].addr, sizeof(victron[i].addr), j["addr"]);
+    if (j["key"].is<const char *>()) copyStr(victron[i].key, sizeof(victron[i].key), j["key"]);
   }
   JsonObjectConst inv = o["inv"];
   if (!inv.isNull()) {

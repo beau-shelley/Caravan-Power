@@ -2,6 +2,8 @@
 
 #include <NimBLEDevice.h>
 
+#include "Ble.h"
+
 namespace hub {
 
 Bmpro gBmpro;
@@ -67,8 +69,8 @@ bool looksBmpro(const std::string &name) {
          n.indexOf("TREK") >= 0 || n.indexOf("SMART") >= 0;
 }
 
-class ScanCb : public NimBLEAdvertisedDeviceCallbacks {
-  void onResult(NimBLEAdvertisedDevice *d) override {
+void onAdvert(NimBLEAdvertisedDevice *d) {
+  {
     std::string addr = d->getAddress().toString();
     std::string name = d->haveName() ? d->getName() : "";
     xSemaphoreTake(gMux, portMAX_DELAY);
@@ -97,7 +99,7 @@ class ScanCb : public NimBLEAdvertisedDeviceCallbacks {
       logLine(line);
     }
   }
-};
+}
 
 void applyDecoded(const BmproData &in) {
   uint32_t now = millis();
@@ -191,14 +193,14 @@ void bleTask(void *) {
         gClient->setConnectTimeout(8);
       }
       logLine(String("connecting to ") + gTargetAddr);
-      NimBLEDevice::getScan()->stop();
+      ble::pauseScan();
       if (gClient->connect(NimBLEAddress(std::string(gTargetAddr)))) {
         logLine("connected");
         dumpAndSubscribe();
       } else {
         logLine("connect failed - retrying in 10 s");
       }
-      if (gVerbose) NimBLEDevice::getScan()->start(0, nullptr, false);
+      ble::resumeScan();
     }
 
     WriteReq w;
@@ -217,14 +219,10 @@ void Bmpro::begin(const char *addr, bool verbose) {
   gWriteQ = xQueueCreate(8, sizeof(WriteReq));
   gVerbose = verbose;
   strncpy(gTargetAddr, addr ? addr : "", 17);
-  NimBLEDevice::init("caravan-hub");
-  NimBLEScan *scan = NimBLEDevice::getScan();
-  scan->setAdvertisedDeviceCallbacks(new ScanCb(), true);
-  scan->setActiveScan(true);
-  scan->setInterval(160);
-  scan->setWindow(48);  // low duty cycle: shares the radio with Wi-Fi
+  ble::begin();
+  ble::addListener(onAdvert);
   // Scan when exploring, or when we don't know the OdysseyLink's address yet.
-  if (gVerbose || !gTargetAddr[0]) scan->start(0, nullptr, false);
+  if (gVerbose || !gTargetAddr[0]) ble::keepScanning();
   xTaskCreatePinnedToCore(bleTask, "bmpro", 6144, nullptr, 1, nullptr, 0);
   logLine(String("BLE started, target '") + gTargetAddr + "'");
 }

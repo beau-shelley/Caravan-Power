@@ -7,10 +7,10 @@ The **OdysseyLink** is BMPRO's Bluetooth gateway. The free Odyssey phone app use
 | Item | Comes from | Wiring needed |
 |---|---|---|
 | Battery %, volts, amps | OdysseyLink over Bluetooth | none |
-| Tank levels (3) | the tank senders already connected to the BMPRO system, relayed by the OdysseyLink | none |
+| Tank levels (3) | the tank sensors that already report to the OdysseyLink | none |
 | Pump 1 / 2 on/off and status | Commands over Bluetooth; the BMPRO switches the pumps itself | none |
 | Trek 3 | Replaced by the 7" touchscreen | remove it (see the test below) |
-| Solar (2 × Victron) | VE.Direct cables | 2 small cables |
+| Solar (2 × Victron) | Victron Instant Readout over Bluetooth | none |
 | Temps, inverter, aircon | DS18B20s, relay, IR LED | as in WIRING.md |
 
 The OdysseyLink accepts several Bluetooth connections at once (BMPRO says up to four), so the Odyssey app on your phone keeps working alongside the hub. That gives you a backup way to run the pumps if the hub is ever down.
@@ -33,6 +33,8 @@ The hub has everything needed to decode it. Afterwards, two functions get filled
    - every service and characteristic (R = read, W = write, N = notify, I = indicate);
    - the value of every readable characteristic;
    - every notification, as hex.
+
+> **Tank sensors that talk to the OdysseyLink wirelessly** may broadcast their levels in their own Bluetooth adverts. With `bmproExplorer` on, the hub logs the manufacturer and service data of every BMPRO-looking advert. If the tank levels show up there, they can be read directly, even before the OdysseyLink's own protocol is worked out. Fill the tank values in from the advert, the same way `VictronBleRx.cpp` does for the Victrons.
 
 ### Step 2: capture what the Odyssey app does (Android)
 

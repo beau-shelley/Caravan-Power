@@ -7,14 +7,16 @@ namespace ui {
 // ================================================================ POWER
 static lv_obj_t *spName[cv::NUM_SOLAR], *spChip[cv::NUM_SOLAR], *spW[cv::NUM_SOLAR];
 static lv_obj_t *spPv[cv::NUM_SOLAR], *spA[cv::NUM_SOLAR], *spToday[cv::NUM_SOLAR], *spMax[cv::NUM_SOLAR], *spErr[cv::NUM_SOLAR];
+static lv_obj_t *spPvCap[cv::NUM_SOLAR];
 static lv_obj_t *bpRows[7];
 static lv_obj_t *chart;
 static lv_chart_series_t *serSolar, *serLoad;
 static uint32_t seenMetaPower = UINT32_MAX;
 
-static lv_obj_t *miniStat(lv_obj_t *parent, int x, int y, const char *cap) {
+static lv_obj_t *miniStat(lv_obj_t *parent, int x, int y, const char *cap, lv_obj_t **capOut = nullptr) {
   lv_obj_t *l = lbl(parent, &lv_font_montserrat_12, col::MUTED, cap);
   lv_obj_set_pos(l, x, y);
+  if (capOut) *capOut = l;
   lv_obj_t *v = lbl(parent, &lv_font_montserrat_16, col::TEXT, "--");
   lv_obj_set_pos(v, x, y + 16);
   return v;
@@ -40,7 +42,7 @@ void buildPower(lv_obj_t *p) {
     lv_obj_align(spChip[i], LV_ALIGN_TOP_RIGHT, 0, 24);
     spW[i] = lbl(cd, &lv_font_montserrat_40, col::SOLAR, "-- W");
     lv_obj_set_pos(spW[i], 0, 50);
-    spPv[i] = miniStat(cd, 0, 116, "PANEL");
+    spPv[i] = miniStat(cd, 0, 116, "PANEL", &spPvCap[i]);
     spA[i] = miniStat(cd, 74, 116, "CHARGE");
     spToday[i] = miniStat(cd, 148, 116, "TODAY");
     spMax[i] = miniStat(cd, 244, 116, "PEAK");
@@ -124,7 +126,14 @@ void updatePower() {
     uint32_t cc = m.cs == 3 ? col::SOLAR : m.cs == 4 ? col::ACCENT : m.cs == 5 ? col::CHARGE : col::MUTED;
     setChip(spChip[i], cv::chargeStateName(m.cs), m.err ? col::ALARM : cc);
     setText(spW[i], "%.0f W", m.pvW);
-    setText(spPv[i], "%.1f V", m.pvV);
+    // Bluetooth Instant Readout has no PV voltage: show battery voltage instead.
+    if (m.pvV >= 0) {
+      setText(spPvCap[i], "PANEL");
+      setText(spPv[i], "%.1f V", m.pvV);
+    } else {
+      setText(spPvCap[i], "BATTERY");
+      setText(spPv[i], "%.2f V", m.batV);
+    }
     setText(spA[i], "%.1f A", m.batA);
     setText(spToday[i], "%.2f kWh", m.yieldTodayKwh);
     setText(spMax[i], "%u W", m.maxWToday);

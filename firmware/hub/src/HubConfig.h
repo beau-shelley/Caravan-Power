@@ -16,6 +16,18 @@ enum TankSource : uint8_t {
   TANK_NONE = 2
 };
 
+enum SolarSource : uint8_t {
+  SOLAR_BLE = 0,       // Victron Instant Readout over Bluetooth (no cable)
+  SOLAR_VEDIRECT = 1,  // VE.Direct cable (adds PV voltage + total yield)
+  SOLAR_NONE = 2
+};
+
+struct VictronCfg {
+  uint8_t src = SOLAR_BLE;
+  char addr[18] = "";  // optional; "" = match by key
+  char key[33] = "";   // 32 hex chars from VictronConnect "Instant readout details"
+};
+
 struct TankCal {
   float emptyMv = 300;   // ADS1115 reading (after divider) with tank empty
   float fullMv = 2800;   // ...and full. Inverted senders are fine (empty > full).
@@ -57,6 +69,7 @@ struct HubConfig {
   TankCal tanks[cv::NUM_TANKS];
   PumpCfg pumps[cv::NUM_PUMPS];
   InverterCfg inverter;
+  VictronCfg victron[cv::NUM_SOLAR];
   char tempAddr[cv::NUM_TEMPS][17] = {};  // DS18B20 ROM as hex, "" = auto-assign
   uint16_t cloudIntervalSec = 15;
   bool buzzer = true;

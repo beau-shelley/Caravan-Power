@@ -73,8 +73,8 @@ static void demoData() {
   s.bat.loadA = 12.6f;
   s.bat.a = 18.8f;
   s.bat.ttgMin = 52;
-  s.solar[0] = {true, 38.4f, 312, 13.31f, 22.6f, 3, 0, 1.42f, 498, 812.4f};
-  s.solar[1] = {true, 36.9f, 118, 13.30f, 8.8f, 4, 0, 0.61f, 205, 233.9f};
+  s.solar[0] = {true, -1, 312, 13.31f, 22.6f, 3, 0, 1.42f, 498, 812.4f};
+  s.solar[1] = {true, -1, 118, 13.30f, 8.8f, 4, 0, 0.61f, 205, 233.9f};
   s.temp[TEMP_INSIDE] = {true, 24.6f, 16.2f, 27.9f};
   s.temp[TEMP_OUTSIDE] = {true, 31.2f, 14.8f, 33.4f};
   s.temp[TEMP_FRIDGE] = {true, 3.4f, 2.1f, 5.2f};

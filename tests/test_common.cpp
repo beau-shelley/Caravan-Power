@@ -9,6 +9,7 @@
 #include "LinkCodec.h"
 #include "SocEstimator.h"
 #include "VeDirect.h"
+#include "VictronBle.h"
 
 static int failures = 0, checks = 0;
 #define CHECK(cond)                                                 \
@@ -247,7 +248,55 @@ static void testLink() {
   for (unsigned char c : bad) CHECK(!r.feed(c));
 }
 
+static void testVictronBle() {
+  // FIPS-197 appendix C.1
+  uint8_t k[16], pt[16], ct[16];
+  for (int i = 0; i < 16; i++) {
+    k[i] = (uint8_t)i;
+    pt[i] = (uint8_t)(i * 0x11);
+  }
+  aes128Encrypt(k, pt, ct);
+  const uint8_t want[16] = {0x69, 0xc4, 0xe0, 0xd8, 0x6a, 0x7b, 0x04, 0x30,
+                            0xd8, 0xcd, 0xb7, 0x80, 0x70, 0xb4, 0xc5, 0x5a};
+  CHECK(memcmp(ct, want, 16) == 0);
+
+  // Advert built independently with Python 'cryptography' (AES-CTR, counter =
+  // nonce as 128-bit little-endian): solar record cs=3, 13.27 V, 21.4 A,
+  // 0.87 kWh today, 298 W.
+  const uint8_t mfg[] = {0xE1, 0x02, 0x10, 0x60, 0xA0, 0xA0, 0x01, 0x2B, 0x1A, 0x0D, 0xD2,
+                         0xB7, 0x57, 0x2D, 0xA9, 0xA0, 0x05, 0x98, 0xAD, 0xFE, 0x5D, 0x96};
+  uint8_t key[16];
+  CHECK(victronKeyFromHex("0df4d039 5b7d1a87 6c0c33ec b9e70dcd", key));
+  CHECK(!victronKeyFromHex("0df4", key));
+  CHECK(victronKeyFromHex("0DF4D0395B7D1A876C0C33ECB9E70DCD", key));
+  VictronAdvert adv;
+  CHECK(victronParseAdvert(mfg, sizeof(mfg), adv));
+  CHECK(adv.record == VREC_SOLAR_CHARGER && adv.nonce == 0x1A2B && adv.model == 0xA060);
+  uint8_t dec[32];
+  size_t n = 0;
+  CHECK(victronDecrypt(adv, key, dec, n));
+  CHECK(n == 12);
+  Solar s;
+  CHECK(victronDecodeSolar(dec, n, s));
+  CHECK(s.cs == 3 && s.err == 0);
+  NEAR(s.batV, 13.27f, 0.001f);
+  NEAR(s.batA, 21.4f, 0.001f);
+  NEAR(s.yieldTodayKwh, 0.87f, 0.001f);
+  NEAR(s.pvW, 298.f, 0.01f);
+  CHECK(s.maxWToday == 298);
+  CHECK(s.pvV < 0);
+
+  // Wrong key is rejected by the key-check byte; other companies ignored.
+  uint8_t bad[16] = {0x11};
+  CHECK(!victronDecrypt(adv, bad, dec, n));
+  uint8_t other[sizeof(mfg)];
+  memcpy(other, mfg, sizeof(mfg));
+  other[0] = 0x4C;
+  CHECK(!victronParseAdvert(other, sizeof(other), adv));
+}
+
 int main() {
+  testVictronBle();
   testVeDirect();
   testAlerts();
   testJsonRoundTrip();

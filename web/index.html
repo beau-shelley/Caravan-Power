@@ -189,6 +189,13 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <div class="row" style="margin-top:10px"><button class="btn primary" id="cfSave">Save &amp; connect</button>
           <span class="muted small">Stored only in this browser. Use a dashboard-only broker user.</span></div>
       </div>
+      <div class="card span12" style="--dot:var(--solar)">
+        <div class="cap">Victron solar controllers (Bluetooth)</div>
+        <p class="muted small">In VictronConnect open each SmartSolar &rarr; cog &rarr; <i>Product info</i> &rarr; enable <i>Instant readout via Bluetooth</i> &rarr; <i>Instant readout details: Show</i>, and copy the encryption key here. The address is optional; use <i>Find nearby</i> to see what the hub can hear.</p>
+        <div id="vicRows"></div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="vicScan">Find nearby</button></div>
+        <div id="vicSeen" class="small muted" style="margin-top:6px"></div>
+      </div>
       <div class="card span6" id="calCard">
         <div class="cap">Tank calibration</div>
         <p class="muted small">Fill or empty a tank, then press the matching button to store the sender reading.</p>
@@ -290,7 +297,7 @@ function render() {
       <div style="width:110px"><b>${esc(META.sol[i])}</b><br><span class="chip" style="color:${m.err ? "var(--alarm)" : "var(--solar)"}">${m.on ? (m.err ? "Error " + m.err : CS[m.cs] || "Unknown") : "Offline"}</span></div>
       <div class="bar"><i style="width:${m.on ? Math.min(100, m.w / 7) : 0}%"></i></div>
       <div style="width:150px; text-align:right"><b style="color:var(--solar)">${m.on ? Math.round(m.w) + " W" : "--"}</b><br>
-        <span class="muted small">${m.on ? `${m.pv.toFixed(1)} V · ${m.ba.toFixed(1)} A · ${m.yt.toFixed(2)} kWh today` : ""}</span></div>
+        <span class="muted small">${m.on ? `${m.pv >= 0 ? m.pv.toFixed(1) + " V PV" : m.bv.toFixed(2) + " V"} · ${m.ba.toFixed(1)} A · ${m.yt.toFixed(2)} kWh today` : ""}</span></div>
     </div>`).join("");
 
   $("#temps").innerHTML = S.tmp.map((t, i) => `
@@ -325,6 +332,12 @@ function render() {
 function renderMeta() {
   $("#calCard").classList.toggle("hidden", !META.tcal);  // BMPRO tanks are calibrated in the Odyssey app
   $("#acSel").innerHTML = META.acp.length ? META.acp.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("") : `<option value="">No presets learned</option>`;
+  $("#vicRows").innerHTML = META.sol.map((n, i) => `
+    <div class="form" style="margin-bottom:8px; align-items:end">
+      <div><label>${esc(n)} &ndash; encryption key</label><input id="vicKey${i}" placeholder="32 hex characters" autocomplete="off" spellcheck="false"></div>
+      <div><label>Bluetooth address (optional)</label><input id="vicAddr${i}" placeholder="aa:bb:cc:dd:ee:ff"></div>
+      <div><button class="btn primary" data-vic="${i}">Save</button></div>
+    </div>`).join("");
   $("#calRows").innerHTML = META.tank.map((n, i) => `
     <div class="row between" style="padding:6px 0"><span>${esc(n)}</span>
       <span class="row"><button class="btn" data-cal="${i}" data-pt="empty">Set empty</button>
@@ -355,6 +368,10 @@ function onMessage(msg) {
     case "rules": RULES = msg.rules; renderRules(); break;
     case "err": toast(msg.msg); break;
     case "sensors": renderSensors(msg.list); break;
+    case "victron_seen": $("#vicSeen").innerHTML = msg.list.length ? msg.list.map((d) =>
+        `<div><code>${esc(d.addr)}</code> ${esc(d.type)} model ${esc(d.model)}, ${d.rssi} dBm${d.slot >= 0 ? ` &ndash; <b>decoding as ${esc(META.sol[d.slot])}</b>` : ""}</div>`).join("")
+        : "No Victron broadcasts heard yet - check Instant readout is enabled."; break;
+    case "ok": toast("Saved"); break;
     case "tank_cal": toast("Tank calibration saved"); break;
     case "event": if (msg.type === "raised") toast(`⚠ ${msg.msg}`); break;
   }
@@ -413,7 +430,7 @@ function setConn(txt, cls) { const c = $("#conn"); c.textContent = txt; c.classN
 function demoTransport() {
   setConn("Demo data", "warnc");
   const st = { t:"state", ts: Math.floor(Date.now() / 1000), bat:{ on:true, src:1, v:13.31, a:18.8, soc:78, ttg:52, sa:31.4, ca:0, chg:31.4, load:12.6 },
-    sol:[{ on:true, pv:38.4, w:312, bv:13.31, ba:22.6, cs:3, err:0, yt:1.42, mx:498 }, { on:true, pv:36.9, w:118, bv:13.3, ba:8.8, cs:4, err:0, yt:0.61, mx:205 }],
+    sol:[{ on:true, pv:-1, w:312, bv:13.31, ba:22.6, cs:3, err:0, yt:1.42, mx:498 }, { on:true, pv:-1, w:118, bv:13.3, ba:8.8, cs:4, err:0, yt:0.61, mx:205 }],
     tmp:[{ on:true, c:24.6, lo:16.2, hi:27.9 }, { on:true, c:31.2, lo:14.8, hi:33.4 }, { on:true, c:7.4, lo:2.1, hi:7.4 }],
     tank:[{ on:true, p:72 }, { on:true, p:18 }, { on:true, p:41 }],
     pump:[{ on:true, sn:true, lk:false, rt:94 }, { on:false, sn:false, lk:false, rt:0 }],
@@ -449,6 +466,11 @@ $("#soc100").onclick = () => { if (confirm("Set battery state of charge to 100%?
 $("#calRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-cal]"); if (!b) return;
   if (confirm(`Store current reading as ${b.dataset.pt.toUpperCase()} for ${META.tank[b.dataset.cal]}?`)) send({ c:"tank_cal", i:+b.dataset.cal, point:b.dataset.pt }); });
 $("#scanSensors").onclick = () => send({ c:"sensors" });
+$("#vicScan").onclick = () => send({ c:"victron_seen" });
+$("#vicRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-vic]"); if (!b) return;
+  const i = +b.dataset.vic, key = $("#vicKey" + i).value.replace(/[^0-9a-fA-F]/g, "");
+  if (key.length !== 32) { toast("The key is 32 hex characters (0-9, a-f)"); return; }
+  send({ c:"victron_set", i, key, addr: $("#vicAddr" + i).value.trim().toLowerCase(), src: 0 }); });
 function renderSensors(list) {
   $("#sensorRows").innerHTML = list.length ? list.map((s) => `
     <div class="row between" style="padding:6px 0"><span><code>${esc(s.addr)}</code> <b>${s.c.toFixed(1)}°</b></span>

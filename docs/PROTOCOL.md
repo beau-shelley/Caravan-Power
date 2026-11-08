@@ -23,7 +23,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 |---|---|
 | `ts`, `tz` | unix time, local UTC offset (s) |
 | `bat` | `on`, `src` (1 shunt, 2 BMPRO), `v`, `a` (+charge), `soc`, `ttg` (min, -1 idle), `sa` solar A, `ca` charger A, `chg` total charge A, `load` load A |
-| `sol[2]` | `on`, `pv` V, `w` W, `bv`, `ba`, `cs` (VE.Direct charge state), `err`, `yt` kWh today, `mx` peak W today, `ytot` |
+| `sol[2]` | `on`, `pv` V (-1 when not available, i.e. over Bluetooth), `w` W, `bv`, `ba`, `cs` (VE.Direct charge state), `err`, `yt` kWh today, `mx` peak W today, `ytot` |
 | `tmp[3]` | inside, outside, fridge: `on`, `c`, `lo`, `hi` (today) |
 | `tank[3]` | `on`, `p` % |
 | `pump[2]` | `on`, `sn` sensed, `lk` dry-run lockout, `rt` run seconds |
@@ -51,6 +51,8 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `sensors` / `sensor_assign` | `addr`, `role` | DS18B20 role mapping |
 | `remote_control` | `on` | **not accepted from the cloud** |
 | `config_set` | `cfg:{…}` | partial config merge (see `HubConfig::toJson`) |
+| `victron_set` | `i`, `key` (32 hex), optional `addr`, `src` (0 Bluetooth, 1 VE.Direct, 2 off) | add/replace a SmartSolar's Instant Readout key |
+| `victron_seen` | | Victron devices in Bluetooth range and which are decoding |
 | `bmpro_devices`, `bmpro_log` | | Bluetooth devices seen / OdysseyLink log |
 | `bmpro_connect` | `addr` | set + remember the OdysseyLink address |
 | `bmpro_write` | `uuid`, `hex`, `resp` | raw write, for replaying captured Odyssey app commands |
@@ -67,6 +69,7 @@ Actions: `none aircon_off inverter_off pumps_off`.
 - `bat`: `src` (2 BMPRO = default, 1 INA226 shunt), `cap` Ah, `eff`, `fullV`, `tailA`, `shunt` Ω, `chg`, `chgShunt`, `vCal`
 - `tanks[]`: `empty`, `full` mV, `ch`, `en`
 - `pumps[]`: `mode` (3 BMPRO over Bluetooth = default, 0 relay latch, 1 relay pulse, 2 disabled), `pulse` ms, `maxRun` min, `dryTank`, `dryPct`, `sense`
+- `vic[]`: `src` (0 Bluetooth = default, 1 VE.Direct, 2 off), `addr`, `key`
 - `tankSrc`: 0 BMPRO (default), 1 ADS1115 taps, 2 none
 - `bmproAddr`: OdysseyLink Bluetooth address
 - `inv`: `mode`, `pulse`, `sense`

@@ -25,12 +25,12 @@ Remote dashboard (desktop and phone, dark and light):
 | Requirement | How |
 |---|---|
 | Battery %, load amps, charge amps | From the BMPRO via the OdysseyLink (Bluetooth). Charge amps also from the Victrons. Fallback: INA226 shunt |
-| Individual solar controller tracking | Both Victron SmartSolar 100/50s over **VE.Direct**: PV W/V, charge A, state, yield today, peak, errors |
+| Individual solar controller tracking | Both Victron SmartSolar 100/50s over **Bluetooth** (Victron Instant Readout, no cables): PV watts, charge A, battery V, charge state, yield today, peak, errors. VE.Direct cable optional (adds PV voltage) |
 | Inside / outside / fridge temps with alarms | 3 × DS18B20; min/max today; alarm rules with delay and hysteresis |
 | Customisable alerts on temps, volts and amps | Rule engine: any metric, above/below, threshold, hysteresis, delay, severity, push on/off, plus an optional **automatic action** (aircon off, inverter off, pumps off) |
 | Phone alerts | [ntfy](https://ntfy.sh) push (free iOS/Android app). Alarms use *urgent* priority |
 | 2 water pumps on the touchscreen | Switched **by the BMPRO**, commanded over Bluetooth, so the Odyssey app stays in sync. Dry-run lockout and a max run time. Fallback: relays |
-| Water tank gauges | The existing tank senders, read through the OdysseyLink (no wiring). Fallback: ADS1115 taps |
+| Water tank gauges | Your tank sensors already report to the OdysseyLink; the hub reads the levels from it over Bluetooth (no wiring). Fallback: ADS1115 taps |
 | Remove the Trek 3 | The touchscreen covers everything the Trek showed. Follow the test-before-removing steps in the BMPRO doc |
 | Inverter control | Relay on the Powertech remote port (pulse or latch), with a 240 V output sense |
 | Air-con control | Learns IR codes from the Houghton remote and replays them (up to 8 presets plus OFF) |
@@ -47,11 +47,12 @@ Remote dashboard (desktop and phone, dark and light):
  ┌───────────────────────────┴────────────────────────┴──────────────────────────────┴────┐
  │ HUB  ESP32-S3-DevKitC-1                                                                │
  │  Bluetooth ))))) OdysseyLink ── BMPRO 35A: battery, 3 tank senders, pump 1 + 2       │
- │  VE.Direct ×2 ── SmartSolar 100/50 #1, #2       1-Wire ── DS18B20 inside/outside/fridge│
+ │  Bluetooth ))))) SmartSolar 100/50 #1, #2 (Instant Readout)                            │
+ │  1-Wire ── DS18B20 inside/outside/fridge                                               │
  │  Relay ── inverter remote      Opto ── inverter 240 V present                          │
  │  IR LED / IR receiver ── Houghton aircon                                               │
  │  Local web UI http://caravan.local  +  WebSocket                                       │
- │  (optional wired fallbacks: INA226 shunt, ADS1115 tank taps, pump relays)              │
+ │  (optional wired fallbacks: VE.Direct, INA226 shunt, ADS1115 tank taps, pump relays)   │
  └──────────────────────────────┬─────────────────────────────────────────────────────────┘
                                 │ RS485 (4-core: 12 V, GND, A, B)
  ┌──────────────────────────────┴───────────────┐
@@ -79,7 +80,7 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 
 ## Quick start
 
-1. **Wire it up.** Follow [docs/WIRING.md](docs/WIRING.md): the RS485 link to the display, the two Victron cables, the temperature probes, the inverter relay and the IR LED. Nothing touches the BMPRO wiring.
+1. **Wire it up.** Follow [docs/WIRING.md](docs/WIRING.md): the RS485 link to the display, the temperature probes, the inverter relay and the IR LED. The BMPRO and the Victrons are both wireless.
 2. **Set up the cloud side** (optional; the system runs fully offline without it) using [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md): a free HiveMQ Cloud broker plus the ntfy app.
 3. **Flash the hub.**
    ```sh
@@ -95,6 +96,7 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
    pio run -t upload
    ```
 5. **Commission it** from the touchscreen, under **Settings**:
+   - Add the two Victron Bluetooth keys: dashboard → *Setup* → *Victron solar controllers* (see [docs/WIRING.md](docs/WIRING.md#victron-smartsolar-10050-2---bluetooth)).
    - Connect to the OdysseyLink and decode its protocol: [docs/BMPRO_INTEGRATION.md](docs/BMPRO_INTEGRATION.md). Tanks are calibrated in the Odyssey app as before.
    - Learn the aircon presets: set the Houghton remote to e.g. *Cool 22 auto*, tap *Learn preset* and press the remote's button. Repeat for each mode you use, then do *Learn OFF*.
    - Check the temperature sensors went to the right roles. Use the web dashboard → *Setup* → *Scan 1-Wire bus* to reassign them.
@@ -113,8 +115,8 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 ```sh
 git clone --depth 1 -b v7.2.1  https://github.com/bblanchon/ArduinoJson ../ArduinoJson
 git clone --depth 1 -b v8.3.11 https://github.com/lvgl/lvgl ../lvgl
-make -C tests                 # 77 unit checks under ASan/UBSan: VE.Direct parser, alert engine,
-                              # JSON round-trip, SoC estimator, RS485 framing
+make -C tests                 # 95 unit checks under ASan/UBSan: Victron BLE decrypt/decode (incl.
+                              # FIPS-197 AES vector), VE.Direct parser, alert engine, JSON, SoC, RS485
 make -C tests/sim             # builds the real display UI against LVGL and renders every page to PNG
 ```
 

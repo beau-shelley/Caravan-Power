@@ -14,6 +14,8 @@
 #include "HubConfig.h"
 #include "Inputs.h"
 #include "Outputs.h"
+#include "VictronBle.h"
+#include "VictronBleRx.h"
 #include "pins.h"
 
 using namespace hub;
@@ -28,6 +30,25 @@ static SwitchedOutput gPump[cv::NUM_PUMPS];
 static SwitchedOutput gInverter;
 static AirconIr gAircon;
 static bool gBmproOn = false;
+static bool gVictronBleOn = false;
+static bool gVeDirectOn[cv::NUM_SOLAR] = {};
+
+static void startSolar(int i) {
+  const VictronCfg &v = gConfig.victron[i];
+  if (v.src == SOLAR_VEDIRECT && !gVeDirectOn[i]) {
+    if (i == 0) gVictron[0].begin(Serial1, PIN_VE1_RX, PIN_VE1_TX);
+    else gVictron[1].begin(Serial2, PIN_VE2_RX, PIN_VE2_TX);
+    gVeDirectOn[i] = true;
+  }
+  if (v.src == SOLAR_BLE) {
+    if (!gVictronBleOn) {
+      gVictronBle.begin();
+      gVictronBleOn = true;
+    }
+    if (!gVictronBle.setDevice(i, v.addr, v.key))
+      Serial.printf("[victron] solar %d: no valid key yet - add it in the dashboard Setup tab\n", i + 1);
+  }
+}
 static uint32_t gBmproPumpSince[cv::NUM_PUMPS] = {};
 static bool gBmproPumpTripped[cv::NUM_PUMPS] = {};
 
@@ -115,7 +136,7 @@ static void onAlert(const cv::AlertEngine::Event &ev, void *) {
 // One handler for every client (touchscreen, local web, cloud). Messages look
 // like {"c":"pump","i":0,"on":true}. See docs/PROTOCOL.md for the full list.
 static bool isMutating(const char *c) {
-  static const char *readOnly[] = {"state", "hello", "rules_get", "sensors", "bmpro_log",
+  static const char *readOnly[] = {"state", "hello", "rules_get", "sensors", "bmpro_log", "victron_seen",
                                    "bmpro_devices", "ac_learn_status", "ping"};
   for (auto r : readOnly)
     if (strcmp(c, r) == 0) return false;
@@ -253,6 +274,30 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     configChanged();
     reply["t"] = "ok";
 
+  // ---------------- Victron Bluetooth
+  } else if (!strcmp(c, "victron_set")) {
+    // {"c":"victron_set","i":0,"key":"<32 hex>","addr":"aa:bb:..","src":0}
+    int i = cmd["i"] | -1;
+    if (i < 0 || i >= cv::NUM_SOLAR) return replyErr(reply, "bad controller");
+    VictronCfg &v = gConfig.victron[i];
+    uint8_t src = cmd["src"] | v.src;
+    char key[33], addr[18];
+    snprintf(key, sizeof(key), "%s", cmd["key"] | (const char *)v.key);
+    snprintf(addr, sizeof(addr), "%s", cmd["addr"] | (const char *)v.addr);
+    uint8_t k[16];
+    if (src == SOLAR_BLE && !cv::victronKeyFromHex(key, k))
+      return replyErr(reply, "Key must be the 32 hex characters from VictronConnect");
+    if (addr[0] && strlen(addr) != 17) return replyErr(reply, "address must look like aa:bb:cc:dd:ee:ff");
+    v.src = src;
+    memcpy(v.key, key, sizeof(v.key));
+    memcpy(v.addr, addr, sizeof(v.addr));
+    configChanged();
+    startSolar(i);
+    reply["t"] = "ok";
+  } else if (!strcmp(c, "victron_seen")) {
+    reply["t"] = "victron_seen";
+    reply["list"] = serialized(gVictronBleOn ? gVictronBle.seen() : String("[]"));
+
   // ---------------- BMPRO capture
   } else if (!strcmp(c, "bmpro_log")) {
     reply["t"] = "bmpro_log";
@@ -379,7 +424,10 @@ static void midnightReset() {
   time_t t = time(nullptr);
   struct tm lt;
   localtime_r(&t, &lt);
-  if (lastDay != -1 && lt.tm_mday != lastDay) gTemps.resetMinMax(gState);
+  if (lastDay != -1 && lt.tm_mday != lastDay) {
+    gTemps.resetMinMax(gState);
+    if (gVictronBleOn) gVictronBle.resetDaily();  // VE.Direct resets its own peak
+  }
   lastDay = lt.tm_mday;
 }
 
@@ -414,8 +462,6 @@ void setup() {
   }
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 400000);
-  gVictron[0].begin(Serial1, PIN_VE1_RX, PIN_VE1_TX);
-  gVictron[1].begin(Serial2, PIN_VE2_RX, PIN_VE2_TX);
   gTemps.begin(PIN_ONEWIRE);
   if (gConfig.tankSource == TANK_ADC) gTanks.begin();
   gShunt.begin();
@@ -429,6 +475,7 @@ void setup() {
   gLink.begin(Serial0, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE);
   gNet.begin();
   gNotify.begin();
+  for (int i = 0; i < cv::NUM_SOLAR; i++) startSolar(i);
   if (gConfig.usesBmpro()) {
     gBmpro.begin(gConfig.bmproAddr, gConfig.bmproExplorer);
     gBmproOn = true;
@@ -440,7 +487,12 @@ void loop() {
   uint32_t now = millis();
   {
     StateLock l;
-    for (int i = 0; i < cv::NUM_SOLAR; i++) gVictron[i].poll(gState.solar[i]);
+    for (int i = 0; i < cv::NUM_SOLAR; i++) {
+      uint8_t src = gConfig.victron[i].src;
+      if (src == SOLAR_VEDIRECT && gVeDirectOn[i]) gVictron[i].poll(gState.solar[i]);
+      else if (src == SOLAR_BLE && gVictronBleOn) gVictronBle.poll(i, gState.solar[i]);
+      else gState.solar[i].online = false;
+    }
     gTemps.poll(gState);
     if (gConfig.tankSource == TANK_ADC) gTanks.poll(gState);
     gShunt.poll(gState, now);

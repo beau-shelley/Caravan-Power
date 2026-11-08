@@ -2,10 +2,9 @@
 
 Everything here is on the 12 V side except the optional inverter 240 V sense; read the safety notes in the README first.
 
-**The BMPRO system needs no wiring at all.** Battery, tank levels and pumps come over Bluetooth from the OdysseyLink (see [BMPRO_INTEGRATION.md](BMPRO_INTEGRATION.md)). The core install is:
+**The BMPRO system and the Victron solar controllers need no wiring at all.** Battery, tank levels and pumps come over Bluetooth from the OdysseyLink (see [BMPRO_INTEGRATION.md](BMPRO_INTEGRATION.md)), and both SmartSolars broadcast their readings over Bluetooth. The core install is:
 - power to the hub and display;
 - the RS485 cable between them;
-- 2 Victron cables;
 - 3 temperature probes;
 - the inverter relay;
 - the IR LED.
@@ -22,7 +21,6 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 | 1 | 12 V → 5 V 3 A automotive buck converter | powers the hub (and the display if your board has no 7–36 V input) |
 | 1 | MAX3485 / "TTL to RS485" 3.3 V module | hub side of the display link (an auto-direction module is fine; set `PIN_LINK_DE` to -1) |
 | 1 | 4-core shielded cable (e.g. 0.5 mm²) | hub ↔ display: 12 V, GND, RS485 A, B |
-| 2 | VE.Direct cable / JST-PH 2.0 4-pin pigtail | one per SmartSolar |
 | 3 | DS18B20 waterproof probes + 4.7 kΩ resistor | inside, outside, fridge |
 | 1 | 1- or 2-channel 3.3 V-trigger relay module | inverter remote (+ spare) |
 | 1 | 12 V opto-isolator board (PC817) | inverter on sense |
@@ -30,7 +28,7 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 | 1 | Active buzzer 3–5 V + NPN | local alarm |
 | — | Fuses/holders, ferrules, heatshrink, enclosure | 2 A for the electronics |
 
-Only needed for the wired fallbacks: ADS1115 + 3 dividers (tanks), INA226 + 300 A shunt (battery), relays + Schottky diodes + opto (pumps).
+Only needed for the wired fallbacks: VE.Direct pigtails (solar), ADS1115 + 3 dividers (tanks), INA226 + 300 A shunt (battery), relays + Schottky diodes + opto (pumps).
 
 ## Hub (ESP32-S3-DevKitC-1) pin map
 
@@ -39,9 +37,7 @@ Only needed for the wired fallbacks: ADS1115 + 3 dividers (tanks), INA226 + 300 
 | 43 (TX) | RS485 DI | MAX3485 DI |
 | 44 (RX) | RS485 RO | MAX3485 RO |
 | 42 | RS485 DE+RE | MAX3485 DE and /RE tied together |
-| 17 | VE.Direct #1 RX | SmartSolar #1 VE.Direct pin 3 (TX), via level shifting below |
-| 16 | VE.Direct #2 RX | SmartSolar #2 VE.Direct pin 3 (TX) |
-| 18, 15 | VE.Direct TX (optional) | SmartSolar pin 2 (RX); not needed for monitoring |
+| 17 / 16 | VE.Direct #1 / #2 RX | *fallback only* |
 | 8 / 9 | I²C SDA / SCL | *fallback only:* ADS1115 (0x48), INA226 (0x40 / 0x41) |
 | 4 | 1-Wire | all DS18B20 data lines + 4.7 kΩ pull-up to 3V3 |
 | 10 | Pump 1 relay | *fallback only* |
@@ -79,16 +75,26 @@ Hub GND       ─────────────── Display GND        (
 
 For runs over ~10 m, put 120 Ω across A–B at each end. If nothing arrives, swap A and B first; some modules label them the other way around.
 
-## Victron SmartSolar 100/50 (×2) - VE.Direct
+## Victron SmartSolar 100/50 (×2) - Bluetooth
 
-The VE.Direct socket is a JST-PH 2.0 4-pin connector: **1 GND, 2 RX (into Victron), 3 TX (out of Victron), 4 +5 V**.
+No cables. SmartSolar controllers broadcast their live readings over Bluetooth ("Instant Readout"), encrypted with a key unique to each controller. The hub listens passively: no pairing, nothing connects to the controllers, and VictronConnect on your phone keeps working.
 
-Only GND and TX are needed. Measure pin 3 against pin 1 with a multimeter while the controller is idle:
+For each controller:
 
-- **~5 V:** use a divider: 10 kΩ from Victron TX to the ESP pin, then 20 kΩ from the ESP pin to GND.
-- **~3.3 V:** connect through a 1 kΩ series resistor.
+1. **Turn on Instant Readout:** in **VictronConnect**, open the controller → cog (⚙) → ⋮ menu → **Product info**, and make sure **Instant readout via Bluetooth** is *Enabled*.
+2. **Copy the key:** on the same screen, tap **Instant readout details → Show** and copy the **encryption key** (32 hex characters). The MAC address shown there is optional.
+3. **Paste it into the hub:** open the dashboard (`http://caravan.local`) → **Setup** → *Victron solar controllers*, paste the key into the right row (Roof / Portable), and press **Save**.
+4. **Check it's working:** press **Find nearby**. The controller should show "decoding as Roof" (or Portable), and its watts appear on the touchscreen within a few seconds.
 
-Do **not** connect pin 4 (+5 V) to anything. The controllers share the battery negative with the hub, so no isolation is needed.
+What Bluetooth gives you, per controller:
+- PV power (W), charge current, battery voltage;
+- charge state (Bulk / Absorption / Float…) and error code;
+- yield today;
+- peak watts today (tracked by the hub).
+
+**Not included** in the broadcast: PV *voltage* and lifetime yield. If you want those, use the VE.Direct cable fallback at the end of this page for that controller.
+
+**Range:** the hub needs to hear the controllers. Inside a caravan this is normally fine. If a controller is in a metal locker and shows offline, mount the hub closer or use VE.Direct for that one.
 
 ## Temperature sensors (DS18B20)
 
@@ -130,6 +136,19 @@ Active buzzer + NPN on GPIO7. It beeps every 2 s while an **alarm**-severity ale
 ## Optional wired fallbacks
 
 Use these only if the OdysseyLink's Bluetooth protocol can't be decoded, or you want a reading that doesn't depend on the BMPRO. Change the source in the hub config and reboot.
+
+### Victron VE.Direct cable (instead of Bluetooth)
+
+Set that controller's source with `{"c":"victron_set","i":0,"src":1}` (or `"vic":[{"src":1}]` in the config). Wire GPIO17 (controller 1) / GPIO16 (controller 2).
+
+The VE.Direct socket is a JST-PH 2.0 4-pin connector: **1 GND, 2 RX (into Victron), 3 TX (out of Victron), 4 +5 V**.
+
+Only GND and TX are needed. Measure pin 3 against pin 1 with a multimeter while the controller is idle:
+
+- **~5 V:** use a divider: 10 kΩ from Victron TX to the ESP pin, then 20 kΩ from the ESP pin to GND.
+- **~3.3 V:** connect through a 1 kΩ series resistor.
+
+Do **not** connect pin 4 (+5 V) to anything. The controllers share the battery negative with the hub, so no isolation is needed.
 
 ### Tank level senders (ADS1115 taps)
 
