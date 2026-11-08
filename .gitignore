@@ -1,0 +1,9 @@
+.pio/
+.vscode/
+build/
+secrets.h
+tests/bin/
+*.o
+tests/sim/out/
+tests/sim/obj/
+firmware/hub/data/

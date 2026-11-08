@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Caravan Power</title>
+<!--
+  Caravan Power dashboard - one file, two transports:
+   * LOCAL : served by the hub at http://caravan.local -> WebSocket to the hub
+   * CLOUD : open this file from anywhere (GitHub Pages, phone home screen...)
+             -> MQTT over secure WebSocket to your broker (HiveMQ Cloud etc.)
+  Add ?demo to the URL to preview with fake data.
+-->
+<style>
+:root {
+  --bg:#0b1220; --card:#131c2e; --tile:#1a2438; --border:#1e293b;
+  --text:#e2e8f0; --muted:#94a3b8; --dim:#475569;
+  --solar:#fbbf24; --charge:#34d399; --load:#f87171; --water:#38bdf8;
+  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444;
+  --radius:16px;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:#eef2f7; --card:#ffffff; --tile:#f1f5f9; --border:#dbe3ee;
+    --text:#0f172a; --muted:#475569; --dim:#94a3b8;
+    --solar:#d97706; --charge:#059669; --load:#dc2626; --water:#0284c7;
+    --climate:#7c3aed; --accent:#0891b2;
+  }
+}
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
+header { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:12px;
+  padding:12px 16px; padding-top:max(12px, env(safe-area-inset-top));
+  background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border); }
+header h1 { font-size:18px; margin:0; font-weight:650; letter-spacing:.2px; }
+header .sp { flex:1; }
+.pill { font-size:12px; padding:4px 10px; border-radius:999px; background:var(--tile); color:var(--muted); white-space:nowrap; }
+.pill.ok { color:var(--charge); } .pill.bad { color:var(--alarm); } .pill.warnc { color:var(--warn); }
+nav { display:flex; gap:6px; padding:10px 16px 0; overflow-x:auto; }
+nav button { border:0; background:transparent; color:var(--muted); padding:8px 14px; border-radius:10px; font:inherit; cursor:pointer; }
+nav button.on { background:var(--tile); color:var(--text); }
+main { padding:12px 16px 40px; max-width:1200px; margin:0 auto; }
+.grid { display:grid; gap:12px; grid-template-columns:repeat(12, 1fr); }
+.card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; min-width:0; }
+.cap { font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted); display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.cap::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--dot, var(--accent)); }
+.span4 { grid-column:span 4; } .span5 { grid-column:span 5; } .span7 { grid-column:span 7; }
+.span8 { grid-column:span 8; } .span6 { grid-column:span 6; } .span12 { grid-column:span 12; }
+@media (max-width: 860px) { .span4,.span5,.span7,.span8,.span6 { grid-column:span 12; } }
+.big { font-size:34px; font-weight:600; letter-spacing:-.5px; line-height:1.1; }
+.mid { font-size:22px; font-weight:600; }
+.muted { color:var(--muted); } .small { font-size:12px; }
+.row { display:flex; align-items:center; gap:10px; }
+.between { justify-content:space-between; }
+.stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.ring { display:flex; align-items:center; gap:18px; }
+.ring svg { width:140px; height:140px; flex:none; }
+.bar { height:10px; border-radius:6px; background:var(--tile); overflow:hidden; flex:1; }
+.bar > i { display:block; height:100%; border-radius:6px; background:var(--solar); transition:width .5s; }
+.chip { font-size:11px; padding:2px 8px; border-radius:8px; background:var(--tile); }
+.tanks { display:flex; gap:18px; justify-content:space-around; }
+.tank { text-align:center; }
+.tank .tb { width:44px; height:110px; border-radius:10px; background:var(--tile); position:relative; overflow:hidden; margin:0 auto 6px; }
+.tank .tb i { position:absolute; left:0; right:0; bottom:0; background:var(--water); transition:height .6s; }
+.temps .t { display:flex; justify-content:space-between; align-items:baseline; padding:4px 0; }
+.ctrls { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.tog { border:1px solid var(--border); background:var(--tile); color:var(--text); border-radius:14px;
+  padding:12px; text-align:left; font:inherit; cursor:pointer; min-height:70px; }
+.tog b { display:block; font-weight:600; } .tog span { font-size:12px; color:var(--muted); }
+.tog.on { border-color:var(--c, var(--accent)); background:color-mix(in srgb, var(--c, var(--accent)) 22%, var(--tile)); }
+.tog:disabled { opacity:.5; cursor:not-allowed; }
+.alerts { display:flex; flex-direction:column; gap:8px; }
+.alert { border-left:4px solid var(--c); background:color-mix(in srgb, var(--c) 14%, var(--card)); padding:10px 12px; border-radius:10px; }
+.btn { border:0; background:var(--tile); color:var(--text); padding:8px 14px; border-radius:10px; font:inherit; cursor:pointer; }
+.btn.primary { background:var(--accent); color:#06202a; font-weight:600; }
+.btn.danger { color:var(--alarm); }
+table { width:100%; border-collapse:collapse; }
+td, th { text-align:left; padding:8px 6px; border-bottom:1px solid var(--border); font-size:14px; }
+th { color:var(--muted); font-weight:500; font-size:12px; }
+input, select { background:var(--tile); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:7px 9px; font:inherit; width:100%; }
+label { font-size:12px; color:var(--muted); display:block; }
+.form { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); }
+dialog { background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:16px; max-width:640px; width:calc(100% - 32px); }
+dialog::backdrop { background:rgba(0,0,0,.55); }
+pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px; border-radius:10px; max-height:360px; overflow:auto; }
+.hidden { display:none !important; }
+#toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--card); border:1px solid var(--accent);
+  padding:10px 16px; border-radius:12px; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90vw; }
+#toast.show { opacity:1; }
+@media (max-width: 520px) {
+  .big { font-size:24px; } header h1 { font-size:16px; } #updated { display:none; }
+  main { padding:10px 10px 32px; } .ring svg { width:120px; height:120px; }
+  .mppt { flex-wrap:wrap; } .mppt .bar { order:3; flex-basis:100%; margin-top:6px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ Caravan Power</h1>
+  <span class="sp"></span>
+  <span id="conn" class="pill">Connecting…</span>
+  <span id="updated" class="pill">--</span>
+</header>
+<nav>
+  <button data-tab="overview" class="on">Overview</button>
+  <button data-tab="rules">Alerts &amp; rules</button>
+  <button data-tab="setup">Setup</button>
+</nav>
+<main>
+  <!-- ======================= OVERVIEW ======================= -->
+  <section id="tab-overview">
+    <div id="alertBox" class="alerts" style="margin-bottom:12px"></div>
+    <div class="grid">
+      <div class="card span4" style="--dot:var(--charge)">
+        <div class="cap">Battery <span class="sp"></span></div>
+        <div class="ring">
+          <svg viewBox="0 0 120 120" aria-label="Battery state of charge">
+            <circle cx="60" cy="60" r="50" fill="none" stroke="var(--tile)" stroke-width="12"
+              stroke-dasharray="235.6 314.2" transform="rotate(135 60 60)" stroke-linecap="round"/>
+            <circle id="socArc" cx="60" cy="60" r="50" fill="none" stroke="var(--charge)" stroke-width="12"
+              stroke-dasharray="0 314.2" transform="rotate(135 60 60)" stroke-linecap="round"
+              style="transition:stroke-dasharray .6s"/>
+            <text id="socTxt" x="60" y="62" text-anchor="middle" fill="var(--text)" font-size="26" font-weight="600">--%</text>
+            <text id="volTxt" x="60" y="82" text-anchor="middle" fill="var(--muted)" font-size="12">-- V</text>
+          </svg>
+          <div>
+            <div id="batA" class="mid">-- A</div>
+            <div id="ttg" class="muted small">--</div>
+            <div id="batSrc" class="muted small" style="margin-top:6px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card span8" style="--dot:var(--solar)">
+        <div class="cap">Energy flow</div>
+        <div class="stats">
+          <div><div class="muted small">SOLAR</div><div id="solW" class="big" style="color:var(--solar)">--</div><div id="solA" class="muted small"></div></div>
+          <div><div class="muted small">CHARGING</div><div id="chgA" class="big" style="color:var(--charge)">--</div><div id="chgSub" class="muted small"></div></div>
+          <div><div class="muted small">LOADS</div><div id="loadA" class="big" style="color:var(--load)">--</div><div id="loadW" class="muted small"></div></div>
+        </div>
+        <div id="mppts" style="margin-top:12px"></div>
+      </div>
+      <div class="card span4 temps" style="--dot:var(--climate)">
+        <div class="cap">Temperature</div>
+        <div id="temps"></div>
+      </div>
+      <div class="card span4" style="--dot:var(--water)">
+        <div class="cap">Water</div>
+        <div id="tanks" class="tanks"></div>
+      </div>
+      <div class="card span4">
+        <div class="cap">Controls</div>
+        <div class="ctrls" id="ctrls"></div>
+        <div class="row" style="margin-top:10px">
+          <select id="acSel" aria-label="Aircon preset"></select>
+          <button class="btn" id="acGo">Send</button>
+        </div>
+        <div id="rcNote" class="muted small" style="margin-top:6px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= RULES ======================= -->
+  <section id="tab-rules" class="hidden">
+    <div class="card" style="--dot:var(--warn)">
+      <div class="row between"><div class="cap">Alert rules</div>
+        <div class="row"><button class="btn" id="ackAll">Acknowledge alerts</button><button class="btn primary" id="newRule">+ New rule</button></div></div>
+      <p class="muted small">Alerts are pushed to your phone via ntfy (if enabled per rule). An optional action can shed load automatically.</p>
+      <div style="overflow-x:auto"><table id="rulesTbl"><thead><tr>
+        <th>On</th><th>Name</th><th>Condition</th><th>Delay</th><th>Severity</th><th>Push</th><th>Action</th><th></th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ======================= SETUP ======================= -->
+  <section id="tab-setup" class="hidden">
+    <div class="grid">
+      <div class="card span6">
+        <div class="cap">Cloud connection (this browser)</div>
+        <div class="form">
+          <div><label>Broker WebSocket URL</label><input id="cfUrl" placeholder="wss://xxxx.s1.eu.hivemq.cloud:8884/mqtt"></div>
+          <div><label>Device id</label><input id="cfDev" placeholder="caravan"></div>
+          <div><label>Username</label><input id="cfUser" autocomplete="username"></div>
+          <div><label>Password</label><input id="cfPass" type="password" autocomplete="current-password"></div>
+        </div>
+        <div class="row" style="margin-top:10px"><button class="btn primary" id="cfSave">Save &amp; connect</button>
+          <span class="muted small">Stored only in this browser. Use a dashboard-only broker user.</span></div>
+      </div>
+      <div class="card span6">
+        <div class="cap">Tank calibration</div>
+        <p class="muted small">Fill or empty a tank, then press the matching button to store the sender reading.</p>
+        <div id="calRows"></div>
+      </div>
+      <div class="card span6">
+        <div class="cap">Temperature sensors</div>
+        <button class="btn" id="scanSensors">Scan 1-Wire bus</button>
+        <div id="sensorRows" style="margin-top:8px"></div>
+      </div>
+      <div class="card span6">
+        <div class="cap">Battery</div>
+        <p class="muted small">Sync the shunt state of charge when you know the battery is full.</p>
+        <button class="btn" id="soc100">Set state of charge to 100%</button>
+      </div>
+      <div class="card span12">
+        <div class="cap">BMPRO capture log (local only)</div>
+        <p class="muted small">Enable <code>bmproExplorer</code> in the hub config, connect to the CommLink, then change things on the Trek and watch the frames.</p>
+        <div class="row"><input id="bmAddr" placeholder="CommLink BLE address aa:bb:cc:dd:ee:ff" style="max-width:320px">
+          <button class="btn" id="bmConnect">Connect</button><button class="btn" id="bmRefresh">Refresh log</button></div>
+        <pre id="bmLog">--</pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog id="ruleDlg">
+  <form method="dialog" id="ruleForm">
+    <h3 style="margin-top:0">Alert rule</h3>
+    <div class="form">
+      <div style="grid-column:1/-1"><label>Name</label><input name="name" maxlength="27" required></div>
+      <div><label>Measurement</label><select name="m"></select></div>
+      <div><label>Condition</label><select name="cmp"><option value="&lt;">below</option><option value="&gt;">above</option></select></div>
+      <div><label>Threshold</label><input name="thr" type="number" step="any" required></div>
+      <div><label>Hysteresis (to clear)</label><input name="hys" type="number" step="any" min="0" value="0"></div>
+      <div><label>Delay (seconds)</label><input name="dly" type="number" min="0" max="65535" value="0"></div>
+      <div><label>Severity</label><select name="sev"><option value="0">Info</option><option value="1">Warning</option><option value="2">Alarm</option></select></div>
+      <div><label>Push to phone</label><select name="ntf"><option value="1">Yes</option><option value="0">No</option></select></div>
+      <div><label>Automatic action</label><select name="act">
+        <option value="none">None</option><option value="aircon_off">Turn aircon off</option>
+        <option value="inverter_off">Turn inverter off</option><option value="pumps_off">Turn pumps off</option></select></div>
+      <div><label>Enabled</label><select name="en"><option value="1">Yes</option><option value="0">No</option></select></div>
+    </div>
+    <div class="row" style="margin-top:14px; justify-content:flex-end">
+      <button class="btn" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn primary" value="save">Save</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const METRICS = [
+  ["bat_v","Battery voltage","V"],["bat_soc","Battery charge","%"],["bat_a","Battery current","A"],
+  ["load_a","Load current","A"],["charge_a","Charge current","A"],["solar_w","Solar total","W"],
+  ["solar1_w","Solar 1","W"],["solar2_w","Solar 2","W"],["temp_in","Inside temp","°C"],
+  ["temp_out","Outside temp","°C"],["temp_fridge","Fridge temp","°C"],["tank1","Tank 1","%"],
+  ["tank2","Tank 2","%"],["tank3","Tank 3","%"]];
+const CS = {0:"Off",2:"Fault",3:"Bulk",4:"Absorption",5:"Float",7:"Equalise",245:"Starting",247:"Auto EQ",252:"Ext control"};
+const SEV = ["Info","Warning","Alarm"], SEVC = ["var(--accent)","var(--warn)","var(--alarm)"];
+
+let S = null, META = { sol:["Roof","Portable"], tmp:["Inside","Outside","Fridge"], tank:["Fresh 1","Fresh 2","Grey"],
+  pump:["Main pump","Aux pump"], acp:[], rc:true }, RULES = [];
+let transport = null, lastMsg = 0;
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200); }
+function fmtDur(m) { if (m < 0) return "idle"; if (m >= 5940) return "99h+"; return m >= 60 ? `${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m` : `${m}m`; }
+function tempColor(i, c) { if (i === 2) return c <= 4.5 ? "var(--charge)" : c <= 6.5 ? "var(--warn)" : "var(--alarm)";
+  return c < 10 ? "var(--water)" : c <= 27 ? "var(--charge)" : c <= 33 ? "var(--warn)" : "var(--alarm)"; }
+function socColor(s) { return s >= 50 ? "var(--charge)" : s >= 25 ? "var(--warn)" : "var(--alarm)"; }
+function localTime(ts) { if (!ts) return "--"; return new Date(ts * 1000).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }); }
+
+// ---------------------------------------------------------------- rendering
+function render() {
+  if (!S) return;
+  const b = S.bat;
+  const soc = b.on ? b.soc : 0;
+  $("#socArc").setAttribute("stroke-dasharray", `${(235.6 * soc / 100).toFixed(1)} 314.2`);
+  $("#socArc").setAttribute("stroke", socColor(soc));
+  $("#socTxt").textContent = b.on ? `${Math.round(b.soc)}%` : "--%";
+  $("#volTxt").textContent = b.on ? `${b.v.toFixed(2)} V` : "no data";
+  $("#batA").textContent = b.on ? `${b.a > 0 ? "+" : ""}${b.a.toFixed(1)} A` : "-- A";
+  $("#batA").style.color = b.a > 0.2 ? "var(--charge)" : b.a < -0.2 ? "var(--load)" : "var(--text)";
+  $("#ttg").textContent = b.on ? (b.ttg < 0 ? "idle" : `${fmtDur(b.ttg)} to ${b.a > 0 ? "full" : "empty"}`) : "";
+  $("#batSrc").textContent = b.src === 2 ? "Source: BMPRO" : b.src === 1 ? "Source: shunt" : "";
+
+  const solW = S.sol.reduce((a, x) => a + (x.on ? x.w : 0), 0);
+  $("#solW").textContent = `${Math.round(solW)} W`;
+  $("#solA").textContent = `${b.sa.toFixed(1)} A`;
+  $("#chgA").textContent = `${b.chg.toFixed(1)} A`;
+  $("#chgSub").textContent = b.ca > 0.5 ? `mains ${b.ca.toFixed(1)} A` : "solar only";
+  $("#loadA").textContent = `${b.load.toFixed(1)} A`;
+  $("#loadW").textContent = `${Math.round(b.load * (b.v || 12.8))} W`;
+  $("#mppts").innerHTML = S.sol.map((m, i) => `
+    <div class="row mppt between" style="padding:6px 0">
+      <div style="width:110px"><b>${esc(META.sol[i])}</b><br><span class="chip" style="color:${m.err ? "var(--alarm)" : "var(--solar)"}">${m.on ? (m.err ? "Error " + m.err : CS[m.cs] || "Unknown") : "Offline"}</span></div>
+      <div class="bar"><i style="width:${m.on ? Math.min(100, m.w / 7) : 0}%"></i></div>
+      <div style="width:150px; text-align:right"><b style="color:var(--solar)">${m.on ? Math.round(m.w) + " W" : "--"}</b><br>
+        <span class="muted small">${m.on ? `${m.pv.toFixed(1)} V · ${m.ba.toFixed(1)} A · ${m.yt.toFixed(2)} kWh today` : ""}</span></div>
+    </div>`).join("");
+
+  $("#temps").innerHTML = S.tmp.map((t, i) => `
+    <div class="t"><span class="muted">${esc(META.tmp[i])}</span>
+      <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? t.c.toFixed(1) + "°" : "--"}</span>
+      <span class="muted small">${t.on ? `&nbsp;↓${t.lo.toFixed(1)} ↑${t.hi.toFixed(1)}` : ""}</span></span></div>`).join("");
+
+  $("#tanks").innerHTML = S.tank.map((t, i) => {
+    const bad = i === 2 ? t.p > 85 : t.p < 15, warn = i === 2 ? t.p > 70 : t.p < 30;
+    const c = !t.on ? "var(--dim)" : bad ? "var(--alarm)" : warn ? "var(--warn)" : i === 2 ? "var(--muted)" : "var(--water)";
+    return `<div class="tank"><div class="tb"><i style="height:${t.on ? t.p : 0}%; background:${c}"></i></div>
+      <b>${t.on ? Math.round(t.p) + "%" : "--"}</b><div class="muted small">${esc(META.tank[i])}</div></div>`; }).join("");
+
+  const rc = transport?.kind !== "cloud" || META.rc;
+  const acName = S.ac.on && S.ac.pre >= 0 ? (META.acp[S.ac.pre] || "On") : "Off";
+  $("#ctrls").innerHTML = [
+    ...S.pump.map((p, i) => `<button class="tog ${p.on ? "on" : ""}" style="--c:${p.lk ? "var(--warn)" : "var(--water)"}" data-act="pump" data-i="${i}" ${rc ? "" : "disabled"}>
+      <b>${esc(META.pump[i])}</b><span>${p.lk ? "Locked - tank empty" : p.on ? `Running ${Math.floor(p.rt / 60)}m` : "Off"}</span></button>`),
+    `<button class="tog ${S.inv.on ? "on" : ""}" style="--c:var(--solar)" data-act="inv" ${rc ? "" : "disabled"}><b>Inverter</b><span>${S.inv.on ? (S.inv.ac ? "On · 240 V present" : "On") : "Off"}</span></button>`,
+    `<button class="tog ${S.ac.on ? "on" : ""}" style="--c:var(--climate)" data-act="ac" ${rc ? "" : "disabled"}><b>Aircon</b><span>${esc(acName)}</span></button>`
+  ].join("");
+  $("#rcNote").textContent = rc ? "" : "Remote control is switched off on the caravan display.";
+
+  $("#alertBox").innerHTML = (S.alerts || []).map((a) => `
+    <div class="alert" style="--c:${SEVC[a.sev]}"><b>${esc(a.msg)}</b>
+      <span class="muted small">&nbsp; ${SEV[a.sev]}${a.since ? " since " + localTime(a.since) : ""}${a.ack ? " · acknowledged" : ""}</span></div>`).join("");
+
+  const age = Math.round((Date.now() - lastMsg) / 1000);
+  $("#updated").textContent = S.ts ? `Updated ${localTime(S.ts)}` : `Updated ${age}s ago`;
+}
+
+function renderMeta() {
+  $("#acSel").innerHTML = META.acp.length ? META.acp.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("") : `<option value="">No presets learned</option>`;
+  $("#calRows").innerHTML = META.tank.map((n, i) => `
+    <div class="row between" style="padding:6px 0"><span>${esc(n)}</span>
+      <span class="row"><button class="btn" data-cal="${i}" data-pt="empty">Set empty</button>
+      <button class="btn" data-cal="${i}" data-pt="full">Set full</button></span></div>`).join("");
+  render();
+}
+
+function renderRules() {
+  $("#rulesTbl tbody").innerHTML = RULES.map((r) => {
+    const m = METRICS.find((x) => x[0] === r.m) || [r.m, r.m, ""];
+    return `<tr>
+      <td><input type="checkbox" data-rule-en="${r.id}" ${r.en ? "checked" : ""} style="width:auto"></td>
+      <td><b style="color:${SEVC[r.sev]}">${esc(r.name)}</b></td>
+      <td>${esc(m[1])} ${r.cmp === ">" ? "above" : "below"} ${r.thr} ${esc(m[2])}</td>
+      <td>${r.dly >= 60 ? Math.round(r.dly / 60) + " min" : r.dly + " s"}</td>
+      <td>${SEV[r.sev]}</td><td>${r.ntf ? "Yes" : "No"}</td><td>${r.act === "none" ? "" : esc(r.act.replace("_", " "))}</td>
+      <td style="white-space:nowrap"><button class="btn" data-rule-edit="${r.id}">Edit</button>
+        <button class="btn danger" data-rule-del="${r.id}">✕</button></td></tr>`; }).join("");
+}
+
+// ---------------------------------------------------------------- messages
+function onMessage(msg) {
+  lastMsg = Date.now();
+  switch (msg.t) {
+    case "state": S = msg; render(); break;
+    case "meta": Object.assign(META, msg); renderMeta(); break;
+    case "hello": Object.assign(META, msg.meta); RULES = msg.rules; renderMeta(); renderRules(); break;
+    case "rules": RULES = msg.rules; renderRules(); break;
+    case "err": toast(msg.msg); break;
+    case "sensors": renderSensors(msg.list); break;
+    case "tank_cal": toast("Tank calibration saved"); break;
+    case "event": if (msg.type === "raised") toast(`⚠ ${msg.msg}`); break;
+  }
+}
+
+function send(cmd) {
+  if (!transport || !transport.ready()) { toast("Not connected"); return; }
+  transport.send(cmd);
+}
+
+// ---------------------------------------------------------------- transports
+function localTransport() {
+  let ws = null;
+  const t = { kind: "local", ready: () => ws && ws.readyState === 1, send: (c) => ws.send(JSON.stringify(c)) };
+  async function connect() {
+    try {
+      const tok = await (await fetch("/api/token")).json();
+      ws = new WebSocket(`ws://${location.hostname}:${tok.wsPort}/`);
+      ws.onopen = () => { ws.send(JSON.stringify({ c: "auth", tok: tok.tok })); };
+      ws.onmessage = (e) => { const m = JSON.parse(e.data);
+        if (m.t === "auth") { setConn(m.ok ? "Local · live" : "Auth failed", m.ok ? "ok" : "bad"); if (m.ok) send({ c: "hello" }); return; }
+        onMessage(m); };
+      ws.onclose = () => { setConn("Reconnecting…", "warnc"); setTimeout(connect, 3000); };
+    } catch (e) { setConn("Hub unreachable", "bad"); setTimeout(connect, 5000); }
+  }
+  connect();
+  return t;
+}
+
+function loadScript(src) { return new Promise((ok, fail) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = fail; document.head.appendChild(s); }); }
+
+async function cloudTransport(cfg) {
+  setConn("Connecting to cloud…", "warnc");
+  if (!window.mqtt) await loadScript("https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js");
+  const base = `caravan/${cfg.dev || "caravan"}/`;
+  const client = mqtt.connect(cfg.url, { username: cfg.user, password: cfg.pass, reconnectPeriod: 4000, connectTimeout: 15000,
+    clientId: "dash-" + Math.random().toString(16).slice(2, 10) });
+  let hubOnline = null;
+  const t = { kind: "cloud", ready: () => client.connected,
+    send: (c) => client.publish(base + "cmd", JSON.stringify({ ...c, rid: Math.random().toString(16).slice(2, 8) }), { qos: 1 }) };
+  client.on("connect", () => { client.subscribe(base + "#"); setConn("Cloud · connected", "ok"); });
+  client.on("reconnect", () => setConn("Reconnecting…", "warnc"));
+  client.on("error", (e) => setConn("Cloud error: " + e.message, "bad"));
+  client.on("message", (topic, payload) => {
+    const sub = topic.slice(base.length), txt = payload.toString();
+    if (sub === "online") { hubOnline = txt === "1"; setConn(hubOnline ? "Cloud · caravan online" : "Caravan offline", hubOnline ? "ok" : "bad"); return; }
+    if (sub === "cmd") return;
+    try { const m = JSON.parse(txt);
+      if (sub === "rules") { RULES = m.rules; renderRules(); } else onMessage(m); } catch (e) {}
+  });
+  return t;
+}
+
+function setConn(txt, cls) { const c = $("#conn"); c.textContent = txt; c.className = "pill " + (cls || ""); }
+
+function demoTransport() {
+  setConn("Demo data", "warnc");
+  const st = { t:"state", ts: Math.floor(Date.now() / 1000), bat:{ on:true, src:1, v:13.31, a:18.8, soc:78, ttg:52, sa:31.4, ca:0, chg:31.4, load:12.6 },
+    sol:[{ on:true, pv:38.4, w:312, bv:13.31, ba:22.6, cs:3, err:0, yt:1.42, mx:498 }, { on:true, pv:36.9, w:118, bv:13.3, ba:8.8, cs:4, err:0, yt:0.61, mx:205 }],
+    tmp:[{ on:true, c:24.6, lo:16.2, hi:27.9 }, { on:true, c:31.2, lo:14.8, hi:33.4 }, { on:true, c:7.4, lo:2.1, hi:7.4 }],
+    tank:[{ on:true, p:72 }, { on:true, p:18 }, { on:true, p:41 }],
+    pump:[{ on:true, sn:true, lk:false, rt:94 }, { on:false, sn:false, lk:false, rt:0 }],
+    inv:{ on:false, ac:false }, ac:{ on:true, pre:0 },
+    alerts:[{ id:7, sev:2, ack:false, since: Math.floor(Date.now() / 1000) - 1500, msg:"Fridge warm: 7.4°C (> 6.0)" }],
+    net:{ wifi:true, cloud:true, ip:"192.168.1.42" } };
+  setTimeout(() => {
+    onMessage({ t:"hello", meta:{ ...META, acp:["Cool 22 auto","Cool 24 low","Heat 21","Dry","Fan only"] },
+      rules:[{ id:1, en:true, name:"Battery low", m:"bat_v", cmp:"<", thr:12.4, hys:0.3, dly:60, sev:1, ntf:true, act:"none" },
+             { id:2, en:true, name:"Battery critical", m:"bat_v", cmp:"<", thr:11.8, hys:0.6, dly:30, sev:2, ntf:true, act:"inverter_off" },
+             { id:7, en:true, name:"Fridge warm", m:"temp_fridge", cmp:">", thr:6, hys:1, dly:1200, sev:2, ntf:true, act:"none" },
+             { id:11, en:true, name:"Fresh 1 low", m:"tank1", cmp:"<", thr:15, hys:5, dly:30, sev:0, ntf:true, act:"none" }] });
+    onMessage(st);
+  }, 50);
+  return { kind:"demo", ready: () => true, send: (c) => toast("Demo: " + JSON.stringify(c)) };
+}
+
+// ---------------------------------------------------------------- UI wiring
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
+  document.querySelectorAll("main > section").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + b.dataset.tab));
+});
+
+$("#ctrls").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-act]"); if (!b || !S) return;
+  if (b.dataset.act === "pump") { const i = +b.dataset.i; send({ c:"pump", i, on: !S.pump[i].on }); }
+  if (b.dataset.act === "inv") { if (S.inv.on || confirm("Turn the 3000 W inverter on?")) send({ c:"inverter", on: !S.inv.on }); }
+  if (b.dataset.act === "ac") { send(S.ac.on ? { c:"aircon", off:true } : { c:"aircon", preset: +($("#acSel").value || 0) }); }
+});
+$("#acGo").onclick = () => { if ($("#acSel").value !== "") send({ c:"aircon", preset: +$("#acSel").value }); };
+$("#ackAll").onclick = () => send({ c:"ack" });
+$("#soc100").onclick = () => { if (confirm("Set battery state of charge to 100%?")) send({ c:"soc_set", soc:100 }); };
+$("#calRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-cal]"); if (!b) return;
+  if (confirm(`Store current reading as ${b.dataset.pt.toUpperCase()} for ${META.tank[b.dataset.cal]}?`)) send({ c:"tank_cal", i:+b.dataset.cal, point:b.dataset.pt }); });
+$("#scanSensors").onclick = () => send({ c:"sensors" });
+function renderSensors(list) {
+  $("#sensorRows").innerHTML = list.length ? list.map((s) => `
+    <div class="row between" style="padding:6px 0"><span><code>${esc(s.addr)}</code> <b>${s.c.toFixed(1)}°</b></span>
+      <select data-addr="${esc(s.addr)}" style="width:160px"><option value="-1">Unassigned</option>
+      ${META.tmp.map((n, i) => `<option value="${i}" ${s.role === i ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`).join("")
+    : `<span class="muted">No DS18B20 sensors found</span>`;
+}
+$("#sensorRows").addEventListener("change", (e) => { const s = e.target; if (s.dataset.addr && s.value >= 0) send({ c:"sensor_assign", addr:s.dataset.addr, role:+s.value }); });
+$("#bmRefresh").onclick = async () => { try { $("#bmLog").textContent = await (await fetch("/api/bmpro/log")).text(); } catch (e) { $("#bmLog").textContent = "Only available on the caravan Wi-Fi"; } };
+$("#bmConnect").onclick = () => send({ c:"bmpro_connect", addr: $("#bmAddr").value.trim() });
+
+// rules editor
+const dlg = $("#ruleDlg"), form = $("#ruleForm");
+form.m.innerHTML = METRICS.map(([k, l, u]) => `<option value="${k}">${l} (${u})</option>`).join("");
+let editing = null;
+function openRule(r) {
+  editing = r || { id:0, en:true, name:"", m:"bat_v", cmp:"<", thr:12, hys:0, dly:0, sev:1, ntf:true, act:"none" };
+  for (const k of ["name","m","cmp","thr","hys","dly","sev","act"]) form[k].value = editing[k];
+  form.ntf.value = editing.ntf ? "1" : "0"; form.en.value = editing.en ? "1" : "0";
+  dlg.showModal();
+}
+$("#newRule").onclick = () => openRule(null);
+dlg.addEventListener("close", () => {
+  if (dlg.returnValue !== "save") return;
+  const r = { id: editing.id, name: form.name.value, m: form.m.value, cmp: form.cmp.value, thr: +form.thr.value, hys: +form.hys.value,
+    dly: +form.dly.value, sev: +form.sev.value, ntf: form.ntf.value === "1", act: form.act.value, en: form.en.value === "1" };
+  send({ c:"rule_set", rule:r });
+});
+$("#rulesTbl").addEventListener("click", (e) => {
+  const ed = e.target.closest("[data-rule-edit]"), del = e.target.closest("[data-rule-del]");
+  if (ed) openRule(RULES.find((r) => r.id == ed.dataset.ruleEdit));
+  if (del && confirm("Delete this rule?")) send({ c:"rule_del", id:+del.dataset.ruleDel });
+});
+$("#rulesTbl").addEventListener("change", (e) => { const id = e.target.dataset.ruleEn; if (!id) return;
+  const r = RULES.find((x) => x.id == id); if (r) send({ c:"rule_set", rule:{ ...r, en: e.target.checked } }); });
+
+// cloud settings
+const CFG_KEY = "caravan-cloud";
+function loadCfg() { try { return JSON.parse(localStorage.getItem(CFG_KEY) || "null"); } catch (e) { return null; } }
+$("#cfSave").onclick = () => {
+  const cfg = { url:$("#cfUrl").value.trim(), dev:$("#cfDev").value.trim() || "caravan", user:$("#cfUser").value, pass:$("#cfPass").value };
+  try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) {}
+  location.reload();
+};
+
+// ---------------------------------------------------------------- start
+(async function start() {
+  const cfg = loadCfg();
+  if (cfg) { $("#cfUrl").value = cfg.url; $("#cfDev").value = cfg.dev; $("#cfUser").value = cfg.user; $("#cfPass").value = cfg.pass; }
+  const servedByHub = location.protocol === "http:" && !/github\.io$/.test(location.hostname) && location.hostname !== "localhost";
+  if (new URLSearchParams(location.search).has("demo")) transport = demoTransport();
+  else if (servedByHub && !new URLSearchParams(location.search).has("cloud")) transport = localTransport();
+  else if (cfg && cfg.url) transport = await cloudTransport(cfg).catch((e) => { setConn("Could not load MQTT library", "bad"); return null; });
+  else { setConn("Set up cloud access", "warnc"); document.querySelector('nav button[data-tab="setup"]').click(); }
+  setInterval(render, 5000);
+})();
+</script>
+</body>
+</html>

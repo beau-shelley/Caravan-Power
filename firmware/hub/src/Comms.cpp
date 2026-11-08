@@ -1,0 +1,455 @@
+#include "Comms.h"
+
+#include <ESPmDNS.h>
+#include <HTTPClient.h>
+#include <LittleFS.h>
+#include <PubSubClient.h>
+#include <WebServer.h>
+#include <WebSocketsServer.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <esp_random.h>
+
+#include "HubConfig.h"
+#include "LinkCodec.h"
+#include "root_ca.h"
+
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#warning "src/secrets.h missing - copy secrets.example.h and fill it in"
+#include "secrets.example.h"
+#endif
+
+namespace hub {
+
+DisplayLink gLink;
+LocalWeb gWeb;
+Cloud gCloud;
+Notifier gNotify;
+Net gNet;
+SemaphoreHandle_t gStateMux = nullptr;  // created in setup()
+
+// ================================================================ Net
+void Net::begin() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(HOSTNAME);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  configTzTime(TZ_INFO, "pool.ntp.org", "time.google.com");
+  Serial.printf("[net] connecting to '%s'\n", WIFI_SSID);
+}
+
+bool Net::timeValid() const { return time(nullptr) > 1700000000; }
+
+void Net::loop(cv::State &s) {
+  static bool was = false;
+  static uint32_t lastTry = 0;
+  bool up = WiFi.status() == WL_CONNECTED;
+  if (up && !was) {
+    Serial.printf("[net] Wi-Fi up, IP %s\n", WiFi.localIP().toString().c_str());
+    MDNS.begin(HOSTNAME);
+    MDNS.addService("http", "tcp", 80);
+  }
+  if (!up && millis() - lastTry > 30000) {  // belt and braces
+    lastTry = millis();
+    WiFi.reconnect();
+  }
+  was = up;
+  s.wifi = up;
+  strncpy(s.ip, up ? WiFi.localIP().toString().c_str() : "", sizeof(s.ip) - 1);
+  s.ts = timeValid() ? (uint32_t)time(nullptr) : 0;
+  if (s.ts) {
+    // UTC offset incl. DST, so the display/web can show local time without
+    // knowing the timezone rules themselves.
+    time_t now = s.ts;
+    struct tm lt;
+    localtime_r(&now, &lt);
+    struct tm ut;
+    gmtime_r(&now, &ut);
+    ut.tm_isdst = lt.tm_isdst;
+    s.tzOff = (int32_t)(now - mktime(&ut));
+  }
+}
+
+// ================================================================ RS485 link
+// Half duplex: the hub is bus master. It sends a state frame every second and
+// a tiny poll frame every 250 ms; the display only transmits right after it
+// receives a frame, so the two never talk over each other.
+void DisplayLink::begin(HardwareSerial &ser, int rx, int tx, int de) {
+  ser_ = &ser;
+  de_ = de;
+  if (de_ >= 0) {
+    pinMode(de_, OUTPUT);
+    digitalWrite(de_, LOW);
+  }
+  ser_->setRxBufferSize(4096);
+  ser_->setTxBufferSize(2048);
+  ser_->begin(115200, SERIAL_8N1, rx, tx);
+}
+
+void DisplayLink::write(const char *buf, size_t n) {
+  char tr[5];
+  cv::linkTrailer(buf, n, tr);
+  if (de_ >= 0) digitalWrite(de_, HIGH);
+  ser_->write((const uint8_t *)buf, n);
+  ser_->write((const uint8_t *)tr, 4);
+  ser_->flush();  // wait until the last bit is out before releasing the bus
+  if (de_ >= 0) digitalWrite(de_, LOW);
+}
+
+void DisplayLink::send(JsonDocument &doc) {
+  static String out;
+  out = "";
+  serializeJson(doc, out);
+  write(out.c_str(), out.length());
+}
+
+void DisplayLink::loop(const cv::State &s) {
+  static cv::LinkReader reader;
+  while (ser_->available()) {
+    if (!reader.feed((uint8_t)ser_->read())) continue;
+    lastRxMs_ = millis();
+    JsonDocument in;
+    if (deserializeJson(in, reader.line(), reader.length())) continue;
+    if (in["c"].is<const char *>()) {
+      JsonDocument reply;
+      handleCommand(in.as<JsonObjectConst>(), SRC_DISPLAY, reply);
+      if (!reply.isNull()) send(reply);
+    }
+  }
+  uint32_t now = millis();
+  if (configDirty_) {
+    configDirty_ = false;
+    JsonDocument doc;
+    JsonDocument cmd;
+    cmd["c"] = "hello";
+    handleCommand(cmd.as<JsonObjectConst>(), SRC_DISPLAY, doc);
+    send(doc);
+    nextPollMs_ = now + 250;
+  } else if ((int32_t)(now - nextStateMs_) >= 0) {
+    nextStateMs_ = now + 1000;
+    nextPollMs_ = now + 250;
+    JsonDocument doc;
+    cv::stateToJson(s, doc.to<JsonObject>());
+    send(doc);
+  } else if ((int32_t)(now - nextPollMs_) >= 0) {
+    nextPollMs_ = now + 250;
+    write("{\"t\":\"p\"}", 9);
+  }
+}
+
+// ================================================================ local web
+static WebServer gHttp(80);
+static WebSocketsServer gWs(81);
+static char gWsToken[33] = {0};
+static bool gWsAuthed[WEBSOCKETS_SERVER_CLIENT_MAX] = {};
+
+static bool checkAuth() {
+  if (strlen(WEB_USER) == 0) return true;
+  if (gHttp.authenticate(WEB_USER, WEB_PASS)) return true;
+  gHttp.requestAuthentication(BASIC_AUTH, "Caravan");
+  return false;
+}
+
+static void sendJson(JsonDocument &doc, int code = 200) {
+  String out;
+  serializeJson(doc, out);
+  gHttp.send(code, "application/json", out);
+}
+
+static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) {
+  if (type == WStype_CONNECTED) {
+    gWsAuthed[num] = strlen(WEB_USER) == 0;
+  } else if (type == WStype_DISCONNECTED) {
+    gWsAuthed[num] = false;
+  } else if (type == WStype_TEXT) {
+    JsonDocument in;
+    if (deserializeJson(in, payload, len)) return;
+    if (!gWsAuthed[num]) {
+      // Browsers can't send Basic auth on a WebSocket, so the page first
+      // fetches a token from /api/token (which IS behind Basic auth).
+      if (strcmp(in["c"] | "", "auth") == 0 && strcmp(in["tok"] | "", gWsToken) == 0) {
+        gWsAuthed[num] = true;
+        gWs.sendTXT(num, "{\"t\":\"auth\",\"ok\":true}");
+      } else {
+        gWs.sendTXT(num, "{\"t\":\"auth\",\"ok\":false}");
+      }
+      return;
+    }
+    JsonDocument reply;
+    handleCommand(in.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
+    if (!reply.isNull()) {
+      String out;
+      serializeJson(reply, out);
+      gWs.sendTXT(num, out);
+    }
+  }
+}
+
+void LocalWeb::begin() {
+  for (int i = 0; i < 16; i++) sprintf(gWsToken + i * 2, "%02x", (uint8_t)esp_random());
+
+  gHttp.on("/", HTTP_GET, [] {
+    if (!checkAuth()) return;
+    File f = LittleFS.open("/index.html", "r");
+    if (!f) {
+      gHttp.send(500, "text/plain", "index.html missing - run: pio run -t uploadfs");
+      return;
+    }
+    gHttp.streamFile(f, "text/html");
+    f.close();
+  });
+  gHttp.on("/api/token", HTTP_GET, [] {
+    if (!checkAuth()) return;
+    JsonDocument d;
+    d["tok"] = gWsToken;
+    d["wsPort"] = 81;
+    sendJson(d);
+  });
+  gHttp.on("/api/state", HTTP_GET, [] {
+    if (!checkAuth()) return;
+    JsonDocument reply, cmd;
+    cmd["c"] = "state";
+    handleCommand(cmd.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
+    sendJson(reply);
+  });
+  gHttp.on("/api/cmd", HTTP_POST, [] {
+    if (!checkAuth()) return;
+    JsonDocument in, reply;
+    if (deserializeJson(in, gHttp.arg("plain"))) {
+      gHttp.send(400, "text/plain", "bad json");
+      return;
+    }
+    handleCommand(in.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
+    if (reply.isNull()) reply["ok"] = true;
+    sendJson(reply);
+  });
+  gHttp.on("/api/config", HTTP_GET, [] {
+    if (!checkAuth()) return;
+    JsonDocument d;
+    {
+      StateLock l;
+      gConfig.toJson(d.to<JsonObject>());
+    }
+    sendJson(d);
+  });
+  gHttp.on("/api/config", HTTP_POST, [] {
+    if (!checkAuth()) return;
+    JsonDocument in;
+    if (deserializeJson(in, gHttp.arg("plain"))) {
+      gHttp.send(400, "text/plain", "bad json");
+      return;
+    }
+    JsonDocument cmd, reply;
+    cmd["c"] = "config_set";
+    cmd["cfg"] = in.as<JsonObjectConst>();
+    handleCommand(cmd.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
+    sendJson(reply);
+  });
+  gHttp.on("/api/bmpro/log", HTTP_GET, [] {
+    if (!checkAuth()) return;
+    JsonDocument cmd, reply;
+    cmd["c"] = "bmpro_log";
+    handleCommand(cmd.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
+    gHttp.send(200, "text/plain", reply["log"] | "");
+  });
+  gHttp.onNotFound([] { gHttp.send(404, "text/plain", "not found"); });
+  gHttp.begin();
+  gWs.begin();
+  gWs.onEvent(onWsEvent);
+}
+
+void LocalWeb::broadcast(JsonDocument &doc) {
+  String out;
+  serializeJson(doc, out);
+  for (uint8_t i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++)
+    if (gWsAuthed[i] && gWs.clientIsConnected(i)) gWs.sendTXT(i, out);
+}
+
+void LocalWeb::loop(const cv::State &s) {
+  gHttp.handleClient();
+  gWs.loop();
+  if ((int32_t)(millis() - nextPushMs_) >= 0 && gWs.connectedClients() > 0) {
+    nextPushMs_ = millis() + 1000;
+    JsonDocument doc;
+    {
+      StateLock l;
+      cv::stateToJson(s, doc.to<JsonObject>());
+    }
+    broadcast(doc);
+  }
+}
+
+// ================================================================ cloud MQTT
+// Topics (all under caravan/<DEVICE_ID>/):
+//   state   retained  full state JSON every cloudIntervalSec (and on change)
+//   meta    retained  names, presets, capacity
+//   rules   retained  alert rules
+//   event             alert raised/cleared
+//   online  retained  "1" / "0" (last will)
+//   cmd     <- subscribed: commands from the remote dashboard
+//   resp              replies to commands
+static WiFiClientSecure gTls;
+static PubSubClient gMqtt(gTls);
+static String gBase = String("caravan/") + DEVICE_ID + "/";
+
+static void onMqtt(char *topic, byte *payload, unsigned int len) {
+  JsonDocument in, reply;
+  if (deserializeJson(in, payload, len)) return;
+  handleCommand(in.as<JsonObjectConst>(), SRC_CLOUD, reply);
+  if (!reply.isNull()) {
+    if (in["rid"].is<const char *>()) reply["rid"] = in["rid"];  // correlate replies
+    gCloud.publish("resp", reply);
+  }
+}
+
+void Cloud::begin() {
+  if (strlen(MQTT_HOST) == 0 || strstr(MQTT_HOST, "xxxxxxxx")) {
+    Serial.println("[cloud] MQTT not configured - skipping");
+    return;
+  }
+  gTls.setCACert(ROOT_CA_PEM);
+  gMqtt.setServer(MQTT_HOST, MQTT_PORT);
+  gMqtt.setBufferSize(6144);
+  gMqtt.setKeepAlive(60);  // Starlink handovers can stall a few seconds
+  gMqtt.setSocketTimeout(10);
+  gMqtt.setCallback(onMqtt);
+  gEventQ = xQueueCreate(8, sizeof(EventMsg));
+}
+
+bool Cloud::connected() { return gMqtt.connected(); }
+
+void Cloud::publish(const char *sub, JsonDocument &doc, bool retain) {
+  if (!gMqtt.connected()) return;
+  String out;
+  serializeJson(doc, out);
+  gMqtt.publish((gBase + sub).c_str(), (const uint8_t *)out.c_str(), out.length(), retain);
+}
+
+static QueueHandle_t gEventQ = nullptr;
+struct EventMsg {
+  char json[200];
+};
+
+void Cloud::queueEvent(JsonDocument &doc) {
+  if (!gEventQ) return;
+  EventMsg m;
+  serializeJson(doc, m.json, sizeof(m.json));
+  xQueueSend(gEventQ, &m, 0);
+}
+
+void Cloud::loop(const cv::State &s) {
+  if (strlen(MQTT_HOST) == 0 || strstr(MQTT_HOST, "xxxxxxxx")) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (!gMqtt.connected()) {
+    if ((int32_t)(millis() - nextTryMs_) < 0) return;
+    String will = gBase + "online";
+    String cid = String(DEVICE_ID) + "-hub-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    Serial.printf("[cloud] connecting to %s:%d\n", MQTT_HOST, MQTT_PORT);
+    if (gMqtt.connect(cid.c_str(), MQTT_USER, MQTT_PASS, will.c_str(), 1, true, "0")) {
+      Serial.println("[cloud] connected");
+      backoffMs_ = 2000;
+      gMqtt.publish(will.c_str(), "1", true);
+      gMqtt.subscribe((gBase + "cmd").c_str(), 1);
+      metaDirty_ = true;
+      nextStateMs_ = 0;
+    } else {
+      Serial.printf("[cloud] failed rc=%d, retry in %us\n", gMqtt.state(), backoffMs_ / 1000);
+      nextTryMs_ = millis() + backoffMs_;
+      backoffMs_ = min<uint32_t>(backoffMs_ * 2, 120000);
+      return;
+    }
+  }
+  gMqtt.loop();
+  EventMsg ev;
+  while (gEventQ && xQueueReceive(gEventQ, &ev, 0) == pdTRUE)
+    gMqtt.publish((gBase + "event").c_str(), ev.json);
+  if (metaDirty_) {
+    metaDirty_ = false;
+    JsonDocument m, r;
+    {
+      StateLock l;
+      cv::metaToJson(gConfig.meta, m.to<JsonObject>());
+      JsonObject ro = r.to<JsonObject>();
+      ro["t"] = "rules";
+      cv::rulesToJson(gConfig.rules, ro["rules"].to<JsonArray>());
+    }
+    publish("meta", m, true);
+    publish("rules", r, true);
+  }
+  if ((int32_t)(millis() - nextStateMs_) >= 0) {
+    nextStateMs_ = millis() + gConfig.cloudIntervalSec * 1000UL;
+    JsonDocument doc;
+    {
+      StateLock l;
+      cv::stateToJson(s, doc.to<JsonObject>());
+    }
+    publish("state", doc, true);
+  }
+}
+
+// ================================================================ ntfy push
+struct PushMsg {
+  char title[48];
+  char msg[96];
+  uint8_t prio;
+  char tags[32];
+};
+static QueueHandle_t gPushQ;
+
+static void pushTask(void *) {
+  PushMsg m;
+  for (;;) {
+    if (xQueueReceive(gPushQ, &m, portMAX_DELAY) != pdTRUE) continue;
+    for (int attempt = 0; attempt < 5; attempt++) {
+      if (WiFi.status() != WL_CONNECTED) {
+        vTaskDelay(pdMS_TO_TICKS(10000));
+        continue;
+      }
+      WiFiClientSecure tls;
+      tls.setCACert(ROOT_CA_PEM);
+      HTTPClient http;
+      http.setTimeout(10000);
+      String url = String(NTFY_SERVER) + "/" + NTFY_TOPIC;
+      if (!http.begin(tls, url)) break;
+      http.addHeader("Title", m.title);
+      http.addHeader("Priority", String(m.prio));
+      http.addHeader("Tags", m.tags);
+      if (strlen(NTFY_TOKEN)) http.addHeader("Authorization", String("Bearer ") + NTFY_TOKEN);
+      int code = http.POST((uint8_t *)m.msg, strlen(m.msg));
+      http.end();
+      Serial.printf("[push] '%s' -> HTTP %d\n", m.title, code);
+      if (code >= 200 && code < 300) break;
+      vTaskDelay(pdMS_TO_TICKS(5000 << attempt));
+    }
+  }
+}
+
+void Notifier::begin() {
+  gPushQ = xQueueCreate(16, sizeof(PushMsg));
+  xTaskCreatePinnedToCore(pushTask, "push", 8192, nullptr, 1, nullptr, 0);
+}
+
+void Notifier::push(const char *title, const char *msg, uint8_t sev, bool cleared) {
+  if (strlen(NTFY_TOPIC) == 0 || strstr(NTFY_TOPIC, "CHANGE-ME")) return;
+  PushMsg m = {};
+  snprintf(m.title, sizeof(m.title), "%s%s", cleared ? "Cleared: " : "", title);
+  strncpy(m.msg, msg, sizeof(m.msg) - 1);
+  if (cleared) {
+    m.prio = 2;
+    strcpy(m.tags, "white_check_mark");
+  } else if (sev == cv::SEV_ALARM) {
+    m.prio = 5;  // "urgent": breaks through Do Not Disturb on most phones
+    strcpy(m.tags, "rotating_light");
+  } else if (sev == cv::SEV_WARN) {
+    m.prio = 4;
+    strcpy(m.tags, "warning");
+  } else {
+    m.prio = 3;
+    strcpy(m.tags, "information_source");
+  }
+  xQueueSend(gPushQ, &m, 0);
+}
+
+}  // namespace hub

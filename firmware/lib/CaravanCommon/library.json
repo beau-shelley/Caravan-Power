@@ -1,0 +1,8 @@
+{
+  "name": "CaravanCommon",
+  "version": "1.0.0",
+  "description": "Shared data model, alert rules and JSON wire format for the caravan hub and display",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": [{ "name": "bblanchon/ArduinoJson", "version": "^7.2.1" }]
+}
