@@ -1,29 +1,56 @@
-// BMPRO (Odyssey Link / JHub / CommLink) integration.
+// BMPRO OdysseyLink integration over Bluetooth LE.
 //
-// BMPRO does not publish its CommLink / Trek protocol. This module is a
-// capture tool: it scans BLE, lists nearby devices, connects to the CommLink,
-// dumps its GATT table and logs every notification as hex so the protocol
-// can be decoded (see docs/BMPRO_INTEGRATION.md). Once frames are understood,
-// fill in Bmpro::decode() and set battery source to BMPRO.
+// The OdysseyLink is BMPRO's Bluetooth gateway. The official Odyssey app uses
+// it to show battery and tank levels and to switch the water pumps, so the hub
+// can do the same thing wirelessly: no tank sender taps, no pump relays, and
+// the Trek 3 screen is no longer needed.
+//
+// BMPRO does not publish the protocol. This module therefore:
+//  * keeps a permanent BLE connection to the OdysseyLink (auto-reconnect),
+//  * subscribes to every notify/indicate characteristic,
+//  * logs every frame + advert so the protocol can be decoded,
+//  * lets you replay writes captured from the phone app (bmpro_write),
+//  * routes decoded data into the system via two functions you fill in:
+//      Bmpro::decode()      frames -> battery / tank / pump values
+//      Bmpro::encodePump()  pump on/off -> bytes to write
+// See docs/BMPRO_INTEGRATION.md for the capture procedure.
 #pragma once
 #include <Arduino.h>
 #include "CaravanModel.h"
 
 namespace hub {
 
+// Everything a decoded frame may carry. Only fields with *Valid set are used.
+struct BmproData {
+  bool batValid = false;
+  float batV = 0, batA = 0, batSoc = 0;
+  int32_t batTtgMin = -1;
+  bool chargerValid = false;
+  float chargerA = 0;
+  bool tankValid[cv::NUM_TANKS] = {};
+  float tankPct[cv::NUM_TANKS] = {};
+  bool pumpValid[cv::NUM_PUMPS] = {};
+  bool pumpOn[cv::NUM_PUMPS] = {};
+};
+
 class Bmpro {
  public:
-  void begin();
-  void loop(cv::State &s);
-  void connect(const char *addr);  // async
-  void disconnect();
-  // Copies the capture log (newest last) as text lines.
-  String log() const;
-  String devices() const;  // JSON array of seen BLE devices
+  // addr: OdysseyLink BLE address ("" = scan only). verbose: log every frame.
+  void begin(const char *addr, bool verbose);
+  // Copies freshly decoded values into the state; marks stale data offline.
+  void loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps);
+  void connect(const char *addr);  // change target (async)
   bool connected() const;
+  bool decoded() const;  // any frame decoded yet?
+  bool setPump(int i, bool on, const char **why);
+  // Raw write for protocol experiments, e.g. replaying a captured app write.
+  bool write(const char *charUuid, const uint8_t *data, size_t len, bool response);
+  String log() const;
+  String devices() const;
 
-  // Hook: called with every notification. Return true if it updated state.
-  static bool decode(const char *charUuid, const uint8_t *data, size_t len, cv::State &s);
+  // ---- protocol hooks (fill these in once frames are understood) ----------
+  static bool decode(const char *charUuid, const uint8_t *data, size_t len, BmproData &out);
+  static bool encodePump(int pump, bool on, String &charUuid, uint8_t *buf, size_t &len);
 };
 
 extern Bmpro gBmpro;

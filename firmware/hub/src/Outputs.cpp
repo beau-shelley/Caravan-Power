@@ -23,7 +23,7 @@ void SwitchedOutput::configure(SwitchMode mode, uint16_t pulseMs, bool useSense)
   mode_ = mode;
   pulseMs_ = pulseMs;
   useSense_ = useSense;
-  if (mode_ == SW_DISABLED) want_ = false;
+  if (mode_ == SW_DISABLED || mode_ == SW_BMPRO) want_ = false;  // relay unused
 }
 
 void SwitchedOutput::pulse() {
@@ -33,8 +33,8 @@ void SwitchedOutput::pulse() {
 }
 
 bool SwitchedOutput::set(bool on, const char **reason) {
-  if (mode_ == SW_DISABLED) {
-    if (reason) *reason = "output disabled in settings";
+  if (mode_ == SW_DISABLED || mode_ == SW_BMPRO) {
+    if (reason) *reason = "output not wired to a relay (check settings)";
     return false;
   }
   want_ = on;

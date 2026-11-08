@@ -192,7 +192,7 @@ void flushRuleEdits() {
 
 // ================================================================ SETTINGS
 static lv_obj_t *sRemote, *sInfo, *sSleep, *sPresetDd, *learnBox, *learnLbl;
-static lv_obj_t *kbModal, *kbTa;
+static lv_obj_t *kbModal, *kbTa, *sTankCard;
 static int learnSlot = -1;
 
 static void sleepCb(lv_event_t *e) {
@@ -392,6 +392,7 @@ void buildSettings(lv_obj_t *p) {
 
   // ---- tank calibration
   lv_obj_t *t = settingsCard(col, "WATER TANK CALIBRATION", 70 + cv::NUM_TANKS * 46, col::WATER);
+  sTankCard = t;  // hidden when levels come from the BMPRO (calibrated there)
   for (int i = 0; i < cv::NUM_TANKS; i++) {
     int y = 26 + i * 46;
     lv_obj_t *n = lbl(t, &lv_font_montserrat_16, col::TEXT, app::meta.tankName[i]);
@@ -424,6 +425,8 @@ void updateSettings() {
       opts += app::meta.acPresetName[i];
     }
     lv_dropdown_set_options(sPresetDd, opts.length() ? opts.c_str() : "(none)");
+    if (app::meta.tankCal) lv_obj_clear_flag(sTankCard, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(sTankCard, LV_OBJ_FLAG_HIDDEN);
     if (app::meta.remoteControl) lv_obj_add_state(sRemote, LV_STATE_CHECKED);
     else lv_obj_clear_state(sRemote, LV_STATE_CHECKED);
   }

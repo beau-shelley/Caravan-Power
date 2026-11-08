@@ -189,7 +189,7 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <div class="row" style="margin-top:10px"><button class="btn primary" id="cfSave">Save &amp; connect</button>
           <span class="muted small">Stored only in this browser. Use a dashboard-only broker user.</span></div>
       </div>
-      <div class="card span6">
+      <div class="card span6" id="calCard">
         <div class="cap">Tank calibration</div>
         <p class="muted small">Fill or empty a tank, then press the matching button to store the sender reading.</p>
         <div id="calRows"></div>
@@ -205,9 +205,9 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <button class="btn" id="soc100">Set state of charge to 100%</button>
       </div>
       <div class="card span12">
-        <div class="cap">BMPRO capture log (local only)</div>
-        <p class="muted small">Enable <code>bmproExplorer</code> in the hub config, connect to the CommLink, then change things on the Trek and watch the frames.</p>
-        <div class="row"><input id="bmAddr" placeholder="CommLink BLE address aa:bb:cc:dd:ee:ff" style="max-width:320px">
+        <div class="cap">BMPRO OdysseyLink (Bluetooth)</div>
+        <p class="muted small">Enter the OdysseyLink's Bluetooth address and press Connect; the hub remembers it. With <code>bmproExplorer</code> on, every frame is logged here &ndash; switch pumps in the Odyssey app and watch what changes.</p>
+        <div class="row"><input id="bmAddr" placeholder="OdysseyLink BLE address aa:bb:cc:dd:ee:ff" style="max-width:320px">
           <button class="btn" id="bmConnect">Connect</button><button class="btn" id="bmRefresh">Refresh log</button></div>
         <pre id="bmLog">--</pre>
       </div>
@@ -323,6 +323,7 @@ function render() {
 }
 
 function renderMeta() {
+  $("#calCard").classList.toggle("hidden", !META.tcal);  // BMPRO tanks are calibrated in the Odyssey app
   $("#acSel").innerHTML = META.acp.length ? META.acp.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("") : `<option value="">No presets learned</option>`;
   $("#calRows").innerHTML = META.tank.map((n, i) => `
     <div class="row between" style="padding:6px 0"><span>${esc(n)}</span>

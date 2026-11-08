@@ -7,10 +7,11 @@ namespace hub {
 Bmpro gBmpro;
 
 namespace {
-constexpr int LOG_LINES = 120;
+constexpr int LOG_LINES = 150;
 String gLog[LOG_LINES];
 int gLogHead = 0, gLogCount = 0;
 SemaphoreHandle_t gMux;
+bool gVerbose = false;
 
 struct Seen {
   char addr[18];
@@ -24,11 +25,20 @@ int gSeenCount = 0;
 
 NimBLEClient *gClient = nullptr;
 char gTargetAddr[18] = {};
-volatile bool gWantConnect = false;
+volatile bool gRetargeted = false;
+volatile bool gDecodedAny = false;
 
-// Latest decoded data handed from the BLE task to loop().
-cv::State gPending;
-volatile bool gPendingValid = false;
+// Decoded data handed from the BLE task to loop(), with arrival times.
+BmproData gData;
+uint32_t gBatMs = 0, gChgMs = 0, gTankMs[cv::NUM_TANKS] = {}, gPumpMs[cv::NUM_PUMPS] = {};
+
+struct WriteReq {
+  char uuid[40];
+  uint8_t data[64];
+  uint8_t len;
+  bool response;
+};
+QueueHandle_t gWriteQ;
 
 void logLine(const String &s) {
   xSemaphoreTake(gMux, portMAX_DELAY);
@@ -50,6 +60,13 @@ String hex(const uint8_t *d, size_t n) {
   return s;
 }
 
+bool looksBmpro(const std::string &name) {
+  String n = String(name.c_str());
+  n.toUpperCase();
+  return n.indexOf("BMPRO") >= 0 || n.indexOf("ODYSSEY") >= 0 || n.indexOf("COMMLINK") >= 0 ||
+         n.indexOf("TREK") >= 0 || n.indexOf("SMART") >= 0;
+}
+
 class ScanCb : public NimBLEAdvertisedDeviceCallbacks {
   void onResult(NimBLEAdvertisedDevice *d) override {
     std::string addr = d->getAddress().toString();
@@ -58,8 +75,7 @@ class ScanCb : public NimBLEAdvertisedDeviceCallbacks {
     int slot = -1;
     for (int i = 0; i < gSeenCount; i++)
       if (addr == gSeen[i].addr) slot = i;
-    bool fresh = slot < 0;
-    if (fresh && gSeenCount < MAX_SEEN) slot = gSeenCount++;
+    if (slot < 0 && gSeenCount < MAX_SEEN) slot = gSeenCount++;
     if (slot >= 0) {
       strncpy(gSeen[slot].addr, addr.c_str(), 17);
       if (!name.empty()) strncpy(gSeen[slot].name, name.c_str(), 23);
@@ -67,28 +83,60 @@ class ScanCb : public NimBLEAdvertisedDeviceCallbacks {
       gSeen[slot].lastMs = millis();
     }
     xSemaphoreGive(gMux);
-    // Log adverts from anything that looks like BMPRO (name match) in full -
-    // some devices broadcast live data in manufacturer data.
-    String n = String(name.c_str());
-    n.toUpperCase();
-    if (n.indexOf("BMPRO") >= 0 || n.indexOf("COMMLINK") >= 0 || n.indexOf("TREK") >= 0 ||
-        addr == gTargetAddr) {
+    // Wireless BMPRO sensors may broadcast their readings in adverts, so log
+    // manufacturer + service data of anything BMPRO-looking in full.
+    if (gVerbose && (looksBmpro(name) || addr == gTargetAddr)) {
       std::string md = d->getManufacturerData();
-      logLine(String("ADV ") + addr.c_str() + " '" + name.c_str() + "' rssi " + d->getRSSI() +
-              " mfg: " + hex((const uint8_t *)md.data(), md.size()));
+      String line = String("ADV ") + addr.c_str() + " '" + name.c_str() + "' rssi " + d->getRSSI() +
+                    " mfg: " + hex((const uint8_t *)md.data(), md.size());
+      for (int i = 0; i < d->getServiceDataCount(); i++) {
+        std::string sd = d->getServiceData(i);
+        line += " svc[" + String(d->getServiceDataUUID(i).toString().c_str()) + "]: " +
+                hex((const uint8_t *)sd.data(), sd.size());
+      }
+      logLine(line);
     }
   }
 };
 
+void applyDecoded(const BmproData &in) {
+  uint32_t now = millis();
+  xSemaphoreTake(gMux, portMAX_DELAY);
+  if (in.batValid) {
+    gData.batValid = true;
+    gData.batV = in.batV;
+    gData.batA = in.batA;
+    gData.batSoc = in.batSoc;
+    gData.batTtgMin = in.batTtgMin;
+    gBatMs = now;
+  }
+  if (in.chargerValid) {
+    gData.chargerValid = true;
+    gData.chargerA = in.chargerA;
+    gChgMs = now;
+  }
+  for (int i = 0; i < cv::NUM_TANKS; i++)
+    if (in.tankValid[i]) {
+      gData.tankValid[i] = true;
+      gData.tankPct[i] = in.tankPct[i];
+      gTankMs[i] = now;
+    }
+  for (int i = 0; i < cv::NUM_PUMPS; i++)
+    if (in.pumpValid[i]) {
+      gData.pumpValid[i] = true;
+      gData.pumpOn[i] = in.pumpOn[i];
+      gPumpMs[i] = now;
+    }
+  xSemaphoreGive(gMux);
+  gDecodedAny = true;
+}
+
 void onNotify(NimBLERemoteCharacteristic *c, uint8_t *data, size_t len, bool isNotify) {
   std::string uuid = c->getUUID().toString();
-  logLine(String(isNotify ? "NTF " : "IND ") + uuid.c_str() + " [" + len + "] " + hex(data, len));
-  static cv::State tmp;  // static: NimBLE host task has a small stack
-  tmp = gPending;
-  if (Bmpro::decode(uuid.c_str(), data, len, tmp)) {
-    gPending = tmp;
-    gPendingValid = true;
-  }
+  if (gVerbose) logLine(String(isNotify ? "NTF " : "IND ") + uuid.c_str() + " [" + len + "] " + hex(data, len));
+  static BmproData out;  // static: NimBLE host task has a small stack
+  out = BmproData();
+  if (Bmpro::decode(uuid.c_str(), data, len, out)) applyDecoded(out);
 }
 
 void dumpAndSubscribe() {
@@ -107,6 +155,9 @@ void dumpAndSubscribe() {
       if (c->canRead()) {
         std::string v = c->readValue();
         line += " = " + hex((const uint8_t *)v.data(), v.size());
+        BmproData out;
+        if (Bmpro::decode(c->getUUID().toString().c_str(), (const uint8_t *)v.data(), v.size(), out))
+          applyDecoded(out);
       }
       logLine(line);
       if (c->canNotify()) c->subscribe(true, onNotify);
@@ -115,56 +166,132 @@ void dumpAndSubscribe() {
   }
 }
 
+NimBLERemoteCharacteristic *findChar(const char *uuid) {
+  if (!gClient || !gClient->isConnected()) return nullptr;
+  NimBLEUUID want{std::string(uuid)};
+  for (auto *svc : *gClient->getServices(false))
+    for (auto *c : *svc->getCharacteristics(false))
+      if (c->getUUID() == want) return c;
+  return nullptr;
+}
+
 void bleTask(void *) {
+  uint32_t nextTry = 0;
   for (;;) {
-    if (gWantConnect) {
-      gWantConnect = false;
-      NimBLEDevice::getScan()->stop();
-      if (!gClient) gClient = NimBLEDevice::createClient();
+    if (gRetargeted && gClient && gClient->isConnected()) gClient->disconnect();
+    gRetargeted = false;
+
+    // Keep a permanent connection to the OdysseyLink (it accepts several
+    // centrals at once, so the phone app keeps working alongside us).
+    bool up = gClient && gClient->isConnected();
+    if (!up && gTargetAddr[0] && (int32_t)(millis() - nextTry) >= 0) {
+      nextTry = millis() + 10000;
+      if (!gClient) {
+        gClient = NimBLEDevice::createClient();
+        gClient->setConnectTimeout(8);
+      }
       logLine(String("connecting to ") + gTargetAddr);
+      NimBLEDevice::getScan()->stop();
       if (gClient->connect(NimBLEAddress(std::string(gTargetAddr)))) {
-        logLine("connected - dumping GATT");
+        logLine("connected");
         dumpAndSubscribe();
       } else {
-        logLine("connect failed");
+        logLine("connect failed - retrying in 10 s");
       }
-      NimBLEDevice::getScan()->start(0, nullptr, false);
+      if (gVerbose) NimBLEDevice::getScan()->start(0, nullptr, false);
     }
-    vTaskDelay(pdMS_TO_TICKS(200));
+
+    WriteReq w;
+    while (xQueueReceive(gWriteQ, &w, 0) == pdTRUE) {
+      NimBLERemoteCharacteristic *c = findChar(w.uuid);
+      bool ok = c && c->writeValue(w.data, w.len, w.response);
+      logLine(String("WRITE ") + w.uuid + " " + hex(w.data, w.len) + (ok ? "ok" : "FAILED"));
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 }  // namespace
 
-void Bmpro::begin() {
+void Bmpro::begin(const char *addr, bool verbose) {
   gMux = xSemaphoreCreateMutex();
+  gWriteQ = xQueueCreate(8, sizeof(WriteReq));
+  gVerbose = verbose;
+  strncpy(gTargetAddr, addr ? addr : "", 17);
   NimBLEDevice::init("caravan-hub");
   NimBLEScan *scan = NimBLEDevice::getScan();
   scan->setAdvertisedDeviceCallbacks(new ScanCb(), true);
   scan->setActiveScan(true);
   scan->setInterval(160);
   scan->setWindow(48);  // low duty cycle: shares the radio with Wi-Fi
-  scan->start(0, nullptr, false);
+  // Scan when exploring, or when we don't know the OdysseyLink's address yet.
+  if (gVerbose || !gTargetAddr[0]) scan->start(0, nullptr, false);
   xTaskCreatePinnedToCore(bleTask, "bmpro", 6144, nullptr, 1, nullptr, 0);
-  logLine("BLE explorer started");
+  logLine(String("BLE started, target '") + gTargetAddr + "'");
 }
 
 void Bmpro::connect(const char *addr) {
   strncpy(gTargetAddr, addr, 17);
-  gWantConnect = true;
-}
-
-void Bmpro::disconnect() {
-  if (gClient && gClient->isConnected()) gClient->disconnect();
+  gTargetAddr[17] = 0;
+  gRetargeted = true;
 }
 
 bool Bmpro::connected() const { return gClient && gClient->isConnected(); }
+bool Bmpro::decoded() const { return gDecodedAny; }
 
-void Bmpro::loop(cv::State &s) {
-  if (gPendingValid) {
-    gPendingValid = false;
-    s.bat = gPending.bat;
-    s.bat.source = cv::BAT_SRC_BMPRO;
+void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
+  constexpr uint32_t STALE_MS = 30000;
+  uint32_t now = millis();
+  xSemaphoreTake(gMux, portMAX_DELAY);
+  if (useBattery) {
+    bool fresh = gData.batValid && now - gBatMs < STALE_MS;
+    s.bat.online = fresh;
+    if (fresh) {
+      s.bat.source = cv::BAT_SRC_BMPRO;
+      s.bat.v = gData.batV;
+      s.bat.a = gData.batA;
+      s.bat.soc = gData.batSoc;
+      s.bat.ttgMin = gData.batTtgMin;
+      if (gData.chargerValid && now - gChgMs < STALE_MS) s.bat.chargerA = gData.chargerA;
+      s.bat.chargeA = s.bat.solarA + s.bat.chargerA;
+      s.bat.loadA = max(0.0f, s.bat.chargeA - s.bat.a);
+    }
   }
+  if (useTanks)
+    for (int i = 0; i < cv::NUM_TANKS; i++) {
+      s.tank[i].online = gData.tankValid[i] && now - gTankMs[i] < STALE_MS;
+      if (s.tank[i].online) s.tank[i].pct = gData.tankPct[i];
+    }
+  if (usePumps)
+    for (int i = 0; i < cv::NUM_PUMPS; i++) {
+      bool fresh = gData.pumpValid[i] && now - gPumpMs[i] < STALE_MS;
+      s.pump[i].sensed = fresh && gData.pumpOn[i];
+    }
+  xSemaphoreGive(gMux);
+}
+
+bool Bmpro::write(const char *charUuid, const uint8_t *data, size_t len, bool response) {
+  if (!gWriteQ || len > sizeof(WriteReq::data)) return false;
+  WriteReq w = {};
+  strncpy(w.uuid, charUuid, sizeof(w.uuid) - 1);
+  memcpy(w.data, data, len);
+  w.len = len;
+  w.response = response;
+  return xQueueSend(gWriteQ, &w, 0) == pdTRUE;
+}
+
+bool Bmpro::setPump(int i, bool on, const char **why) {
+  String uuid;
+  uint8_t buf[64];
+  size_t len = sizeof(buf);
+  if (!encodePump(i, on, uuid, buf, len)) {
+    if (why) *why = "BMPRO pump command not decoded yet - see docs/BMPRO_INTEGRATION.md";
+    return false;
+  }
+  if (!connected()) {
+    if (why) *why = "Not connected to the OdysseyLink";
+    return false;
+  }
+  return write(uuid.c_str(), buf, len, true);
 }
 
 String Bmpro::log() const {
@@ -188,25 +315,44 @@ String Bmpro::devices() const {
   return out + "]";
 }
 
-// ---------------------------------------------------------------------------
-// Protocol decoder - intentionally empty until real frames are captured.
-// Workflow: enable "BMPRO explorer" in settings, connect to the CommLink, then
-// change things you can see on the Trek (turn a pump on, draw a known load)
-// and diff the logged notifications. Map byte offsets to fields here, e.g.:
+// ===========================================================================
+// PROTOCOL HOOKS - intentionally empty until real frames are captured.
 //
-//   if (strcmp(charUuid, "xxxxxxxx-....") == 0 && len >= 12) {
-//     s.bat.v   = (data[2] | data[3] << 8) / 100.0f;
-//     s.bat.a   = (int16_t)(data[4] | data[5] << 8) / 10.0f;
-//     s.bat.soc = data[6];
-//     s.bat.online = true;
+// decode(): called for every notification and every readable characteristic.
+// Fill in whatever the frame carries and return true, e.g.
+//
+//   if (!strcmp(charUuid, "0000xxxx-0000-1000-8000-00805f9b34fb") && len >= 12 && data[0] == 0x01) {
+//     out.batValid = true;
+//     out.batV   = (data[2] | data[3] << 8) / 100.0f;           // volts
+//     out.batA   = (int16_t)(data[4] | data[5] << 8) / 10.0f;   // +charge / -discharge
+//     out.batSoc = data[6];
+//     for (int t = 0; t < 3; t++) { out.tankValid[t] = true; out.tankPct[t] = data[7 + t]; }
+//     out.pumpValid[0] = out.pumpValid[1] = true;
+//     out.pumpOn[0] = data[10] & 0x01;  out.pumpOn[1] = data[10] & 0x02;
 //     return true;
 //   }
-// ---------------------------------------------------------------------------
-bool Bmpro::decode(const char *charUuid, const uint8_t *data, size_t len, cv::State &s) {
+//
+// encodePump(): the bytes the Odyssey app writes to switch a pump (from an
+// Android HCI snoop log), e.g.
+//
+//   charUuid = "0000yyyy-0000-1000-8000-00805f9b34fb";
+//   buf[0] = 0x10; buf[1] = pump; buf[2] = on; len = 3;
+//   return true;
+// ===========================================================================
+bool Bmpro::decode(const char *charUuid, const uint8_t *data, size_t len, BmproData &out) {
   (void)charUuid;
   (void)data;
   (void)len;
-  (void)s;
+  (void)out;
+  return false;
+}
+
+bool Bmpro::encodePump(int pump, bool on, String &charUuid, uint8_t *buf, size_t &len) {
+  (void)pump;
+  (void)on;
+  (void)charUuid;
+  (void)buf;
+  len = 0;
   return false;
 }
 

@@ -3,6 +3,7 @@
 // inverter / aircon, and serves the data to the 7" display (RS485), the local
 // web dashboard (Wi-Fi) and the cloud (MQTT over TLS) with phone push alerts.
 #include <Arduino.h>
+#include <cctype>
 #include <LittleFS.h>
 #include <Wire.h>
 
@@ -27,6 +28,20 @@ static SwitchedOutput gPump[cv::NUM_PUMPS];
 static SwitchedOutput gInverter;
 static AirconIr gAircon;
 static bool gBmproOn = false;
+static uint32_t gBmproPumpSince[cv::NUM_PUMPS] = {};
+static bool gBmproPumpTripped[cv::NUM_PUMPS] = {};
+
+// Switch a pump through whichever path it's configured for.
+static bool switchPump(int i, bool on, const char **why) {
+  if (gConfig.pumpViaBmpro(i)) {
+    if (!gBmproOn) {
+      if (why) *why = "BMPRO link not running";
+      return false;
+    }
+    return gBmpro.setPump(i, on, why);
+  }
+  return gPump[i].set(on, why);
+}
 
 // ---------------------------------------------------------------- helpers
 static void applyOutputConfig() {
@@ -71,7 +86,7 @@ static void runAction(cv::Action a) {
     case cv::ACT_AIRCON_OFF: setAircon(-1); break;
     case cv::ACT_INVERTER_OFF: gInverter.set(false); break;
     case cv::ACT_PUMPS_OFF:
-      for (auto &p : gPump) p.set(false);
+      for (int i = 0; i < cv::NUM_PUMPS; i++) switchPump(i, false, nullptr);
       break;
     default: break;
   }
@@ -156,9 +171,9 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     if (on && gState.pump[i].lockout)
       return replyErr(reply, "Pump locked out - tank is empty");
     if (!on && pc.mode == SW_LATCH && !gPump[i].commanded() && gPump[i].sensed())
-      return replyErr(reply, "Pump was switched on from the Trek panel - switch it off there");
+      return replyErr(reply, "Pump was switched on at the BMPRO - switch it off there");
     const char *why = nullptr;
-    if (!gPump[i].set(on, &why)) return replyErr(reply, why);
+    if (!switchPump(i, on, &why)) return replyErr(reply, why);
     stateChanged();
   } else if (!strcmp(c, "inverter")) {
     const char *why = nullptr;
@@ -191,6 +206,8 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   } else if (!strcmp(c, "tank_cal")) {
     int i = cmd["i"] | -1;
     if (i < 0 || i >= cv::NUM_TANKS) return replyErr(reply, "bad tank");
+    if (gConfig.tankSource == TANK_BMPRO)
+      return replyErr(reply, "Tank levels come from the BMPRO - calibrate them in the Odyssey app");
     const char *pt = cmd["point"] | "";
     float mv = cmd["mv"] | gTanks.rawMv(i);  // explicit value or "use current reading"
     if (!strcmp(pt, "empty")) gConfig.tanks[i].emptyMv = mv;
@@ -239,13 +256,37 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   // ---------------- BMPRO capture
   } else if (!strcmp(c, "bmpro_log")) {
     reply["t"] = "bmpro_log";
-    reply["log"] = gBmproOn ? gBmpro.log() : String("BMPRO explorer disabled (bmproExplorer in config)");
+    reply["log"] = gBmproOn ? gBmpro.log() : String("BMPRO link not running (nothing in config uses it)");
   } else if (!strcmp(c, "bmpro_devices")) {
     reply["t"] = "bmpro_devices";
     if (gBmproOn) reply["list"] = serialized(gBmpro.devices());
   } else if (!strcmp(c, "bmpro_connect")) {
-    if (!gBmproOn) return replyErr(reply, "BMPRO explorer disabled");
-    gBmpro.connect(cmd["addr"] | "");
+    if (!gBmproOn) return replyErr(reply, "BMPRO link not running");
+    const char *addr = cmd["addr"] | "";
+    if (strlen(addr) != 17) return replyErr(reply, "address must look like aa:bb:cc:dd:ee:ff");
+    strcpy(gConfig.bmproAddr, addr);  // remembered: reconnects after reboot
+    gConfig.save();
+    gBmpro.connect(addr);
+  } else if (!strcmp(c, "bmpro_write")) {
+    // Protocol experiments: replay bytes captured from the Odyssey app.
+    // {"c":"bmpro_write","uuid":"...","hex":"10 01 01","resp":true}
+    if (!gBmproOn) return replyErr(reply, "BMPRO link not running");
+    uint8_t buf[64];
+    size_t n = 0;
+    const char *h = cmd["hex"] | "";
+    while (*h && n < sizeof(buf)) {
+      if (!isxdigit((unsigned char)h[0])) {
+        h++;
+        continue;
+      }
+      if (!isxdigit((unsigned char)h[1])) return replyErr(reply, "hex must be pairs of digits");
+      char b[3] = {h[0], h[1], 0};
+      buf[n++] = (uint8_t)strtoul(b, nullptr, 16);
+      h += 2;
+    }
+    if (!n || !gBmpro.write(cmd["uuid"] | "", buf, n, cmd["resp"] | true))
+      return replyErr(reply, "write not queued");
+    reply["t"] = "ok";
   } else if (!strcmp(c, "reboot")) {
     gShunt.persist(true);
     delay(200);
@@ -261,6 +302,32 @@ static void updateLoads(uint32_t now) {
     SwitchedOutput &o = gPump[i];
     const PumpCfg &pc = gConfig.pumps[i];
     cv::Pump &p = gState.pump[i];
+    if (gConfig.pumpViaBmpro(i)) {
+      // State comes from the BMPRO (p.sensed filled by gBmpro.loop).
+      if (p.sensed && !p.on) {
+        gBmproPumpSince[i] = now;
+        gBmproPumpTripped[i] = false;
+      }
+      p.on = p.sensed;
+      p.runSec = p.on ? (now - gBmproPumpSince[i]) / 1000 : 0;
+      bool dry = false;
+      if (pc.dryTank >= 0 && pc.dryTank < cv::NUM_TANKS) {
+        const cv::Tank &t = gState.tank[pc.dryTank];
+        dry = t.online && t.pct < pc.dryPct;
+        if (!dry && t.pct > pc.dryPct + 3) p.lockout = false;
+      }
+      if (dry) p.lockout = true;
+      // Same protections as the relay path, applied once per run.
+      bool overRun = pc.maxRunMin && p.runSec > pc.maxRunMin * 60u;
+      if (p.on && (dry || overRun) && !gBmproPumpTripped[i]) {
+        gBmproPumpTripped[i] = true;
+        if (switchPump(i, false, nullptr))
+          gNotify.push(gConfig.meta.pumpName[i],
+                       dry ? "Switched off - tank empty (dry-run protection)" : "Switched off - maximum run time reached",
+                       cv::SEV_WARN);
+      }
+      continue;
+    }
     o.loop();
     p.sensed = o.sensed();
     p.on = o.commanded() || (o.hasSense() && o.sensed());
@@ -350,7 +417,7 @@ void setup() {
   gVictron[0].begin(Serial1, PIN_VE1_RX, PIN_VE1_TX);
   gVictron[1].begin(Serial2, PIN_VE2_RX, PIN_VE2_TX);
   gTemps.begin(PIN_ONEWIRE);
-  gTanks.begin();
+  if (gConfig.tankSource == TANK_ADC) gTanks.begin();
   gShunt.begin();
 
   gPump[0].begin("pump1", PIN_PUMP1_OUT, PIN_PUMP1_SENSE);
@@ -362,8 +429,8 @@ void setup() {
   gLink.begin(Serial0, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE);
   gNet.begin();
   gNotify.begin();
-  if (gConfig.bmproExplorer) {
-    gBmpro.begin();
+  if (gConfig.usesBmpro()) {
+    gBmpro.begin(gConfig.bmproAddr, gConfig.bmproExplorer);
     gBmproOn = true;
   }
   xTaskCreatePinnedToCore(netTask, "net", 12288, nullptr, 1, nullptr, 0);
@@ -375,9 +442,12 @@ void loop() {
     StateLock l;
     for (int i = 0; i < cv::NUM_SOLAR; i++) gVictron[i].poll(gState.solar[i]);
     gTemps.poll(gState);
-    gTanks.poll(gState);
+    if (gConfig.tankSource == TANK_ADC) gTanks.poll(gState);
     gShunt.poll(gState, now);
-    if (gBmproOn) gBmpro.loop(gState);
+    if (gBmproOn) {
+      bool pumps = gConfig.pumpViaBmpro(0) || gConfig.pumpViaBmpro(1);
+      gBmpro.loop(gState, gConfig.bat.source == cv::BAT_SRC_BMPRO, gConfig.tankSource == TANK_BMPRO, pumps);
+    }
     updateLoads(now);
     gNet.loop(gState);
 

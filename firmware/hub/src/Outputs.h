@@ -8,7 +8,7 @@ namespace hub {
 
 // A relay-driven device with optional opto "sense" feedback.
 //  LATCH: relay closed = on. Wire the relay in parallel (diode-OR) with the
-//         BMPRO pump output, so the Trek screen can still turn the pump on.
+//         BMPRO pump output, so the BMPRO can still turn the pump on.
 //  PULSE: a short closure toggles the device, like pressing its own button
 //         (inverter remote port, or a BMPRO external switch input). The sense
 //         input is then the source of truth for on/off.

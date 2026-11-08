@@ -176,6 +176,7 @@ struct Meta {
   char acPresetName[MAX_AC_PRESETS][16] = {};
   float batCapacityAh = 300;
   bool remoteControl = true;
+  bool tankCal = false;  // true when tanks are wired taps that need calibrating
   char fw[16] = "1.0.0";
 };
 void metaToJson(const Meta &m, JsonObject o);

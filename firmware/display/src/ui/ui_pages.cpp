@@ -202,7 +202,7 @@ void updateWater() {
     if (pm.lockout) setText(pStatus[i], "Locked out - tank empty. Refill to re-enable.");
     else if (pm.on) setText(pStatus[i], "Running %um %02us%s", pm.runSec / 60, pm.runSec % 60,
                             pm.sensed ? "" : "\n(no feedback)");
-    else setText(pStatus[i], "Off. Trek panel switching still works.");
+    else setText(pStatus[i], "Off");
   }
 }
 

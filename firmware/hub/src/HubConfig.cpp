@@ -12,6 +12,7 @@ void HubConfig::setDefaults() {
   for (int i = 0; i < cv::NUM_TANKS; i++) tanks[i].channel = i;
   pumps[0].dryTank = 0;
   pumps[1].dryTank = 1;
+  meta.tankCal = tankSource == TANK_ADC;
 }
 
 static void copyStr(char *d, size_t n, const char *s) {
@@ -61,6 +62,8 @@ void HubConfig::toJson(JsonObject o) const {
   for (auto &a : tempAddr) ta.add(a);
   o["cloudInt"] = cloudIntervalSec;
   o["buzzer"] = buzzer;
+  o["tankSrc"] = tankSource;
+  o["bmproAddr"] = bmproAddr;
   o["bmproExplorer"] = bmproExplorer;
 }
 
@@ -81,6 +84,7 @@ void HubConfig::fromJson(JsonObjectConst o) {
     bat.vCal = b["vCal"] | bat.vCal;
   }
   meta.batCapacityAh = bat.capacityAh;
+  meta.tankCal = tankSource == TANK_ADC;
 
   for (int i = 0; i < cv::NUM_TANKS; i++) {
     JsonObjectConst j = o["tanks"][i];
@@ -111,6 +115,8 @@ void HubConfig::fromJson(JsonObjectConst o) {
   cloudIntervalSec = o["cloudInt"] | cloudIntervalSec;
   if (cloudIntervalSec < 5) cloudIntervalSec = 5;
   buzzer = o["buzzer"] | buzzer;
+  tankSource = o["tankSrc"] | tankSource;
+  if (o["bmproAddr"].is<const char *>()) copyStr(bmproAddr, sizeof(bmproAddr), o["bmproAddr"]);
   bmproExplorer = o["bmproExplorer"] | bmproExplorer;
 }
 

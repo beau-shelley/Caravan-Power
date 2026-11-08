@@ -6,7 +6,14 @@
 enum SwitchMode : uint8_t {
   SW_LATCH = 0,   // relay held closed while "on" (parallel / diode-OR with BMPRO output)
   SW_PULSE = 1,   // momentary closure toggles the device (button input emulation)
-  SW_DISABLED = 2
+  SW_DISABLED = 2,
+  SW_BMPRO = 3    // switched by the BMPRO itself, commanded over Bluetooth (no wiring)
+};
+
+enum TankSource : uint8_t {
+  TANK_BMPRO = 0,  // levels from the OdysseyLink over Bluetooth (no wiring)
+  TANK_ADC = 1,    // ADS1115 taps on the sender wires
+  TANK_NONE = 2
 };
 
 struct TankCal {
@@ -17,7 +24,7 @@ struct TankCal {
 };
 
 struct PumpCfg {
-  SwitchMode mode = SW_LATCH;
+  SwitchMode mode = SW_BMPRO;
   uint16_t pulseMs = 300;
   uint16_t maxRunMin = 30;     // auto-off safety (0 = no limit)
   int8_t dryTank = -1;         // tank index used for dry-run lockout (-1 = none)
@@ -32,7 +39,7 @@ struct InverterCfg {
 };
 
 struct BatteryCfg {
-  uint8_t source = cv::BAT_SRC_SHUNT;  // shunt (INA226) or BMPRO (once decoded)
+  uint8_t source = cv::BAT_SRC_BMPRO;  // BMPRO over Bluetooth, or own INA226 shunt
   float capacityAh = 300;
   float chargeEff = 0.99f;
   float fullV = 13.9f;
@@ -53,7 +60,16 @@ struct HubConfig {
   char tempAddr[cv::NUM_TEMPS][17] = {};  // DS18B20 ROM as hex, "" = auto-assign
   uint16_t cloudIntervalSec = 15;
   bool buzzer = true;
-  bool bmproExplorer = false;  // BLE logging of BMPRO CommLink for protocol capture
+  uint8_t tankSource = TANK_BMPRO;
+  char bmproAddr[18] = "";     // OdysseyLink BLE address (find it with bmpro_devices)
+  bool bmproExplorer = false;  // verbose BLE logging for protocol capture
+
+  bool pumpViaBmpro(int i) const { return pumps[i].mode == SW_BMPRO; }
+  bool usesBmpro() const {
+    bool anyPump = false;
+    for (auto &p : pumps) anyPump |= p.mode == SW_BMPRO;
+    return bat.source == cv::BAT_SRC_BMPRO || tankSource == TANK_BMPRO || anyPump || bmproExplorer;
+  }
 
   void setDefaults();
   bool load();

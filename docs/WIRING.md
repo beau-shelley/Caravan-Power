@@ -1,6 +1,16 @@
 # Wiring
 
 Everything here is on the 12 V side except the optional inverter 240 V sense; read the safety notes in the README first.
+
+**The BMPRO system needs no wiring at all.** Battery, tank levels and pumps come over Bluetooth from the OdysseyLink (see [BMPRO_INTEGRATION.md](BMPRO_INTEGRATION.md)). The core install is:
+- power to the hub and display;
+- the RS485 cable between them;
+- 2 Victron cables;
+- 3 temperature probes;
+- the inverter relay;
+- the IR LED.
+
+The tank taps, battery shunt and pump relays are kept at the end of this page as **optional fallbacks**.
 Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.h). Change them there if you need to.
 
 ## Parts list
@@ -14,16 +24,13 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 | 1 | 4-core shielded cable (e.g. 0.5 mm²) | hub ↔ display: 12 V, GND, RS485 A, B |
 | 2 | VE.Direct cable / JST-PH 2.0 4-pin pigtail | one per SmartSolar |
 | 3 | DS18B20 waterproof probes + 4.7 kΩ resistor | inside, outside, fridge |
-| 1 | ADS1115 16-bit ADC module | tank sender taps |
-| 3 | 100 kΩ + 33 kΩ resistors, 100 nF caps | one divider per tank sender |
-| 1 | INA226 module (**remove its on-board R100 shunt**) | battery current/voltage |
-| 1 | 300 A / 75 mV shunt (0.25 mΩ) | goes in the battery negative |
-| 1 | 4-channel 3.3 V-trigger relay module (or 5 V module + transistors) | pump 1, pump 2, inverter, spare |
-| 2 | 15 A+ Schottky diodes (e.g. MBR2045CT) | diode-OR for the pump feeds |
-| 1 | 4-channel 12 V opto-isolator board (PC817) | pump running sense ×2, inverter sense |
+| 1 | 1- or 2-channel 3.3 V-trigger relay module | inverter remote (+ spare) |
+| 1 | 12 V opto-isolator board (PC817) | inverter on sense |
 | 1 | 940 nm IR LED + 2N2222/BC337 + 33 Ω, TSOP38238 receiver | aircon |
 | 1 | Active buzzer 3–5 V + NPN | local alarm |
-| — | Fuses/holders, ferrules, heatshrink, enclosure | 2 A for electronics, pump-rated for pump feeds |
+| — | Fuses/holders, ferrules, heatshrink, enclosure | 2 A for the electronics |
+
+Only needed for the wired fallbacks: ADS1115 + 3 dividers (tanks), INA226 + 300 A shunt (battery), relays + Schottky diodes + opto (pumps).
 
 ## Hub (ESP32-S3-DevKitC-1) pin map
 
@@ -35,14 +42,14 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 | 17 | VE.Direct #1 RX | SmartSolar #1 VE.Direct pin 3 (TX), via level shifting below |
 | 16 | VE.Direct #2 RX | SmartSolar #2 VE.Direct pin 3 (TX) |
 | 18, 15 | VE.Direct TX (optional) | SmartSolar pin 2 (RX); not needed for monitoring |
-| 8 / 9 | I²C SDA / SCL | ADS1115 (0x48), INA226 battery (0x40), INA226 charger (0x41, optional) |
+| 8 / 9 | I²C SDA / SCL | *fallback only:* ADS1115 (0x48), INA226 (0x40 / 0x41) |
 | 4 | 1-Wire | all DS18B20 data lines + 4.7 kΩ pull-up to 3V3 |
-| 10 | Pump 1 relay | relay IN1 |
-| 11 | Pump 2 relay | relay IN2 |
+| 10 | Pump 1 relay | *fallback only* |
+| 11 | Pump 2 relay | *fallback only* |
 | 12 | Inverter relay | relay IN3 |
 | 13 | Spare relay | relay IN4 |
-| 14 | Pump 1 running sense | opto output (pulls LOW when the pump has 12 V) |
-| 21 | Pump 2 running sense | opto output |
+| 14 | Pump 1 running sense | *fallback only* |
+| 21 | Pump 2 running sense | *fallback only* |
 | 47 | Inverter 240 V sense | opto output / AC detect module output |
 | 5 | IR LED driver | transistor base via 1 kΩ |
 | 6 | IR receiver | TSOP38238 OUT (powered from 3V3) |
@@ -93,53 +100,6 @@ All three sensors share GPIO4: red → 3V3, black → GND, yellow → GPIO4, plu
 
 On first boot, sensors are assigned to Inside, Outside and Fridge in discovery order. Reassign them from the dashboard: *Setup* → *Scan 1-Wire bus*. Warm each probe in your hand to identify it.
 
-## Tank level senders (ADS1115 taps)
-
-The BMPRO keeps powering and reading the senders. We only **listen** to the voltage on each sender wire through a high-impedance divider, so the Trek gauges are unaffected:
-
-```
-Sender wire (at BMPRO tank input) ── 100 kΩ ──┬── ADS1115 A0 (A1, A2 for tanks 2, 3)
-                                              33 kΩ      100 nF
-                                               │          │
-                                              GND        GND
-```
-
-Power the ADS1115 from 3V3. The divider scales up to ~13 V down to ≤3.2 V, and the 133 kΩ load is negligible to the BMPRO's sender circuit.
-
-Calibrate each tank from the touchscreen (*Settings* → *Water tank calibration*) when it is empty and when it is full. Senders where the voltage goes *down* as the tank fills are handled automatically. If the BMPRO uses probe-type (stepped) senders, readings will move in steps, which is normal.
-
-## Battery shunt (INA226)
-
-```
-Battery - ── [300 A/75 mV shunt] ── all system negatives (Odyssey Link shunt, BMPRO, inverter, solar...)
-              │IN+           │IN-
-              └── INA226 ────┘     VBUS ── 1 A fuse ── Battery +
-```
-
-- **Everything must go through it:** every load and every charger must be on the system side. The Odyssey Link's own shunt can stay; just put the two in series.
-- **Remove the 0.1 Ω (R100) resistor** on the INA226 module and run twisted sense wires to the shunt's small screws.
-- **IN+ goes on the battery side,** so charging reads positive. If the sign is backwards, swap IN+ and IN-.
-- **Set the shunt value:** `bat.shunt` in the config (default 0.00025 Ω for 300 A / 75 mV).
-- **Optional charger channel:** a second INA226 (address 0x41, A0 pin high) on a 50 A shunt in the BMPRO 35A output shows mains/DC-DC charge current separately. Set `bat.chg = true`.
-
-## Water pumps - keeping BMPRO switching
-
-The BMPRO switches each pump with its own output. We add a second, independent feed and combine the two with diodes (a "diode-OR"). Either side can then run the pump, and neither can back-feed the other:
-
-```
-BMPRO pump output ──|>|── (Schottky) ──┬── Pump +
-                                       │
-Fused +12 V ── relay COM/NO ──|>|──────┘
-                                       └── opto input (+) ──> sense GPIO   (opto - to GND)
-```
-
-- **Trek on** → pump runs. The sense input sees 12 V, and the screen shows the pump as on ("via Trek").
-- **Touchscreen on** → relay closes → pump runs. The Trek won't show it, because the BMPRO doesn't know.
-- **Turning a pump off:** each side can only turn off what it turned on. The touchscreen tells you if the Trek has it on.
-- **Dry-run protection:** the hub turns *its* relay off if the linked tank drops below 5%. Each pump also has a maximum run time (30 min by default). Both are configurable per pump.
-
-**Alternative:** if your BMPRO unit has an external pump switch input (some JHub models do), set the pump `mode` to `1` (pulse). Wire the relay's dry contact across that input instead. The BMPRO then stays the single source of truth, and the Trek shows the touchscreen's changes too.
-
 ## Inverter (Powertech 3000 W)
 
 The Powertech pure sine inverters have a **remote on/off port**. Check your manual for its pin-out and type:
@@ -166,3 +126,56 @@ IR is one-way: the hub only knows what it last sent. If someone uses the origina
 ## Buzzer
 
 Active buzzer + NPN on GPIO7. It beeps every 2 s while an **alarm**-severity alert is unacknowledged. Disable it with `buzzer: false` in the config.
+
+## Optional wired fallbacks
+
+Use these only if the OdysseyLink's Bluetooth protocol can't be decoded, or you want a reading that doesn't depend on the BMPRO. Change the source in the hub config and reboot.
+
+### Tank level senders (ADS1115 taps)
+
+Set `"tankSrc": 1`. The BMPRO keeps powering and reading the senders; we only **listen** to the voltage on each sender wire through a high-impedance divider, so the BMPRO readings are unaffected:
+
+```
+Sender wire (at BMPRO tank input) ── 100 kΩ ──┬── ADS1115 A0 (A1, A2 for tanks 2, 3)
+                                              33 kΩ      100 nF
+                                               │          │
+                                              GND        GND
+```
+
+Power the ADS1115 from 3V3. The divider scales up to ~13 V down to ≤3.2 V, and the 133 kΩ load is negligible to the BMPRO's sender circuit.
+
+Calibrate each tank from the touchscreen (*Settings* → *Water tank calibration*) when it is empty and when it is full. Senders where the voltage goes *down* as the tank fills are handled automatically. If the BMPRO uses probe-type (stepped) senders, readings will move in steps, which is normal.
+
+### Battery shunt (INA226)
+
+Set `"bat": {"src": 1}`.
+
+```
+Battery - ── [300 A/75 mV shunt] ── all system negatives (Odyssey Link shunt, BMPRO, inverter, solar...)
+              │IN+           │IN-
+              └── INA226 ────┘     VBUS ── 1 A fuse ── Battery +
+```
+
+- **Everything must go through it:** every load and every charger must be on the system side. The Odyssey Link's own shunt can stay; just put the two in series.
+- **Remove the 0.1 Ω (R100) resistor** on the INA226 module and run twisted sense wires to the shunt's small screws.
+- **IN+ goes on the battery side,** so charging reads positive. If the sign is backwards, swap IN+ and IN-.
+- **Set the shunt value:** `bat.shunt` in the config (default 0.00025 Ω for 300 A / 75 mV).
+- **Optional charger channel:** a second INA226 (address 0x41, A0 pin high) on a 50 A shunt in the BMPRO 35A output shows mains/DC-DC charge current separately. Set `bat.chg = true`.
+
+### Water pumps via relays
+
+Set the pump's `"mode": 0`. The BMPRO switches each pump with its own output; we add a second, independent feed and combine the two with diodes (a "diode-OR"). Either side can then run the pump, and neither can back-feed the other:
+
+```
+BMPRO pump output ──|>|── (Schottky) ──┬── Pump +
+                                       │
+Fused +12 V ── relay COM/NO ──|>|──────┘
+                                       └── opto input (+) ──> sense GPIO   (opto - to GND)
+```
+
+- **BMPRO / Odyssey app on** → pump runs. The sense input sees 12 V, and the screen shows the pump as on.
+- **Touchscreen on** → relay closes → pump runs. The Odyssey app won't show it, because the BMPRO doesn't know.
+- **Turning a pump off:** each side can only turn off what it turned on. The touchscreen tells you if the BMPRO has it on.
+- **Dry-run protection:** the hub turns *its* relay off if the linked tank drops below 5%. Each pump also has a maximum run time (30 min by default). Both are configurable per pump.
+
+**Alternative:** if your BMPRO unit has an external pump switch input (some JHub models do), set the pump `mode` to `1` (pulse). Wire the relay's dry contact across that input instead. The BMPRO then stays the single source of truth, and the Odyssey app shows the touchscreen's changes too.

@@ -384,6 +384,7 @@ void metaToJson(const Meta &m, JsonObject o) {
   for (int i = 0; i < m.acPresetCount; i++) a.add(m.acPresetName[i]);
   o["cap"] = m.batCapacityAh;
   o["rc"] = m.remoteControl;
+  o["tcal"] = m.tankCal;
   o["fw"] = m.fw;
 }
 
@@ -405,6 +406,7 @@ void metaFromJson(Meta &m, JsonObjectConst o) {
   }
   m.batCapacityAh = o["cap"] | m.batCapacityAh;
   m.remoteControl = o["rc"] | m.remoteControl;
+  m.tankCal = o["tcal"] | m.tankCal;
   copyStr(m.fw, sizeof(m.fw), o["fw"] | m.fw);
 }
 

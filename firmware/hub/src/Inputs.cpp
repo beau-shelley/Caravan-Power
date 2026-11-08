@@ -145,7 +145,7 @@ int TempSensors::found(FoundSensor *out, int max) {
 
 // ================================================================ Tanks
 // The BMPRO keeps reading the senders; we only TAP the sender voltage through a
-// high-impedance divider (100k/33k), so the original Trek gauges are unaffected.
+// high-impedance divider (100k/33k), so the BMPRO readings are unaffected.
 static Adafruit_ADS1115 gAds;
 
 bool TankInputs::begin() {
@@ -232,9 +232,10 @@ bool inaMeasure(uint8_t addr, float shuntOhm, float &v, float &a) {
 }  // namespace
 
 bool BatteryShunt::begin() {
-  ok_ = inaInit(INA_BAT);
+  ok_ = gConfig.bat.source == cv::BAT_SRC_SHUNT && inaInit(INA_BAT);
   chgOk_ = gConfig.bat.chargerShunt && inaInit(INA_CHG);
-  Serial.printf("[bat] INA226 battery %s, charger %s\n", ok_ ? "ok" : "NOT FOUND",
+  Serial.printf("[bat] INA226 battery %s, charger %s\n",
+                gConfig.bat.source != cv::BAT_SRC_SHUNT ? "unused (BMPRO)" : ok_ ? "ok" : "NOT FOUND",
                 gConfig.bat.chargerShunt ? (chgOk_ ? "ok" : "NOT FOUND") : "disabled");
 
   cv::SocEstimator::Config c;
