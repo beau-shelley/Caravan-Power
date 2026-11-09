@@ -199,6 +199,7 @@ void stateToJson(const State &s, JsonObject o) {
     j["c"] = r1(x.c);
     j["lo"] = r1(x.minC);
     j["hi"] = r1(x.maxC);
+    if (x.batt >= 0) j["b"] = x.batt;
   }
 
   JsonArray tk = o["tank"].to<JsonArray>();
@@ -283,6 +284,7 @@ void stateFromJson(State &s, JsonObjectConst o) {
     s.temp[i].c = j["c"] | 0.0f;
     s.temp[i].minC = j["lo"] | 0.0f;
     s.temp[i].maxC = j["hi"] | 0.0f;
+    s.temp[i].batt = j["b"] | -1;
   }
 
   JsonArrayConst tk = o["tank"];

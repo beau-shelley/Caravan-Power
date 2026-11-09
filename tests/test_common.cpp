@@ -10,6 +10,7 @@
 #include "SocEstimator.h"
 #include "VeDirect.h"
 #include "VictronBle.h"
+#include "BleSensors.h"
 
 static int failures = 0, checks = 0;
 #define CHECK(cond)                                                 \
@@ -295,7 +296,52 @@ static void testVictronBle() {
   CHECK(!victronParseAdvert(other, sizeof(other), adv));
 }
 
+static void testBleSensors() {
+  BleSensorReading r;
+  // BTHome v2 (Shelly BLU H&T style): info 0x44 (v2, unencrypted, trigger),
+  // packet id, battery 87 %, temp 0x45 = -3.5 C (0.1), humidity 0x2E = 61 %.
+  const uint8_t bt[] = {0x44, 0x00, 0x2A, 0x01, 87, 0x45, 0xDD, 0xFF, 0x2E, 61};
+  CHECK(decodeBleServiceData(0xFCD2, bt, sizeof(bt), r));
+  NEAR(r.tempC, -3.5f, 0.001f);
+  NEAR(r.humidity, 61.f, 0.01f);
+  CHECK(r.hasBatt && r.battPct == 87);
+  // BTHome 0x02 temp (0.01) + 0x03 humidity (0.01), as pvvx firmware sends
+  const uint8_t bt2[] = {0x40, 0x00, 0x10, 0x02, 0x2A, 0x09, 0x03, 0xBF, 0x13};
+  CHECK(decodeBleServiceData(0xFCD2, bt2, sizeof(bt2), r));
+  NEAR(r.tempC, 23.46f, 0.001f);
+  NEAR(r.humidity, 50.55f, 0.001f);
+  // Encrypted BTHome is rejected
+  const uint8_t bt3[] = {0x41, 0x02, 0x2A, 0x09};
+  CHECK(!decodeBleServiceData(0xFCD2, bt3, sizeof(bt3), r));
+  // pvvx custom: mac[6], temp 3.40 C, hum 81.20 %, 2950 mV, 76 %, count, flags
+  const uint8_t pv[] = {1, 2, 3, 4, 5, 6, 0x54, 0x01, 0xB8, 0x1F, 0x86, 0x0B, 76, 9, 0};
+  CHECK(decodeBleServiceData(0x181A, pv, sizeof(pv), r));
+  NEAR(r.tempC, 3.40f, 0.001f);
+  NEAR(r.humidity, 81.2f, 0.001f);
+  CHECK(r.battPct == 76);
+  // ATC1441: big-endian -1.2 C
+  const uint8_t atc[] = {6, 5, 4, 3, 2, 1, 0xFF, 0xF4, 70, 90, 0x0B, 0x86, 1};
+  CHECK(decodeBleServiceData(0x181A, atc, sizeof(atc), r));
+  NEAR(r.tempC, -1.2f, 0.001f);
+  // Govee H5075: 21.7 C / 45.3 % -> packed 217453 = 0x03516D, battery 100
+  const uint8_t gv[] = {0x88, 0xEC, 0x00, 0x03, 0x51, 0x6D, 100, 0x00};
+  CHECK(decodeBleManufacturerData("GVH5075_1234", gv, sizeof(gv), r));
+  NEAR(r.tempC, 21.7f, 0.001f);
+  NEAR(r.humidity, 45.3f, 0.001f);
+  // Govee negative: -5.2 C / 60.0 % -> 52600 | 0x800000
+  const uint8_t gvn[] = {0x88, 0xEC, 0x00, 0x80, 0xCD, 0x78, 55, 0x00};
+  CHECK(decodeBleManufacturerData("", gvn, sizeof(gvn), r));
+  NEAR(r.tempC, -5.2f, 0.001f);
+  NEAR(r.humidity, 60.0f, 0.001f);
+  // ThermoPro TP357: flag, 4.3 C (0x002B), 72 %
+  const uint8_t tp[] = {0xC2, 0x2B, 0x00, 72, 0x2C, 0x02};
+  CHECK(decodeBleManufacturerData("TP357 (2B41)", tp, sizeof(tp), r));
+  NEAR(r.tempC, 4.3f, 0.001f);
+  CHECK(!decodeBleManufacturerData("Phone", tp, sizeof(tp), r));
+}
+
 int main() {
+  testBleSensors();
   testVictronBle();
   testVeDirect();
   testAlerts();

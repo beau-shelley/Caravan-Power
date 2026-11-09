@@ -63,7 +63,7 @@ void TempSensors::autoAssign() {
   bool changed = false;
   int n = gDallas->getDeviceCount();
   for (int role = 0; role < cv::NUM_TEMPS; role++) {
-    if (gConfig.tempAddr[role][0]) continue;
+    if (gConfig.tempAddr[role][0] || gConfig.tempSrc[role] == TEMP_BLE) continue;
     for (int i = 0; i < n; i++) {
       DeviceAddress a;
       if (!gDallas->getAddress(a, i)) continue;
@@ -96,6 +96,7 @@ void TempSensors::poll(cv::State &s) {
   converting_ = false;
 
   for (int role = 0; role < cv::NUM_TEMPS; role++) {
+    if (gConfig.tempSrc[role] == TEMP_BLE) continue;  // handled by BleTempRx
     cv::Temp &t = s.temp[role];
     DeviceAddress a;
     if (!hexToAddr(gConfig.tempAddr[role], a)) {

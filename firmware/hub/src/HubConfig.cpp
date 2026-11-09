@@ -67,6 +67,10 @@ void HubConfig::toJson(JsonObject o) const {
 
   JsonArray ta = o["tempAddr"].to<JsonArray>();
   for (auto &a : tempAddr) ta.add(a);
+  JsonArray ts = o["tsrc"].to<JsonArray>();
+  for (auto v : tempSrc) ts.add(v);
+  JsonArray tb = o["tble"].to<JsonArray>();
+  for (auto &a : tempBle) tb.add(a);
   o["cloudInt"] = cloudIntervalSec;
   o["buzzer"] = buzzer;
   o["tankSrc"] = tankSource;
@@ -126,6 +130,10 @@ void HubConfig::fromJson(JsonObjectConst o) {
   }
   for (int i = 0; i < cv::NUM_TEMPS; i++)
     if (o["tempAddr"][i].is<const char *>()) copyStr(tempAddr[i], sizeof(tempAddr[i]), o["tempAddr"][i]);
+  for (int i = 0; i < cv::NUM_TEMPS; i++) {
+    tempSrc[i] = o["tsrc"][i] | tempSrc[i];
+    if (o["tble"][i].is<const char *>()) copyStr(tempBle[i], sizeof(tempBle[i]), o["tble"][i]);
+  }
   cloudIntervalSec = o["cloudInt"] | cloudIntervalSec;
   if (cloudIntervalSec < 5) cloudIntervalSec = 5;
   buzzer = o["buzzer"] | buzzer;

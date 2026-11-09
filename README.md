@@ -26,7 +26,7 @@ Remote dashboard (desktop and phone, dark and light):
 |---|---|
 | Battery %, load amps, charge amps | From the BMPRO via the OdysseyLink (Bluetooth). Charge amps also from the Victrons. Fallback: INA226 shunt |
 | Individual solar controller tracking | Both Victron SmartSolar 100/50s over **Bluetooth** (Victron Instant Readout, no cables): PV watts, charge A, battery V, charge state, yield today, peak, errors. VE.Direct cable optional (adds PV voltage) |
-| Inside / outside / fridge temps with alarms | 3 × DS18B20; min/max today; alarm rules with delay and hysteresis |
+| Inside / outside / fridge temps with alarms | **Bluetooth thermometers** (e.g. magnetic ThermoPro TP357, Shelly BLU H&T) or wired DS18B20s, mixed per role. Min/max today, sensor battery warnings, alarm rules with delay and hysteresis |
 | Customisable alerts on temps, volts and amps | Rule engine: any metric, above/below, threshold, hysteresis, delay, severity, push on/off, plus an optional **automatic action** (aircon off, inverter off, pumps off) |
 | Phone alerts | [ntfy](https://ntfy.sh) push (free iOS/Android app). Alarms use *urgent* priority |
 | 2 water pumps on the touchscreen | Switched **by the BMPRO**, commanded over Bluetooth, so the Odyssey app stays in sync. Dry-run lockout and a max run time. Fallback: relays |
@@ -48,7 +48,7 @@ Remote dashboard (desktop and phone, dark and light):
  │ HUB  ESP32-S3-DevKitC-1                                                                │
  │  Bluetooth ))))) OdysseyLink ── BMPRO 35A: battery, 3 tank senders, pump 1 + 2       │
  │  Bluetooth ))))) SmartSolar 100/50 #1, #2 (Instant Readout)                            │
- │  1-Wire ── DS18B20 inside/outside/fridge                                               │
+ │  Bluetooth ))))) thermometers: fridge / outside / inside (or 1-Wire DS18B20 probes)     │
  │  Relay ── inverter remote      Opto ── inverter 240 V present                          │
  │  IR LED / IR receiver ── Houghton aircon                                               │
  │  Local web UI http://caravan.local  +  WebSocket                                       │
@@ -80,7 +80,7 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 
 ## Quick start
 
-1. **Wire it up.** Follow [docs/WIRING.md](docs/WIRING.md): the RS485 link to the display, the temperature probes, the inverter relay and the IR LED. The BMPRO and the Victrons are both wireless.
+1. **Wire it up.** Follow [docs/WIRING.md](docs/WIRING.md): the RS485 link to the display, the inverter relay and the IR LED. The BMPRO, the Victrons and the temperature sensors are all wireless.
 2. **Set up the cloud side** (optional; the system runs fully offline without it) using [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md): a free HiveMQ Cloud broker plus the ntfy app.
 3. **Flash the hub.**
    ```sh
@@ -99,9 +99,27 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
    - Add the two Victron Bluetooth keys: dashboard → *Setup* → *Victron solar controllers* (see [docs/WIRING.md](docs/WIRING.md#victron-smartsolar-10050-2---bluetooth)).
    - Connect to the OdysseyLink and decode its protocol: [docs/BMPRO_INTEGRATION.md](docs/BMPRO_INTEGRATION.md). Tanks are calibrated in the Odyssey app as before.
    - Learn the aircon presets: set the Houghton remote to e.g. *Cool 22 auto*, tap *Learn preset* and press the remote's button. Repeat for each mode you use, then do *Learn OFF*.
-   - Check the temperature sensors went to the right roles. Use the web dashboard → *Setup* → *Scan 1-Wire bus* to reassign them.
+   - Assign the temperature sensors: dashboard → *Setup* → *Find Bluetooth thermometers*, then pick Inside / Outside / Fridge for each.
 6. **Tune the alert rules** on the Alerts page (+/− thresholds) or in the dashboard (full editor). The defaults suit 12 V lithium: see `loadDefaultRules()` in [`CaravanModel.cpp`](firmware/lib/CaravanCommon/src/CaravanModel.cpp).
 7. **Remove the Trek 3** once the touchscreen shows battery, tanks and pumps from the BMPRO, and after the unplug test in the BMPRO doc passes.
+
+## How many Bluetooth devices can it handle?
+
+All of them at once, comfortably:
+
+| Device | How it's read | Load on the hub |
+|---|---|---|
+| 2 × Victron SmartSolar | broadcasts (listen only) | none beyond the scan |
+| 2-4 × thermometers | broadcasts (listen only) | none beyond the scan |
+| BMPRO OdysseyLink | **one** connection | a single link, the only one the hub keeps open |
+
+**Broadcast devices** need no connection. One continuous scan hears every one of them, whether there are 2 or 20. Each advert is checked against the Victron, thermometer and BMPRO decoders in microseconds. The scan keeps no results in memory, so a busy caravan park full of phones and earbuds doesn't fill up RAM.
+
+**The only connection** is to the OdysseyLink, and it shares the radio with the scan without trouble. Your phone can stay connected to the OdysseyLink at the same time.
+
+**Sharing the radio with Wi-Fi:** the scan listens about 38 % of the time, leaving the rest for Wi-Fi. A device advertising every second is therefore heard many times a minute. The Victrons time out after 30 s of silence and the thermometers after 10 min, so occasional misses never show.
+
+**What does limit it is range:** metal walls, the fridge cabinet, battery boxes. Mount the hub centrally, and check each device's signal strength (dBm) with the dashboard's *Find nearby* / *Find Bluetooth thermometers* buttons. Anything better than about -90 dBm is fine.
 
 ## BMPRO integration status
 
@@ -115,8 +133,8 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 ```sh
 git clone --depth 1 -b v7.2.1  https://github.com/bblanchon/ArduinoJson ../ArduinoJson
 git clone --depth 1 -b v8.3.11 https://github.com/lvgl/lvgl ../lvgl
-make -C tests                 # 95 unit checks under ASan/UBSan: Victron BLE decrypt/decode (incl.
-                              # FIPS-197 AES vector), VE.Direct parser, alert engine, JSON, SoC, RS485
+make -C tests                 # 118 unit checks under ASan/UBSan: Bluetooth thermometer formats, Victron
+                              # BLE decrypt (incl. FIPS-197 AES vector), VE.Direct, alerts, JSON, SoC, RS485
 make -C tests/sim             # builds the real display UI against LVGL and renders every page to PNG
 ```
 

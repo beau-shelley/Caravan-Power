@@ -24,7 +24,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `ts`, `tz` | unix time, local UTC offset (s) |
 | `bat` | `on`, `src` (1 shunt, 2 BMPRO), `v`, `a` (+charge), `soc`, `ttg` (min, -1 idle), `sa` solar A, `ca` charger A, `chg` total charge A, `load` load A |
 | `sol[2]` | `on`, `pv` V (-1 when not available, i.e. over Bluetooth), `w` W, `bv`, `ba`, `cs` (VE.Direct charge state), `err`, `yt` kWh today, `mx` peak W today, `ytot` |
-| `tmp[3]` | inside, outside, fridge: `on`, `c`, `lo`, `hi` (today) |
+| `tmp[3]` | inside, outside, fridge: `on`, `c`, `lo`, `hi` (today), `b` sensor battery % (Bluetooth, if reported) |
 | `tank[3]` | `on`, `p` % |
 | `pump[2]` | `on`, `sn` sensed, `lk` dry-run lockout, `rt` run seconds |
 | `inv` | `on`, `ac` (240 V present) |
@@ -48,7 +48,9 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `ac_del` | `slot` | |
 | `tank_cal` | `i`, `point` (`empty`/`full`), optional `mv` | omit `mv` to use the current reading |
 | `soc_set` | `soc` | |
-| `sensors` / `sensor_assign` | `addr`, `role` | DS18B20 role mapping |
+| `sensors` / `sensor_assign` | `addr`, `role` | wired DS18B20 role mapping |
+| `ble_sensors` | | Bluetooth thermometers in range (temp, battery, signal, assigned role) |
+| `temp_set` | `role`, `src` (0 wired, 1 Bluetooth), `addr` | assign a Bluetooth thermometer to inside/outside/fridge |
 | `remote_control` | `on` | **not accepted from the cloud** |
 | `config_set` | `cfg:{…}` | partial config merge (see `HubConfig::toJson`) |
 | `victron_set` | `i`, `key` (32 hex), optional `addr`, `src` (0 Bluetooth, 1 VE.Direct, 2 off) | add/replace a SmartSolar's Instant Readout key |
@@ -73,4 +75,5 @@ Actions: `none aircon_off inverter_off pumps_off`.
 - `tankSrc`: 0 BMPRO (default), 1 ADS1115 taps, 2 none
 - `bmproAddr`: OdysseyLink Bluetooth address
 - `inv`: `mode`, `pulse`, `sense`
+- `tsrc[]` (0 wired, 1 Bluetooth per role), `tble[]` (Bluetooth address per role)
 - `tempAddr[]`, `cloudInt` s, `buzzer`, `bmproExplorer` (verbose Bluetooth logging)

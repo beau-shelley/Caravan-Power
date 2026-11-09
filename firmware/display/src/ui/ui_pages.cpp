@@ -293,7 +293,11 @@ void updateClimate() {
     if (t.online) {
       setText(cVal[i], "%.1f\xC2\xB0", t.c);
       lv_obj_set_style_text_color(cVal[i], c(tempColor(i, t.c)), 0);
-      setText(cMinMax[i], LV_SYMBOL_DOWN " %.1f\xC2\xB0   " LV_SYMBOL_UP " %.1f\xC2\xB0  today", t.minC, t.maxC);
+      if (t.batt >= 0 && t.batt <= 20)  // Bluetooth sensor needs a new battery
+        setText(cMinMax[i], LV_SYMBOL_DOWN " %.1f\xC2\xB0  " LV_SYMBOL_UP " %.1f\xC2\xB0  " LV_SYMBOL_BATTERY_1 " %d%%",
+                t.minC, t.maxC, t.batt);
+      else
+        setText(cMinMax[i], LV_SYMBOL_DOWN " %.1f\xC2\xB0   " LV_SYMBOL_UP " %.1f\xC2\xB0  today", t.minC, t.maxC);
     } else {
       setText(cVal[i], "--");
       lv_obj_set_style_text_color(cVal[i], c(col::DIM), 0);

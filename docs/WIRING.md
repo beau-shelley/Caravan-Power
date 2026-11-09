@@ -5,7 +5,7 @@ Everything here is on the 12 V side except the optional inverter 240 V sense; re
 **The BMPRO system and the Victron solar controllers need no wiring at all.** Battery, tank levels and pumps come over Bluetooth from the OdysseyLink (see [BMPRO_INTEGRATION.md](BMPRO_INTEGRATION.md)), and both SmartSolars broadcast their readings over Bluetooth. The core install is:
 - power to the hub and display;
 - the RS485 cable between them;
-- 3 temperature probes;
+- temperature sensors: Bluetooth (no wiring) or wired probes;
 - the inverter relay;
 - the IR LED.
 
@@ -21,7 +21,8 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 | 1 | 12 V → 5 V 3 A automotive buck converter | powers the hub (and the display if your board has no 7–36 V input) |
 | 1 | MAX3485 / "TTL to RS485" 3.3 V module | hub side of the display link (an auto-direction module is fine; set `PIN_LINK_DE` to -1) |
 | 1 | 4-core shielded cable (e.g. 0.5 mm²) | hub ↔ display: 12 V, GND, RS485 A, B |
-| 3 | DS18B20 waterproof probes + 4.7 kΩ resistor | inside, outside, fridge |
+| 2-3 | Bluetooth thermometers (see *Temperature sensors*) | e.g. 2-3 × ThermoPro TP357 + 1 × Shelly BLU H&T |
+| 0-3 | DS18B20 waterproof probes + 4.7 kΩ resistor | only for roles you want wired |
 | 1 | 1- or 2-channel 3.3 V-trigger relay module | inverter remote (+ spare) |
 | 1 | 12 V opto-isolator board (PC817) | inverter on sense |
 | 1 | 940 nm IR LED + 2N2222/BC337 + 33 Ω, TSOP38238 receiver | aircon |
@@ -96,7 +97,41 @@ What Bluetooth gives you, per controller:
 
 **Range:** the hub needs to hear the controllers. Inside a caravan this is normally fine. If a controller is in a metal locker and shows offline, mount the hub closer or use VE.Direct for that one.
 
-## Temperature sensors (DS18B20)
+## Temperature sensors
+
+Each role (inside, outside, fridge) can be either a **Bluetooth thermometer** or a **wired DS18B20 probe**, and you can mix them. Assign them in the dashboard: **Setup** → *Temperature sensors* → *Find Bluetooth thermometers*, then pick a role next to each sensor. Warm a sensor in your hand to tell which is which.
+
+### Bluetooth thermometers
+
+Any of these work out of the box. They broadcast unencrypted readings, so there's no pairing, and their own phone apps keep working.
+
+| Sensor | Good for | Notes |
+|---|---|---|
+| **ThermoPro TP357** | Fridge, inside | **Magnetic back** + stand, small screen. **1 × AAA** (copes with fridge cold far better than a coin cell). Usually sold in 2-3 packs. |
+| **Shelly BLU H&T** | Outside | Rated IP54 (dust/water resistant), -20 to 60 °C, ~3-year battery, 3M tape mount. Uses the open BTHome format. Leave its encryption **off**. |
+| **Govee H5075** | Inside | Big screen, tabletop. The manual's operating range is 0-50 °C, so **not for the fridge**. |
+| **Xiaomi LYWSD03MMC** with [pvvx firmware](https://github.com/pvvx/ATC_MiThermometer) | Inside (cheapest) | A few dollars each. Flash it once from a web page on your phone. Coin cell, so not ideal in the fridge. |
+
+**My picks:**
+- **Fridge and inside:** a 3-pack of **ThermoPro TP357**.
+- **Outside:** a **Shelly BLU H&T**, mounted under the van out of direct sun and rain.
+
+**Where magnets help (and where they don't):**
+- **Fridge:** the sensor must sit *inside* the fridge, and most caravan fridges have plastic liners. Put the TP357 on a shelf or door bin, or stick a small steel disc inside for the magnet.
+- **Outside:** the steel **chassis rails** and A-frame are ideal for a magnetic sensor. Caravan walls are aluminium or composite, so magnets won't stick to them.
+- **Not in direct sun:** a sensor in the sun reads 10-20 °C high.
+
+**Fridge reception:** a fridge is an insulated metal box, which weakens Bluetooth a lot. Most sensors still get through the door seal over a few metres. Mount the hub near the fridge if you can.
+
+The hub marks a Bluetooth sensor offline only after 10 minutes of silence, so occasional missed packets don't matter. If a sensor can't be heard at all, use a wired DS18B20 probe for that role (below).
+
+**Batteries:**
+- **Low-battery warning:** the dashboard and the Climate page show a battery warning when a sensor reports ≤ 20 %. Shelly, Govee and Xiaomi/pvvx report their battery level; the ThermoPro doesn't.
+- **Cold:** alkaline AAA cells lose capacity at fridge temperatures but work fine. **Lithium AAA** cells last much longer in the cold.
+
+The ThermoPro decoder follows the format used by Home Assistant's ThermoPro integration, but I haven't tested it against a real unit. If its reading looks wrong, *Find Bluetooth thermometers* shows the raw values for comparison.
+
+### Wired DS18B20 probes
 
 All three sensors share GPIO4: red → 3V3, black → GND, yellow → GPIO4, plus one 4.7 kΩ resistor from GPIO4 to 3V3.
 

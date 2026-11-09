@@ -28,6 +28,8 @@ struct VictronCfg {
   char key[33] = "";   // 32 hex chars from VictronConnect "Instant readout details"
 };
 
+enum TempSource : uint8_t { TEMP_WIRED = 0, TEMP_BLE = 1 };
+
 struct TankCal {
   float emptyMv = 300;   // ADS1115 reading (after divider) with tank empty
   float fullMv = 2800;   // ...and full. Inverted senders are fine (empty > full).
@@ -71,6 +73,8 @@ struct HubConfig {
   InverterCfg inverter;
   VictronCfg victron[cv::NUM_SOLAR];
   char tempAddr[cv::NUM_TEMPS][17] = {};  // DS18B20 ROM as hex, "" = auto-assign
+  uint8_t tempSrc[cv::NUM_TEMPS] = {TEMP_WIRED, TEMP_WIRED, TEMP_WIRED};
+  char tempBle[cv::NUM_TEMPS][18] = {};   // Bluetooth thermometer address per role
   uint16_t cloudIntervalSec = 15;
   bool buzzer = true;
   uint8_t tankSource = TANK_BMPRO;

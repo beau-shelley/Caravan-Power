@@ -15,6 +15,7 @@
 #include "Inputs.h"
 #include "Outputs.h"
 #include "VictronBle.h"
+#include "BleTempRx.h"
 #include "VictronBleRx.h"
 #include "pins.h"
 
@@ -31,6 +32,13 @@ static SwitchedOutput gInverter;
 static AirconIr gAircon;
 static bool gBmproOn = false;
 static bool gVictronBleOn = false;
+static bool gBleTempsOn = false;
+
+static void startBleTemps() {
+  if (gBleTempsOn) return;
+  gBleTemps.begin();
+  gBleTempsOn = true;
+}
 static bool gVeDirectOn[cv::NUM_SOLAR] = {};
 
 static void startSolar(int i) {
@@ -136,7 +144,7 @@ static void onAlert(const cv::AlertEngine::Event &ev, void *) {
 // One handler for every client (touchscreen, local web, cloud). Messages look
 // like {"c":"pump","i":0,"on":true}. See docs/PROTOCOL.md for the full list.
 static bool isMutating(const char *c) {
-  static const char *readOnly[] = {"state", "hello", "rules_get", "sensors", "bmpro_log", "victron_seen",
+  static const char *readOnly[] = {"state", "hello", "rules_get", "sensors", "bmpro_log", "victron_seen", "ble_sensors",
                                    "bmpro_devices", "ac_learn_status", "ping"};
   for (auto r : readOnly)
     if (strcmp(c, r) == 0) return false;
@@ -260,6 +268,7 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     for (auto &a : gConfig.tempAddr)
       if (!strcmp(a, addr)) a[0] = 0;  // a sensor can only have one role
     strcpy(gConfig.tempAddr[role], addr);
+    gConfig.tempSrc[role] = TEMP_WIRED;
     configChanged();
   } else if (!strcmp(c, "remote_control")) {
     if (src == SRC_CLOUD) return replyErr(reply, "can only be changed in the caravan");
@@ -293,6 +302,24 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     memcpy(v.addr, addr, sizeof(v.addr));
     configChanged();
     startSolar(i);
+    reply["t"] = "ok";
+  } else if (!strcmp(c, "ble_sensors")) {
+    // Lists Bluetooth thermometers in range (starts listening if needed).
+    startBleTemps();
+    reply["t"] = "ble_sensors";
+    reply["list"] = serialized(gBleTemps.seen());
+  } else if (!strcmp(c, "temp_set")) {
+    // {"c":"temp_set","role":2,"src":1,"addr":"aa:bb:.."}  src 0 = wired DS18B20
+    int role = cmd["role"] | -1;
+    if (role < 0 || role >= cv::NUM_TEMPS) return replyErr(reply, "bad role");
+    uint8_t src = cmd["src"] | (uint8_t)TEMP_BLE;
+    const char *addr = cmd["addr"] | "";
+    if (src == TEMP_BLE && strlen(addr) != 17) return replyErr(reply, "address must look like aa:bb:cc:dd:ee:ff");
+    gConfig.tempSrc[role] = src;
+    snprintf(gConfig.tempBle[role], sizeof(gConfig.tempBle[role]), "%s", src == TEMP_BLE ? addr : "");
+    gState.temp[role] = cv::Temp();  // fresh min/max for the new sensor
+    if (src == TEMP_BLE) startBleTemps();
+    configChanged();
     reply["t"] = "ok";
   } else if (!strcmp(c, "victron_seen")) {
     reply["t"] = "victron_seen";
@@ -476,6 +503,8 @@ void setup() {
   gNet.begin();
   gNotify.begin();
   for (int i = 0; i < cv::NUM_SOLAR; i++) startSolar(i);
+  for (auto s : gConfig.tempSrc)
+    if (s == TEMP_BLE) startBleTemps();
   if (gConfig.usesBmpro()) {
     gBmpro.begin(gConfig.bmproAddr, gConfig.bmproExplorer);
     gBmproOn = true;
@@ -494,6 +523,7 @@ void loop() {
       else gState.solar[i].online = false;
     }
     gTemps.poll(gState);
+    if (gBleTempsOn) gBleTemps.poll(gState);
     if (gConfig.tankSource == TANK_ADC) gTanks.poll(gState);
     gShunt.poll(gState, now);
     if (gBmproOn) {

@@ -52,6 +52,7 @@ struct Battery {
 struct Temp {
   bool online = false;
   float c = 0, minC = 0, maxC = 0;  // min/max since midnight
+  int8_t batt = -1;                  // Bluetooth sensor battery %, -1 = n/a
 };
 
 struct Tank {

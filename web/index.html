@@ -203,7 +203,9 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
       </div>
       <div class="card span6">
         <div class="cap">Temperature sensors</div>
-        <button class="btn" id="scanSensors">Scan 1-Wire bus</button>
+        <p class="muted small">Bluetooth thermometers (ThermoPro TP357, Govee H5075, Shelly BLU H&amp;T, Xiaomi with pvvx firmware) or wired DS18B20 probes. Warm a sensor in your hand to tell which is which.</p>
+        <div class="row"><button class="btn" id="scanBle">Find Bluetooth thermometers</button><button class="btn" id="scanSensors">Scan wired probes</button></div>
+        <div id="bleRows" style="margin-top:8px"></div>
         <div id="sensorRows" style="margin-top:8px"></div>
       </div>
       <div class="card span6">
@@ -303,7 +305,7 @@ function render() {
   $("#temps").innerHTML = S.tmp.map((t, i) => `
     <div class="t"><span class="muted">${esc(META.tmp[i])}</span>
       <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? t.c.toFixed(1) + "°" : "--"}</span>
-      <span class="muted small">${t.on ? `&nbsp;↓${t.lo.toFixed(1)} ↑${t.hi.toFixed(1)}` : ""}</span></span></div>`).join("");
+      <span class="muted small">${t.on ? `&nbsp;↓${t.lo.toFixed(1)} ↑${t.hi.toFixed(1)}` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
 
   $("#tanks").innerHTML = S.tank.map((t, i) => {
     const bad = i === 2 ? t.p > 85 : t.p < 15, warn = i === 2 ? t.p > 70 : t.p < 30;
@@ -368,6 +370,12 @@ function onMessage(msg) {
     case "rules": RULES = msg.rules; renderRules(); break;
     case "err": toast(msg.msg); break;
     case "sensors": renderSensors(msg.list); break;
+    case "ble_sensors": $("#bleRows").innerHTML = msg.list.length ? msg.list.map((s) => `
+      <div class="row between" style="padding:6px 0"><span><b>${s.c.toFixed(1)}°</b> ${esc(s.name || s.type)}
+        <span class="muted small">${esc(s.type)} · <code>${esc(s.addr)}</code> · ${s.rssi} dBm${s.batt >= 0 ? " · batt " + s.batt + "%" : ""}</span></span>
+        <select data-bleaddr="${esc(s.addr)}" style="width:160px"><option value="-1">Not used</option>
+        ${META.tmp.map((n, i) => `<option value="${i}" ${s.role === i ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`).join("")
+      : `<span class="muted">No Bluetooth thermometers heard yet - give it 30 s and try again</span>`; break;
     case "victron_seen": $("#vicSeen").innerHTML = msg.list.length ? msg.list.map((d) =>
         `<div><code>${esc(d.addr)}</code> ${esc(d.type)} model ${esc(d.model)}, ${d.rssi} dBm${d.slot >= 0 ? ` &ndash; <b>decoding as ${esc(META.sol[d.slot])}</b>` : ""}</div>`).join("")
         : "No Victron broadcasts heard yet - check Instant readout is enabled."; break;
@@ -466,6 +474,9 @@ $("#soc100").onclick = () => { if (confirm("Set battery state of charge to 100%?
 $("#calRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-cal]"); if (!b) return;
   if (confirm(`Store current reading as ${b.dataset.pt.toUpperCase()} for ${META.tank[b.dataset.cal]}?`)) send({ c:"tank_cal", i:+b.dataset.cal, point:b.dataset.pt }); });
 $("#scanSensors").onclick = () => send({ c:"sensors" });
+$("#scanBle").onclick = () => send({ c:"ble_sensors" });
+$("#bleRows").addEventListener("change", (e) => { const s = e.target; if (!s.dataset.bleaddr || s.value < 0) return;
+  send({ c:"temp_set", role:+s.value, src:1, addr:s.dataset.bleaddr }); setTimeout(() => send({ c:"ble_sensors" }), 800); });
 $("#vicScan").onclick = () => send({ c:"victron_seen" });
 $("#vicRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-vic]"); if (!b) return;
   const i = +b.dataset.vic, key = $("#vicKey" + i).value.replace(/[^0-9a-fA-F]/g, "");
