@@ -9,7 +9,9 @@
 
 namespace ui {
 
-enum Page { PAGE_HOME, PAGE_POWER, PAGE_WATER, PAGE_CLIMATE, PAGE_LEVEL, PAGE_ALERTS, PAGE_SETTINGS, PAGE_COUNT };
+// The nav rail only shows everyday pages; Level, Alerts and Settings live
+// behind "More" (Alerts is also one tap away via the bell / alert banner).
+enum Page { PAGE_HOME, PAGE_POWER, PAGE_WATER, PAGE_CLIMATE, PAGE_MORE, PAGE_LEVEL, PAGE_ALERTS, PAGE_SETTINGS, PAGE_COUNT };
 
 void begin();   // build everything
 void loop();    // refresh widgets from app:: model (call often; cheap if nothing changed)

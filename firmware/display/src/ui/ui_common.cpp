@@ -205,15 +205,19 @@ void fmtDuration(char *buf, size_t n, int32_t m) {
 
 // ================================================================ shell
 static lv_obj_t *gPages[PAGE_COUNT];
-static lv_obj_t *gNavBtns[PAGE_COUNT];
+static constexpr int NAV_COUNT = 5;
+static const int kRail[NAV_COUNT] = {PAGE_HOME, PAGE_POWER, PAGE_WATER, PAGE_CLIMATE, PAGE_MORE};
+static lv_obj_t *gNavBtns[NAV_COUNT];
+static lv_obj_t *gMoreAlerts;
 static lv_obj_t *gTitle, *gClock, *gIcoLink, *gIcoWifi, *gIcoCloud, *gBell, *gBellCount;
 static lv_obj_t *gBanner, *gBannerText, *gBannerBtn;
 static int gPage = -1;
 static int gSleepMin = 5;
 
-static const char *kPageNames[PAGE_COUNT] = {"Home", "Power", "Water", "Climate", "Level", "Alerts", "Settings"};
-static const char *kPageIcons[PAGE_COUNT] = {LV_SYMBOL_HOME, LV_SYMBOL_CHARGE, LV_SYMBOL_LOOP, LV_SYMBOL_SHUFFLE,
-                                             LV_SYMBOL_GPS, LV_SYMBOL_BELL, LV_SYMBOL_SETTINGS};
+static const char *kPageNames[PAGE_COUNT] = {"Home", "Power", "Water", "Climate", "More", "Level", "Alerts", "Settings"};
+static const char *kPageIcons[PAGE_COUNT] = {LV_SYMBOL_HOME,  LV_SYMBOL_CHARGE, LV_SYMBOL_LOOP, LV_SYMBOL_SHUFFLE,
+                                             LV_SYMBOL_BARS,  LV_SYMBOL_GPS,    LV_SYMBOL_BELL, LV_SYMBOL_SETTINGS};
+static bool isSubPage(int p) { return p == PAGE_LEVEL || p == PAGE_ALERTS || p == PAGE_SETTINGS; }
 
 int sleepMinutes() { return gSleepMin; }
 
@@ -222,19 +226,65 @@ static void navCb(lv_event_t *e) { showPage((int)(intptr_t)lv_event_get_user_dat
 void showPage(int p) {
   if (p == gPage) return;
   for (int i = 0; i < PAGE_COUNT; i++) {
-    bool on = i == p;
-    if (on) lv_obj_clear_flag(gPages[i], LV_OBJ_FLAG_HIDDEN);
+    if (i == p) lv_obj_clear_flag(gPages[i], LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(gPages[i], LV_OBJ_FLAG_HIDDEN);
+  }
+  int railPage = isSubPage(p) ? PAGE_MORE : p;  // sub-pages light up "More"
+  for (int i = 0; i < NAV_COUNT; i++) {
+    bool on = kRail[i] == railPage;
     lv_obj_set_style_bg_opa(gNavBtns[i], on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_obj_set_style_text_color(lv_obj_get_child(gNavBtns[i], 0), c(on ? col::ACCENT : col::MUTED), 0);
     lv_obj_set_style_text_color(lv_obj_get_child(gNavBtns[i], 1), c(on ? col::TEXT : col::MUTED), 0);
   }
   gPage = p;
-  lv_label_set_text(gTitle, kPageNames[p]);
+  // Sub-pages get a back arrow in the title (tap it to return to More).
+  if (isSubPage(p)) setText(gTitle, LV_SYMBOL_LEFT "  %s", kPageNames[p]);
+  else lv_label_set_text(gTitle, kPageNames[p]);
   app::stateDirty = true;  // refresh the newly visible page right away
 }
 
 static void ackCb(lv_event_t *) { app::cmd("ack"); }
+static void titleCb(lv_event_t *) {
+  if (isSubPage(gPage)) showPage(PAGE_MORE);
+}
+static void bellCb(lv_event_t *) { showPage(PAGE_ALERTS); }
+
+// "More" page: big tiles for the things you only need now and then.
+static void moreTileCb(lv_event_t *e) { showPage((int)(intptr_t)lv_event_get_user_data(e)); }
+static lv_obj_t *moreTile(lv_obj_t *p, int x, int page, const char *sym, const char *title, const char *sub,
+                          uint32_t accent) {
+  lv_obj_t *b = lv_btn_create(p);
+  lv_obj_set_size(b, 216, 220);
+  lv_obj_set_pos(b, x, 96);  // vertically centred in the page
+  lv_obj_set_style_bg_color(b, c(col::CARD), 0);
+  lv_obj_set_style_border_color(b, c(col::BORDER), 0);
+  lv_obj_set_style_border_width(b, 1, 0);
+  lv_obj_set_style_radius(b, 18, 0);
+  lv_obj_set_style_shadow_width(b, 0, 0);
+  lv_obj_add_event_cb(b, moreTileCb, LV_EVENT_CLICKED, (void *)(intptr_t)page);
+  lv_obj_t *ic = lbl(b, &lv_font_montserrat_48, accent, sym);
+  lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, 28);
+  lv_obj_t *t = lbl(b, &lv_font_montserrat_20, col::TEXT, title);
+  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 112);
+  lv_obj_t *s = lbl(b, &lv_font_montserrat_14, col::MUTED, sub);
+  lv_obj_set_width(s, 190);
+  lv_obj_set_style_text_align(s, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_long_mode(s, LV_LABEL_LONG_WRAP);
+  lv_obj_align(s, LV_ALIGN_TOP_MID, 0, 146);
+  return s;
+}
+
+static void buildMore(lv_obj_t *p) {
+  moreTile(p, 12, PAGE_LEVEL, LV_SYMBOL_GPS, "Caravan level", "Bubble level and wheel / jockey heights", col::ACCENT);
+  gMoreAlerts = moreTile(p, 248, PAGE_ALERTS, LV_SYMBOL_BELL, "Alerts & rules", "", col::WARN);
+  moreTile(p, 484, PAGE_SETTINGS, LV_SYMBOL_SETTINGS, "Settings", "Aircon, weather location, display", col::MUTED);
+}
+
+static void updateMore() {
+  int n = app::state.alertCount;
+  if (n) setText(gMoreAlerts, "%d active alert%s", n, n == 1 ? "" : "s");
+  else setText(gMoreAlerts, "All clear. Edit alert thresholds here");
+}
 static void bannerCb(lv_event_t *) { showPage(PAGE_ALERTS); }
 
 static void buildShell() {
@@ -250,20 +300,22 @@ static void buildShell() {
   lv_obj_set_style_border_color(rail, c(col::BORDER), 0);
   lv_obj_set_style_border_width(rail, 1, 0);
   lv_obj_t *logo = lbl(rail, &lv_font_montserrat_20, col::ACCENT, LV_SYMBOL_CHARGE);
-  lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 8);
-  for (int i = 0; i < PAGE_COUNT; i++) {
+  lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 12);
+  for (int i = 0; i < NAV_COUNT; i++) {
+    int pg = kRail[i];
     lv_obj_t *b = lv_btn_create(rail);
-    lv_obj_set_size(b, 72, 58);
-    lv_obj_set_pos(b, 8, 40 + i * 62);
+    lv_obj_set_size(b, 72, 72);
+    lv_obj_set_pos(b, 8, 52 + i * 84);
+    lv_obj_set_style_pad_all(b, 0, 0);
     lv_obj_set_style_radius(b, 14, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_bg_color(b, c(col::TILE), 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
-    lv_obj_t *ic = lbl(b, &lv_font_montserrat_24, col::MUTED, kPageIcons[i]);
-    lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, 3);
-    lv_obj_t *tx = lbl(b, &lv_font_montserrat_12, col::MUTED, kPageNames[i]);
-    lv_obj_align(tx, LV_ALIGN_BOTTOM_MID, 0, -2);
-    lv_obj_add_event_cb(b, navCb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    lv_obj_t *ic = lbl(b, &lv_font_montserrat_28, col::MUTED, kPageIcons[pg]);
+    lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_t *tx = lbl(b, &lv_font_montserrat_12, col::MUTED, kPageNames[pg]);
+    lv_obj_align(tx, LV_ALIGN_BOTTOM_MID, 0, -6);
+    lv_obj_add_event_cb(b, navCb, LV_EVENT_CLICKED, (void *)(intptr_t)pg);
     gNavBtns[i] = b;
   }
 
@@ -271,6 +323,9 @@ static void buildShell() {
   lv_obj_t *bar = panel(scr, 88, 0, 712, 44);
   gTitle = lbl(bar, &lv_font_montserrat_20, col::TEXT, "Home");
   lv_obj_align(gTitle, LV_ALIGN_LEFT_MID, 16, 2);
+  lv_obj_add_flag(gTitle, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(gTitle, 10);
+  lv_obj_add_event_cb(gTitle, titleCb, LV_EVENT_CLICKED, nullptr);
   gBellCount = lbl(bar, &lv_font_montserrat_12, col::TEXT, "");
   lv_obj_set_style_bg_color(gBellCount, c(col::ALARM), 0);
   lv_obj_set_style_bg_opa(gBellCount, LV_OPA_COVER, 0);
@@ -278,6 +333,9 @@ static void buildShell() {
   lv_obj_set_style_pad_hor(gBellCount, 5, 0);
   lv_obj_align(gBellCount, LV_ALIGN_RIGHT_MID, -12, -8);
   gBell = lbl(bar, &lv_font_montserrat_20, col::DIM, LV_SYMBOL_BELL);
+  lv_obj_add_flag(gBell, LV_OBJ_FLAG_CLICKABLE);  // bell = shortcut to Alerts
+  lv_obj_set_ext_click_area(gBell, 14);
+  lv_obj_add_event_cb(gBell, bellCb, LV_EVENT_CLICKED, nullptr);
   lv_obj_align(gBell, LV_ALIGN_RIGHT_MID, -22, 2);
   gIcoCloud = lbl(bar, &lv_font_montserrat_20, col::DIM, LV_SYMBOL_UPLOAD);
   lv_obj_align(gIcoCloud, LV_ALIGN_RIGHT_MID, -62, 2);
@@ -381,6 +439,7 @@ void begin() {
   buildPower(gPages[PAGE_POWER]);
   buildWater(gPages[PAGE_WATER]);
   buildClimate(gPages[PAGE_CLIMATE]);
+  buildMore(gPages[PAGE_MORE]);
   buildLevel(gPages[PAGE_LEVEL]);
   buildAlerts(gPages[PAGE_ALERTS]);
   buildSettings(gPages[PAGE_SETTINGS]);
@@ -424,6 +483,7 @@ void loop() {
     case PAGE_LEVEL: updateLevel(); break;
     case PAGE_ALERTS: updateAlerts(); break;
     case PAGE_SETTINGS: updateSettings(); break;
+    case PAGE_MORE: updateMore(); break;
   }
   // Power page keeps a history chart even when hidden.
   if (gPage != PAGE_POWER) updatePower();

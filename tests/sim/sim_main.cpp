@@ -153,6 +153,8 @@ int main() {
   app::state.lvl.pitch = 0.6f;   // front high
   ui::showPage(ui::PAGE_LEVEL);
   shot("08-level");
+  ui::showPage(ui::PAGE_MORE);
+  shot("11-more");
 
   // An active alarm + a warning
   cv::State &s = app::state;

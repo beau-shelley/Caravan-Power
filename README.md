@@ -11,8 +11,10 @@ It talks to the BMPRO system **wirelessly through the OdysseyLink** (the same Bl
 | ![home](docs/img/01-home.png) | ![alarm](docs/img/06-home-alarm.png) |
 | **Power** (per-MPPT tracking + 30 min history) | **Water** (tanks + pump control) |
 | ![power](docs/img/02-power.png) | ![water](docs/img/03-water.png) |
-| **Climate** (temps, aircon presets, inverter) | **Alerts** (active alerts + editable rules) |
-| ![climate](docs/img/04-climate.png) | ![alerts](docs/img/05-alerts.png) |
+| **Climate** (temps, aircon presets, inverter) | **More** (Level, Alerts & rules, Settings: out of the way) |
+| ![climate](docs/img/04-climate.png) | ![more](docs/img/11-more.png) |
+| **Alerts** (active alerts + editable rules) | |
+| ![alerts](docs/img/05-alerts.png) | |
 | **Forecast** (tap the weather in the status bar) | **Level** (bubble + wheel/jockey mm) |
 | ![forecast](docs/img/09-forecast.png) | ![level](docs/img/08-level.png) |
 | **Level on your phone** (Bluetooth, + one-tap weather location) | **Weather location** (town search on the touchscreen) |
@@ -41,7 +43,7 @@ Remote dashboard (desktop and phone, dark and light):
 | Remote access over Starlink | Outbound MQTT over TLS, so it works behind Starlink CGNAT with no port forwarding |
 | Weather forecast | Current conditions in the touchscreen's status bar (on every page, including Home); tap for a 4-day forecast. Also on the dashboard. From [Open-Meteo](https://open-meteo.com) (free, no key). Location set with one tap on the phone level page, a town search on the touchscreen, or the dashboard; no GPS module needed (one is supported but optional). Forecast gusts / rain chance can trigger alerts (default: "Strong wind forecast" > 50 km/h) |
 | Caravan levelling | MPU-6050 on the hub. Bubble level + "raise left wheel 30 mm / jockey down 45 mm" on the touchscreen and **on your phone over Bluetooth** (no Wi-Fi needed). Sensor can be mounted at any angle: *Set level* + *Learn front* calibration, saved permanently |
-| Modern UI on the 7" Waveshare | LVGL 8.3 dark UI, 800×480, nav rail plus 6 pages, screen sleep with wake on alarm |
+| Modern UI on the 7" Waveshare | LVGL 8.3 dark UI, 800×480. The rail shows only everyday pages (Home, Power, Water, Climate); Level, Alerts & rules and Settings sit behind **More**. Tap the bell for alerts. Screen sleeps, wakes on alarm |
 
 ## Architecture
 
@@ -108,7 +110,7 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
    - Add the two Victron Bluetooth keys: dashboard → *Setup* → *Victron solar controllers* (see [docs/WIRING.md](docs/WIRING.md#victron-smartsolar-10050-2---bluetooth)).
    - Connect to the OdysseyLink and decode its protocol: [docs/BMPRO_INTEGRATION.md](docs/BMPRO_INTEGRATION.md). Tanks are calibrated in the Odyssey app as before.
    - Learn the aircon presets: set the Houghton remote to e.g. *Cool 22 auto*, tap *Learn preset* and press the remote's button. Repeat for each mode you use, then do *Learn OFF*.
-   - Calibrate the level sensor: *Level* page → *Set level* (and *Learn front*), see [docs/WIRING.md](docs/WIRING.md#level-sensor-mpu-6050).
+   - Calibrate the level sensor: More → *Caravan level* → *Set level* (and *Learn front*), see [docs/WIRING.md](docs/WIRING.md#level-sensor-mpu-6050).
    - Assign the temperature sensors: dashboard → *Setup* → *Find Bluetooth thermometers*, then pick Inside / Outside / Fridge for each.
 6. **Tune the alert rules** on the Alerts page (+/− thresholds) or in the dashboard (full editor). The defaults suit 12 V lithium: see `loadDefaultRules()` in [`CaravanModel.cpp`](firmware/lib/CaravanCommon/src/CaravanModel.cpp).
 7. **Remove the Trek 3** once the touchscreen shows battery, tanks and pumps from the BMPRO, and after the unplug test in the BMPRO doc passes.
@@ -157,7 +159,7 @@ Open `web/index.html?demo` in a browser to try the dashboard with fake data.
 - **Fusing:** Fuse every new 12 V feed at the source: 2 A for the hub/display (and pump-rated fuses if you use the relay fallback).
 - **Pump backup:** the Odyssey phone app keeps working alongside the hub, so you can still run the pumps if the hub is ever down.
 - **Load shedding:** Automatic actions only ever turn things **off**. Nothing is switched on without a person pressing a button.
-- **Remote control:** It can be disabled from the touchscreen (Settings → *Allow remote control*). That switch can't be changed from the cloud.
+- **Remote control:** It can be disabled from the touchscreen (More → Settings → *Allow remote control*). That switch can't be changed from the cloud.
 
 ## Credits
 
