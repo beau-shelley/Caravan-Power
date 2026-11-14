@@ -98,6 +98,9 @@ static void handleFrame(const char *line, size_t len) {
   const char *t = doc["t"] | "";
   if (!strcmp(t, "p")) {
     // poll - nothing to parse
+  } else if (!strcmp(t, "lvl")) {  // fast level update (4 Hz)
+    cv::levelFromJson(state.lvl, doc.as<JsonObjectConst>());
+    stateDirty = true;
   } else if (!strcmp(t, "state")) {
     cv::stateFromJson(state, doc.as<JsonObjectConst>());
     stateDirty = true;

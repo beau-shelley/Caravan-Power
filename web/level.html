@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<link rel="manifest" href="manifest.json">
+<title>Caravan Level</title>
+<!--
+  Phone levelling page. Connects straight to the hub over Bluetooth (Web
+  Bluetooth), so it works at a campsite with no Wi-Fi or internet.
+  Android: Chrome.  iPhone: Safari can't do Web Bluetooth - use the free "Bluefy" browser.
+  Add ?demo to preview without a hub.
+-->
+<style>
+:root { --bg:#0b1220; --card:#131c2e; --tile:#1a2438; --border:#1e293b; --text:#e2e8f0; --muted:#94a3b8;
+  --ok:#34d399; --warn:#f59e0b; --bad:#ef4444; --accent:#22d3ee; }
+* { box-sizing:border-box; }
+html, body { margin:0; background:var(--bg); color:var(--text); font:16px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+body { min-height:100vh; display:flex; flex-direction:column; padding:max(12px, env(safe-area-inset-top)) 14px 20px; gap:12px; }
+header { display:flex; align-items:center; gap:10px; }
+header h1 { font-size:18px; margin:0; flex:1; }
+.pill { font-size:12px; padding:4px 10px; border-radius:999px; background:var(--tile); color:var(--muted); }
+.pill.ok { color:var(--ok); } .pill.bad { color:var(--bad); }
+.card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:14px; }
+svg { width:100%; max-width:420px; display:block; margin:0 auto; }
+.readout { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.readout .v { font-size:24px; font-weight:650; }
+.cap { font-size:11px; letter-spacing:1.2px; color:var(--muted); text-transform:uppercase; }
+.advice { font-size:22px; font-weight:600; line-height:1.5; }
+.btn { border:0; border-radius:12px; padding:14px; font:inherit; font-weight:600; background:var(--tile); color:var(--text); width:100%; }
+.btn.primary { background:var(--accent); color:#05202a; }
+.row { display:flex; gap:10px; }
+.muted { color:var(--muted); font-size:13px; }
+input { background:var(--tile); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:10px; font:inherit; width:100%; }
+label { font-size:12px; color:var(--muted); }
+.hidden { display:none !important; }
+#bubble { transition:cx .25s, cy .25s, fill .25s; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ Caravan Level</h1>
+  <span id="conn" class="pill">Not connected</span>
+</header>
+
+<button class="btn primary" id="connect">Connect to caravan (Bluetooth)</button>
+<div id="unsupported" class="card hidden">
+  This browser can't use Bluetooth. On <b>Android</b> use Chrome. On <b>iPhone</b> install the free
+  <b>Bluefy</b> browser from the App Store and open this page in it.
+</div>
+
+<div class="card">
+  <svg viewBox="-200 -200 400 400" aria-label="Bubble level">
+    <circle r="180" fill="none" stroke="var(--border)" stroke-width="2"/>
+    <circle r="120" fill="none" stroke="var(--border)" stroke-width="2"/>
+    <circle r="60" fill="none" stroke="#475569" stroke-width="2"/>
+    <circle r="30" fill="none" stroke="var(--ok)" stroke-width="2"/>
+    <line x1="-190" y1="0" x2="190" y2="0" stroke="var(--border)"/>
+    <line x1="0" y1="-190" x2="0" y2="190" stroke="var(--border)"/>
+    <rect x="-70" y="-90" width="140" height="210" rx="16" fill="rgba(26,36,56,.55)" stroke="#475569" stroke-width="2"/>
+    <polyline points="-45,-90 0,-140 45,-90" fill="none" stroke="#475569" stroke-width="3"/>
+    <text x="0" y="-160" fill="var(--muted)" font-size="13" text-anchor="middle">▲ FRONT</text>
+    <text x="-190" y="-8" fill="var(--muted)" font-size="13">LEFT</text>
+    <text x="190" y="-8" fill="var(--muted)" font-size="13" text-anchor="end">RIGHT</text>
+    <circle id="bubble" r="20" cx="0" cy="0" fill="var(--ok)"/>
+  </svg>
+  <div class="readout" style="margin-top:8px">
+    <div><div class="cap">Side to side</div><div class="v" id="roll">--</div></div>
+    <div><div class="cap">Front to back</div><div class="v" id="pitch">--</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="cap">Adjust</div>
+  <div class="advice" id="advice">--</div>
+  <div class="muted" id="status" style="margin-top:6px"></div>
+</div>
+
+<div class="row">
+  <button class="btn" id="zero">Set level</button>
+  <button class="btn" id="front">Learn front</button>
+</div>
+
+<details class="card">
+  <summary>Caravan dimensions &amp; calibration help</summary>
+  <div class="row" style="margin-top:10px">
+    <div style="flex:1"><label>Wheel centre to centre (mm)</label><input id="track" type="number" min="500" max="4000"></div>
+    <div style="flex:1"><label>Axle to jockey wheel (mm)</label><input id="jockey" type="number" min="500" max="15000"></div>
+  </div>
+  <button class="btn" id="saveDims" style="margin-top:10px">Save dimensions</button>
+  <p class="muted"><b>Set level</b>: once, on ground you've checked with a spirit level (on the floor inside).
+  The sensor's mounting angle is then cancelled out and remembered.</p>
+  <p class="muted"><b>Learn front</b>: once, after Set level. Wind the jockey up so the front is 2-3 cm high and press it.
+  This tells the hub which way the van faces, so the sensor can be mounted any way round.</p>
+  <button class="btn" id="reset" style="margin-top:6px">Reset calibration</button>
+</details>
+
+<script>
+"use strict";
+const SVC = "8d5c0001-6b0e-4e4f-9c6a-2f1c7a4e0001";
+const DATA = "8d5c0002-6b0e-4e4f-9c6a-2f1c7a4e0001";
+const CMD = "8d5c0003-6b0e-4e4f-9c6a-2f1c7a4e0001";
+const TOL = 0.3, PX_PER_DEG = 60;
+const $ = (s) => document.querySelector(s);
+let device = null, cmdChr = null, last = null, wakeLock = null;
+
+function setConn(t, cls) { const c = $("#conn"); c.textContent = t; c.className = "pill " + (cls || ""); }
+
+function show(d) {
+  last = d;
+  if (!d.online) { $("#advice").textContent = "Level sensor not connected to the hub"; return; }
+  let bx = -d.roll * PX_PER_DEG, by = -d.pitch * PX_PER_DEG;  // bubble floats to the high side
+  const r = Math.hypot(bx, by); if (r > 180) { bx *= 180 / r; by *= 180 / r; }
+  const rollOk = Math.abs(d.roll) <= TOL, pitchOk = Math.abs(d.pitch) <= TOL;
+  const b = $("#bubble");
+  b.setAttribute("cx", bx.toFixed(1)); b.setAttribute("cy", by.toFixed(1));
+  b.setAttribute("fill", rollOk && pitchOk ? "var(--ok)" : Math.abs(d.roll) < 1 && Math.abs(d.pitch) < 1 ? "var(--warn)" : "var(--bad)");
+  $("#roll").textContent = rollOk ? `✓ ${Math.abs(d.roll).toFixed(1)}°` : `${Math.abs(d.roll).toFixed(1)}° ${d.roll < 0 ? "left" : "right"} low`;
+  $("#pitch").textContent = pitchOk ? `✓ ${Math.abs(d.pitch).toFixed(1)}°` : `${Math.abs(d.pitch).toFixed(1)}° front ${d.pitch > 0 ? "high" : "low"}`;
+  const rad = Math.PI / 180;
+  const wheel = Math.round(d.track * Math.abs(Math.tan(d.roll * rad)));
+  const jockey = Math.round(-d.jockey * Math.tan(d.pitch * rad));
+  $("#advice").innerHTML = (rollOk ? "✓ Wheels level" : `${d.roll < 0 ? "Left" : "Right"} wheel: up <b>${wheel} mm</b>`) + "<br>" +
+    (pitchOk ? "✓ Jockey level" : `Jockey: ${jockey > 0 ? "up" : "down"} <b>${Math.abs(jockey)} mm</b>`);
+  $("#status").textContent = d.calibrating ? "Calibrating - keep still…"
+    : !d.zeroed ? "⚠ Not calibrated yet: park on level ground and press Set level."
+    : !d.fwd ? "Calibrated. Do the wheels first, then the jockey." : "Calibrated (level + front). Wheels first, then jockey.";
+  if (document.activeElement !== $("#track")) $("#track").value = d.track;
+  if (document.activeElement !== $("#jockey")) $("#jockey").value = d.jockey;
+}
+
+function parse(dv) {
+  const f = dv.getUint8(4);
+  return { pitch: dv.getInt16(0, true) / 100, roll: dv.getInt16(2, true) / 100, online: !!(f & 1), zeroed: !!(f & 2),
+    fwd: !!(f & 4), calibrating: !!(f & 8), track: dv.getUint16(5, true), jockey: dv.getUint16(7, true) };
+}
+
+async function sendCmd(text) {
+  if (!cmdChr) { alert("Connect to the caravan first"); return; }
+  try { await cmdChr.writeValue(new TextEncoder().encode(text)); } catch (e) { alert("Send failed: " + e.message); }
+}
+
+async function attach() {
+  setConn("Connecting…");
+  const server = await device.gatt.connect();
+  const svc = await server.getPrimaryService(SVC);
+  const data = await svc.getCharacteristic(DATA);
+  cmdChr = await svc.getCharacteristic(CMD);
+  data.addEventListener("characteristicvaluechanged", (e) => show(parse(e.target.value)));
+  await data.startNotifications();
+  show(parse(await data.readValue()));
+  setConn("Connected", "ok");
+  $("#connect").classList.add("hidden");
+  try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {}  // keep the screen on while levelling
+}
+
+async function connect() {
+  try {
+    device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC] }] });
+    device.addEventListener("gattserverdisconnected", async () => {
+      setConn("Reconnecting…", "bad"); cmdChr = null;
+      for (let i = 0; i < 10 && !device.gatt.connected; i++) {
+        try { await attach(); } catch (e) { await new Promise((r) => setTimeout(r, 2000)); }
+      }
+      if (!device.gatt.connected) { setConn("Disconnected", "bad"); $("#connect").classList.remove("hidden"); }
+    });
+    await attach();
+  } catch (e) { setConn("Not connected", "bad"); if (e.name !== "NotFoundError") alert(e.message); }
+}
+
+$("#connect").onclick = connect;
+$("#zero").onclick = () => { if (confirm("Is the van exactly level right now (checked with a spirit level)? Keep still for 2 seconds after pressing OK.")) sendCmd("zero"); };
+$("#front").onclick = () => { if (confirm("Wind the jockey UP so the front is 2-3 cm higher than level, then press OK.")) sendCmd("front"); };
+$("#reset").onclick = () => { if (confirm("Forget the level calibration?")) sendCmd("reset"); };
+$("#saveDims").onclick = () => sendCmd(`dims:${Math.round(+$("#track").value)},${Math.round(+$("#jockey").value)}`);
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && device?.gatt.connected) { try { wakeLock = await navigator.wakeLock?.request("screen"); } catch (e) {} }
+});
+
+if (new URLSearchParams(location.search).has("demo")) {
+  setConn("Demo", "ok"); $("#connect").classList.add("hidden");
+  let t = 0; setInterval(() => { t += 0.05; show({ pitch: 0.6 * Math.cos(t), roll: -0.9 * Math.cos(t * 0.7), online: true, zeroed: true, fwd: true, track: 1900, jockey: 4500 }); }, 200);
+  cmdChr = { writeValue: async (v) => alert("Demo: " + new TextDecoder().decode(v)) };
+} else if (!navigator.bluetooth) {
+  $("#unsupported").classList.remove("hidden"); $("#connect").classList.add("hidden");
+}
+// Works offline at the campsite once opened once with internet.
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>

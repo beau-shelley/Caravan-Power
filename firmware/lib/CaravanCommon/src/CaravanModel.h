@@ -77,6 +77,15 @@ struct Aircon {
   int8_t preset = -1;   // -1 = off / unknown
 };
 
+// Caravan level (MPU-6050 on the hub). pitch + = front high, roll + = left high.
+struct Level {
+  bool online = false;
+  bool zeroed = false;      // "Set level" done
+  bool fwdLearned = false;  // "Learn front" done
+  float pitch = 0, roll = 0;
+  uint16_t trackMm = 1900, jockeyMm = 4500;
+};
+
 enum Severity : uint8_t { SEV_INFO = 0, SEV_WARN = 1, SEV_ALARM = 2 };
 
 struct ActiveAlert {
@@ -99,6 +108,7 @@ struct State {
   Pump pump[NUM_PUMPS];
   Inverter inv;
   Aircon ac;
+  Level lvl;
   uint8_t alertCount = 0;
   ActiveAlert alerts[MAX_ACTIVE_ALERTS];
   bool wifi = false, cloud = false;
@@ -180,6 +190,8 @@ struct Meta {
   bool tankCal = false;  // true when tanks are wired taps that need calibrating
   char fw[16] = "1.0.0";
 };
+void levelToJson(const Level &l, JsonObject o);
+void levelFromJson(Level &l, JsonObjectConst o);
 void metaToJson(const Meta &m, JsonObject o);
 void metaFromJson(Meta &m, JsonObjectConst o);
 

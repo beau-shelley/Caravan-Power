@@ -11,6 +11,7 @@
 #include "VeDirect.h"
 #include "VictronBle.h"
 #include "BleSensors.h"
+#include "Leveling.h"
 
 static int failures = 0, checks = 0;
 #define CHECK(cond)                                                 \
@@ -340,7 +341,78 @@ static void testBleSensors() {
   CHECK(!decodeBleManufacturerData("Phone", tp, sizeof(tp), r));
 }
 
+// Rotation matrix helpers for the levelling test.
+struct Mat3 {
+  float m[3][3];
+};
+static Mat3 rotXYZ(float ax, float ay, float az) {
+  float cx = cosf(ax), sx = sinf(ax), cy = cosf(ay), sy = sinf(ay), cz = cosf(az), sz = sinf(az);
+  // R = Rz * Ry * Rx
+  return {{{cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx},
+           {sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx},
+           {-sy, cy * sx, cy * cx}}};
+}
+static Vec3 mul(const Mat3 &R, Vec3 v) {
+  return {R.m[0][0] * v.x + R.m[0][1] * v.y + R.m[0][2] * v.z,
+          R.m[1][0] * v.x + R.m[1][1] * v.y + R.m[1][2] * v.z,
+          R.m[2][0] * v.x + R.m[2][1] * v.y + R.m[2][2] * v.z};
+}
+// What the accelerometer reads (1 g, pointing up) for a van whose slope is
+// pitch/roll degrees, with the sensor mounted at rotation M.
+static Vec3 reading(const Mat3 &M, float pitchDeg, float rollDeg) {
+  const float d2r = 3.14159265f / 180.f;
+  Vec3 upBody{tanf(pitchDeg * d2r), tanf(rollDeg * d2r), 1};
+  float l = sqrtf(upBody.x * upBody.x + upBody.y * upBody.y + upBody.z * upBody.z);
+  upBody = {upBody.x / l, upBody.y / l, upBody.z / l};
+  Vec3 r = mul(M, upBody);
+  return {r.x * 16384, r.y * 16384, r.z * 16384};  // raw LSB scale doesn't matter
+}
+
+static void testLeveling() {
+  // 1) Sensor mounted almost square (3 deg / -2 deg tilt, 4 deg yaw): zero only.
+  Mat3 M = rotXYZ(0.052f, -0.035f, 0.07f);
+  LevelCal cal;
+  levelSetZero(cal, reading(M, 0, 0));
+  CHECK(cal.zeroed && !cal.fwdLearned);
+  LevelAngles a = levelCompute(cal, reading(M, 0, 0));
+  NEAR(a.pitchDeg, 0, 0.01f);
+  NEAR(a.rollDeg, 0, 0.01f);
+  a = levelCompute(cal, reading(M, 1.5f, -2.0f));
+  NEAR(a.pitchDeg, 1.5f, 0.15f);  // small yaw error only, before learning front
+  NEAR(a.rollDeg, -2.0f, 0.15f);
+
+  // 2) Sensor mounted sideways and upside-down-ish: needs "learn front".
+  Mat3 W = rotXYZ(2.6f, 0.4f, -1.9f);
+  LevelCal c2;
+  levelSetZero(c2, reading(W, 0, 0));
+  CHECK(!levelLearnFront(c2, reading(W, 0.2f, 0)));  // too small a lift
+  CHECK(levelLearnFront(c2, reading(W, 2.5f, 0)));
+  for (float p : {-4.0f, 0.0f, 0.7f, 3.0f})
+    for (float r : {-3.0f, 0.0f, 1.2f}) {
+      a = levelCompute(c2, reading(W, p, r));
+      NEAR(a.pitchDeg, p, 0.01f);
+      NEAR(a.rollDeg, r, 0.01f);
+    }
+  // Re-zeroing keeps the learned forward direction.
+  levelSetZero(c2, reading(W, 0, 0));
+  CHECK(c2.fwdLearned);
+  a = levelCompute(c2, reading(W, 2.0f, -1.0f));
+  NEAR(a.pitchDeg, 2.0f, 0.01f);
+  NEAR(a.rollDeg, -1.0f, 0.01f);
+
+  // 3) Advice: left side 1 deg low on a 1900 mm track -> raise left ~33 mm;
+  //    nose 0.5 deg high with 4500 mm axle-to-jockey -> lower jockey ~39 mm.
+  LevelAngles t;
+  t.rollDeg = -1.0f;
+  t.pitchDeg = 0.5f;
+  LevelAdvice adv = levelAdvice(t, 1900, 4500);
+  CHECK(adv.raiseLeft);
+  NEAR(adv.wheelMm, 33.2f, 0.2f);
+  NEAR(adv.jockeyMm, -39.3f, 0.2f);
+}
+
 int main() {
+  testLeveling();
   testBleSensors();
   testVictronBle();
   testVeDirect();

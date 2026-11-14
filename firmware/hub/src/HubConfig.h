@@ -2,6 +2,7 @@
 #pragma once
 #include <Arduino.h>
 #include "CaravanModel.h"
+#include "Leveling.h"
 
 enum SwitchMode : uint8_t {
   SW_LATCH = 0,   // relay held closed while "on" (parallel / diode-OR with BMPRO output)
@@ -29,6 +30,13 @@ struct VictronCfg {
 };
 
 enum TempSource : uint8_t { TEMP_WIRED = 0, TEMP_BLE = 1 };
+
+struct LevelCfg {
+  bool zeroed = false;
+  cv::LevelCal cal;
+  uint16_t trackMm = 1900;   // between wheel centres
+  uint16_t jockeyMm = 4500;  // axle to jockey wheel
+};
 
 struct TankCal {
   float emptyMv = 300;   // ADS1115 reading (after divider) with tank empty
@@ -72,6 +80,7 @@ struct HubConfig {
   PumpCfg pumps[cv::NUM_PUMPS];
   InverterCfg inverter;
   VictronCfg victron[cv::NUM_SOLAR];
+  LevelCfg level;
   char tempAddr[cv::NUM_TEMPS][17] = {};  // DS18B20 ROM as hex, "" = auto-assign
   uint8_t tempSrc[cv::NUM_TEMPS] = {TEMP_WIRED, TEMP_WIRED, TEMP_WIRED};
   char tempBle[cv::NUM_TEMPS][18] = {};   // Bluetooth thermometer address per role

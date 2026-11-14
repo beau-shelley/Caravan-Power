@@ -226,6 +226,8 @@ void stateToJson(const State &s, JsonObject o) {
   ac["on"] = s.ac.on;
   ac["pre"] = s.ac.preset;
 
+  levelToJson(s.lvl, o["lvl"].to<JsonObject>());
+
   JsonArray al = o["alerts"].to<JsonArray>();
   for (int i = 0; i < s.alertCount && i < MAX_ACTIVE_ALERTS; i++) {
     const ActiveAlert &x = s.alerts[i];
@@ -307,6 +309,8 @@ void stateFromJson(State &s, JsonObjectConst o) {
   s.ac.on = o["ac"]["on"] | false;
   s.ac.preset = o["ac"]["pre"] | -1;
 
+  if (o["lvl"].is<JsonObjectConst>()) levelFromJson(s.lvl, o["lvl"]);
+
   JsonArrayConst al = o["alerts"];
   s.alertCount = 0;
   for (JsonObjectConst j : al) {
@@ -369,6 +373,27 @@ void rulesFromJson(RuleSet &rs, JsonArrayConst a) {
     Rule r;
     if (ruleFromJson(r, o)) rs.upsert(r);
   }
+}
+
+// Also used on its own as the fast 5 Hz {"t":"lvl"} frame on the RS485 link.
+void levelToJson(const Level &l, JsonObject o) {
+  o["on"] = l.online;
+  o["z"] = l.zeroed;
+  o["f"] = l.fwdLearned;
+  o["p"] = r2(l.pitch);
+  o["r"] = r2(l.roll);
+  o["tr"] = l.trackMm;
+  o["jk"] = l.jockeyMm;
+}
+
+void levelFromJson(Level &l, JsonObjectConst o) {
+  l.online = o["on"] | false;
+  l.zeroed = o["z"] | false;
+  l.fwdLearned = o["f"] | false;
+  l.pitch = o["p"] | 0.0f;
+  l.roll = o["r"] | 0.0f;
+  l.trackMm = o["tr"] | l.trackMm;
+  l.jockeyMm = o["jk"] | l.jockeyMm;
 }
 
 void metaToJson(const Meta &m, JsonObject o) {

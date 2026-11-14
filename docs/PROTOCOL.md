@@ -30,6 +30,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `inv` | `on`, `ac` (240 V present) |
 | `ac` | `on`, `pre` preset index |
 | `alerts[]` | `id`, `sev` (0 info, 1 warn, 2 alarm), `ack`, `since`, `val`, `msg` |
+| `lvl` | `on`, `z` (level set), `f` (front learned), `p` pitch ° (+ front high), `r` roll ° (+ left high), `tr` track mm, `jk` axle-to-jockey mm. Also sent alone as `{"t":"lvl",…}` 4×/s on RS485 |
 | `net` | `wifi`, `cloud`, `ip` |
 
 ## Commands (`{"c": …}`)
@@ -49,6 +50,10 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `tank_cal` | `i`, `point` (`empty`/`full`), optional `mv` | omit `mv` to use the current reading |
 | `soc_set` | `soc` | |
 | `sensors` / `sensor_assign` | `addr`, `role` | wired DS18B20 role mapping |
+| `level_zero` | | "Set level": averages 2 s and saves the mounting angle |
+| `level_front` | | "Learn front": with the front lifted 2-3 cm |
+| `level_reset`, `level_status` | | forget calibration / last calibration result |
+| `level_dims` | `track`, `jockey` (mm) | wheel spacing, axle-to-jockey distance |
 | `ble_sensors` | | Bluetooth thermometers in range (temp, battery, signal, assigned role) |
 | `temp_set` | `role`, `src` (0 wired, 1 Bluetooth), `addr` | assign a Bluetooth thermometer to inside/outside/fridge |
 | `remote_control` | `on` | **not accepted from the cloud** |
@@ -77,3 +82,12 @@ Actions: `none aircon_off inverter_off pumps_off`.
 - `inv`: `mode`, `pulse`, `sense`
 - `tsrc[]` (0 wired, 1 Bluetooth per role), `tble[]` (Bluetooth address per role)
 - `tempAddr[]`, `cloudInt` s, `buzzer`, `bmproExplorer` (verbose Bluetooth logging)
+
+## Bluetooth level service (hub as peripheral, used by `web/level.html`)
+
+| UUID | Access | Content |
+|---|---|---|
+| `8d5c0001-6b0e-4e4f-9c6a-2f1c7a4e0001` | service | advertised by `caravan-hub` |
+| `8d5c0002-…-2f1c7a4e0001` | read / notify (5 Hz) | 9 bytes LE: int16 pitch×100, int16 roll×100, uint8 flags (1 sensor ok, 2 level set, 4 front learned, 8 calibrating), uint16 track mm, uint16 jockey mm |
+| `8d5c0003-…-2f1c7a4e0001` | write | text: `zero`, `front`, `reset`, `dims:<track>,<jockey>` |
+

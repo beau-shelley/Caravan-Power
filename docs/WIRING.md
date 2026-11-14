@@ -27,6 +27,7 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 | 1 | 12 V opto-isolator board (PC817) | inverter on sense |
 | 1 | 940 nm IR LED + 2N2222/BC337 + 33 Ω, TSOP38238 receiver | aircon |
 | 1 | Active buzzer 3–5 V + NPN | local alarm |
+| 1 | MPU-6050 (GY-521) module | caravan levelling |
 | — | Fuses/holders, ferrules, heatshrink, enclosure | 2 A for the electronics |
 
 Only needed for the wired fallbacks: VE.Direct pigtails (solar), ADS1115 + 3 dividers (tanks), INA226 + 300 A shunt (battery), relays + Schottky diodes + opto (pumps).
@@ -39,7 +40,7 @@ Only needed for the wired fallbacks: VE.Direct pigtails (solar), ADS1115 + 3 div
 | 44 (RX) | RS485 RO | MAX3485 RO |
 | 42 | RS485 DE+RE | MAX3485 DE and /RE tied together |
 | 17 / 16 | VE.Direct #1 / #2 RX | *fallback only* |
-| 8 / 9 | I²C SDA / SCL | *fallback only:* ADS1115 (0x48), INA226 (0x40 / 0x41) |
+| 8 / 9 | I²C SDA / SCL | MPU-6050 level sensor (0x68); *fallbacks:* ADS1115 (0x48), INA226 (0x40 / 0x41) |
 | 4 | 1-Wire | all DS18B20 data lines + 4.7 kΩ pull-up to 3V3 |
 | 10 | Pump 1 relay | *fallback only* |
 | 11 | Pump 2 relay | *fallback only* |
@@ -163,6 +164,33 @@ TSOP38238: VS ── 3V3, GND ── GND, OUT ── GPIO6
 Aim the IR LED at the aircon's receiver window (on the ceiling unit). A little reflection off the ceiling is usually enough. Mount the TSOP receiver somewhere you can point the original remote at while learning.
 
 IR is one-way: the hub only knows what it last sent. If someone uses the original remote, the screen will be out of step until the next touchscreen command.
+
+## Level sensor (MPU-6050)
+
+The MPU-6050 (usually sold as a "GY-521" board) shares the hub's I²C bus:
+
+```
+GY-521 VCC ── 3V3      GND ── GND      SDA ── GPIO8      SCL ── GPIO9      (AD0 unconnected = 0x68)
+```
+
+**Mounting:**
+- **Screw it down solid:** bolt it to the van structure, either inside the hub's enclosure or on a floor or wall panel. A board dangling on its wires gives a wandering reading.
+- **Any angle is fine:** it doesn't need to be level or square to the van, because calibration cancels the mounting angle out.
+- **Keep the wires short:** under ~30 cm of I²C cable. If the sensor has to sit further away, use shielded or twisted wire.
+- **Easiest option:** if you can, point the board's printed **X arrow** towards the front (hitch). Then *Learn front* is optional.
+
+**Calibrating** (once; it's saved and survives reboots):
+1. **Set level:** park somewhere you've checked is level with a spirit level on the floor inside, in both directions, then press **Set level** on the touchscreen's *Level* page or the phone. Keep still for 2 seconds.
+2. **Learn front** (needed if the sensor isn't roughly square to the van): wind the jockey up so the front is 2–3 cm high, then press **Learn front**. The hub learns which way the van faces from the direction the reading moves.
+3. **Enter dimensions:** the distance between the wheel centres and from the axle to the jockey wheel. These turn angles into "raise the left wheel 30 mm" (phone page → *Caravan dimensions*).
+
+**Using it:** the touchscreen *Level* page and the phone page both show a bubble that floats to the high side, plus how many millimetres to raise a wheel (onto ramps or blocks) and to wind the jockey up or down. Do the wheels first, then the jockey.
+
+**On your phone, over Bluetooth** (no Wi-Fi or internet needed at the site):
+- **Android:** open `level.html` in **Chrome**.
+- **iPhone:** Safari can't use Web Bluetooth, so open it in the free **Bluefy** browser.
+
+Host the page with GitHub Pages (see [CLOUD_SETUP.md](CLOUD_SETUP.md)). Open it once while you have internet and it's cached for offline use, and *Add to Home Screen* makes it an app icon. Tap **Connect** and pick `caravan-hub`.
 
 ## Buzzer
 

@@ -34,7 +34,7 @@ Any MQTT broker with TLS and WebSockets works: Mosquitto on a VPS, EMQX Cloud, o
 
 `web/index.html` is a single file with no build step. Host it either way:
 
-- **GitHub Pages:** *Settings* → *Pages* → deploy from the branch, folder `/web`, then open `https://<you>.github.io/<repo>/`.
+- **GitHub Pages:** *Settings* → *Pages* → deploy from the branch, folder `/web`, then open `https://<you>.github.io/<repo>/`. The levelling page is at `…/level.html`. It needs HTTPS for Bluetooth, which GitHub Pages provides, and it's cached for offline use after the first visit.
 - **Any static host,** or simply open the file on your laptop.
 
 Open it, go to **Setup** → *Cloud connection*, and enter:

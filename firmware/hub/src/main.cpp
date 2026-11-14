@@ -16,6 +16,7 @@
 #include "Outputs.h"
 #include "VictronBle.h"
 #include "BleTempRx.h"
+#include "LevelSensor.h"
 #include "VictronBleRx.h"
 #include "pins.h"
 
@@ -144,7 +145,7 @@ static void onAlert(const cv::AlertEngine::Event &ev, void *) {
 // One handler for every client (touchscreen, local web, cloud). Messages look
 // like {"c":"pump","i":0,"on":true}. See docs/PROTOCOL.md for the full list.
 static bool isMutating(const char *c) {
-  static const char *readOnly[] = {"state", "hello", "rules_get", "sensors", "bmpro_log", "victron_seen", "ble_sensors",
+  static const char *readOnly[] = {"state", "hello", "rules_get", "sensors", "bmpro_log", "victron_seen", "ble_sensors", "level_status",
                                    "bmpro_devices", "ac_learn_status", "ping"};
   for (auto r : readOnly)
     if (strcmp(c, r) == 0) return false;
@@ -303,6 +304,23 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     configChanged();
     startSolar(i);
     reply["t"] = "ok";
+  // ---------------- levelling
+  } else if (!strcmp(c, "level_zero")) {
+    gLevel.startZero();
+    reply["t"] = "level";
+    reply["msg"] = "Measuring - keep still for 2 seconds";
+  } else if (!strcmp(c, "level_front")) {
+    gLevel.startLearnFront();
+    reply["t"] = "level";
+    reply["msg"] = gConfig.level.zeroed ? "Measuring - keep still for 2 seconds" : "Set level first";
+  } else if (!strcmp(c, "level_reset")) {
+    gLevel.resetCalibration();
+  } else if (!strcmp(c, "level_dims")) {
+    gLevel.setDims(cmd["track"] | gConfig.level.trackMm, cmd["jockey"] | gConfig.level.jockeyMm);
+  } else if (!strcmp(c, "level_status")) {
+    reply["t"] = "level";
+    reply["msg"] = gLevel.lastResult();
+
   } else if (!strcmp(c, "ble_sensors")) {
     // Lists Bluetooth thermometers in range (starts listening if needed).
     startBleTemps();
@@ -491,6 +509,7 @@ void setup() {
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 400000);
   gTemps.begin(PIN_ONEWIRE);
   if (gConfig.tankSource == TANK_ADC) gTanks.begin();
+  gLevel.begin();
   gShunt.begin();
 
   gPump[0].begin("pump1", PIN_PUMP1_OUT, PIN_PUMP1_SENSE);
@@ -523,6 +542,7 @@ void loop() {
       else gState.solar[i].online = false;
     }
     gTemps.poll(gState);
+    gLevel.loop(gState);
     if (gBleTempsOn) gBleTemps.poll(gState);
     if (gConfig.tankSource == TANK_ADC) gTanks.poll(gState);
     gShunt.poll(gState, now);

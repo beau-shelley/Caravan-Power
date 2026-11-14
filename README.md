@@ -13,6 +13,8 @@ It talks to the BMPRO system **wirelessly through the OdysseyLink** (the same Bl
 | ![power](docs/img/02-power.png) | ![water](docs/img/03-water.png) |
 | **Climate** (temps, aircon presets, inverter) | **Alerts** (active alerts + editable rules) |
 | ![climate](docs/img/04-climate.png) | ![alerts](docs/img/05-alerts.png) |
+| **Level** (bubble + wheel/jockey mm) | **Level on your phone** (Bluetooth) |
+| ![level](docs/img/08-level.png) | <img src="docs/img/web-level.png" width="240"> |
 
 Remote dashboard (desktop and phone, dark and light):
 
@@ -35,6 +37,7 @@ Remote dashboard (desktop and phone, dark and light):
 | Inverter control | Relay on the Powertech remote port (pulse or latch), with a 240 V output sense |
 | Air-con control | Learns IR codes from the Houghton remote and replays them (up to 8 presets plus OFF) |
 | Remote access over Starlink | Outbound MQTT over TLS, so it works behind Starlink CGNAT with no port forwarding |
+| Caravan levelling | MPU-6050 on the hub. Bubble level + "raise left wheel 30 mm / jockey down 45 mm" on the touchscreen and **on your phone over Bluetooth** (no Wi-Fi needed). Sensor can be mounted at any angle: *Set level* + *Learn front* calibration, saved permanently |
 | Modern UI on the 7" Waveshare | LVGL 8.3 dark UI, 800×480, nav rail plus 6 pages, screen sleep with wake on alarm |
 
 ## Architecture
@@ -50,7 +53,8 @@ Remote dashboard (desktop and phone, dark and light):
  │  Bluetooth ))))) SmartSolar 100/50 #1, #2 (Instant Readout)                            │
  │  Bluetooth ))))) thermometers: fridge / outside / inside (or 1-Wire DS18B20 probes)     │
  │  Relay ── inverter remote      Opto ── inverter 240 V present                          │
- │  IR LED / IR receiver ── Houghton aircon                                               │
+ │  IR LED / IR receiver ── Houghton aircon        I²C ── MPU-6050 level sensor           │
+ │  Bluetooth level service ))))) phone level page (web/level.html)                       │
  │  Local web UI http://caravan.local  +  WebSocket                                       │
  │  (optional wired fallbacks: VE.Direct, INA226 shunt, ADS1115 tank taps, pump relays)   │
  └──────────────────────────────┬─────────────────────────────────────────────────────────┘
@@ -74,6 +78,7 @@ firmware/
   hub/                 PlatformIO project - ESP32-S3 hub
   display/             PlatformIO project - Waveshare ESP32-S3-Touch-LCD-7
 web/index.html         dashboard (local + cloud), single file, no build step
+web/level.html         phone levelling page (Web Bluetooth straight to the hub, works offline)
 tests/                 host unit tests (make -C tests) + UI simulator (tests/sim)
 docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 ```
@@ -99,6 +104,7 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
    - Add the two Victron Bluetooth keys: dashboard → *Setup* → *Victron solar controllers* (see [docs/WIRING.md](docs/WIRING.md#victron-smartsolar-10050-2---bluetooth)).
    - Connect to the OdysseyLink and decode its protocol: [docs/BMPRO_INTEGRATION.md](docs/BMPRO_INTEGRATION.md). Tanks are calibrated in the Odyssey app as before.
    - Learn the aircon presets: set the Houghton remote to e.g. *Cool 22 auto*, tap *Learn preset* and press the remote's button. Repeat for each mode you use, then do *Learn OFF*.
+   - Calibrate the level sensor: *Level* page → *Set level* (and *Learn front*), see [docs/WIRING.md](docs/WIRING.md#level-sensor-mpu-6050).
    - Assign the temperature sensors: dashboard → *Setup* → *Find Bluetooth thermometers*, then pick Inside / Outside / Fridge for each.
 6. **Tune the alert rules** on the Alerts page (+/− thresholds) or in the dashboard (full editor). The defaults suit 12 V lithium: see `loadDefaultRules()` in [`CaravanModel.cpp`](firmware/lib/CaravanCommon/src/CaravanModel.cpp).
 7. **Remove the Trek 3** once the touchscreen shows battery, tanks and pumps from the BMPRO, and after the unplug test in the BMPRO doc passes.
@@ -112,6 +118,7 @@ All of them at once, comfortably:
 | 2 × Victron SmartSolar | broadcasts (listen only) | none beyond the scan |
 | 2-4 × thermometers | broadcasts (listen only) | none beyond the scan |
 | BMPRO OdysseyLink | **one** connection | a single link, the only one the hub keeps open |
+| Phones on the level page | the hub *accepts* the connection | up to 2 at once, only while levelling |
 
 **Broadcast devices** need no connection. One continuous scan hears every one of them, whether there are 2 or 20. Each advert is checked against the Victron, thermometer and BMPRO decoders in microseconds. The scan keeps no results in memory, so a busy caravan park full of phones and earbuds doesn't fill up RAM.
 
@@ -133,7 +140,7 @@ All of them at once, comfortably:
 ```sh
 git clone --depth 1 -b v7.2.1  https://github.com/bblanchon/ArduinoJson ../ArduinoJson
 git clone --depth 1 -b v8.3.11 https://github.com/lvgl/lvgl ../lvgl
-make -C tests                 # 118 unit checks under ASan/UBSan: Bluetooth thermometer formats, Victron
+make -C tests                 # 155 unit checks under ASan/UBSan: levelling maths, Bluetooth thermometers, Victron
                               # BLE decrypt (incl. FIPS-197 AES vector), VE.Direct, alerts, JSON, SoC, RS485
 make -C tests/sim             # builds the real display UI against LVGL and renders every page to PNG
 ```

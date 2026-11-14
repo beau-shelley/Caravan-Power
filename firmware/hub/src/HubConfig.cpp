@@ -67,6 +67,19 @@ void HubConfig::toJson(JsonObject o) const {
 
   JsonArray ta = o["tempAddr"].to<JsonArray>();
   for (auto &a : tempAddr) ta.add(a);
+  JsonObject lv = o["lvl"].to<JsonObject>();
+  lv["zeroed"] = level.zeroed;
+  lv["fwd"] = level.cal.fwdLearned;
+  JsonArray u = lv["up"].to<JsonArray>();
+  u.add(level.cal.up.x);
+  u.add(level.cal.up.y);
+  u.add(level.cal.up.z);
+  JsonArray f = lv["f"].to<JsonArray>();
+  f.add(level.cal.fwd.x);
+  f.add(level.cal.fwd.y);
+  f.add(level.cal.fwd.z);
+  lv["track"] = level.trackMm;
+  lv["jockey"] = level.jockeyMm;
   JsonArray ts = o["tsrc"].to<JsonArray>();
   for (auto v : tempSrc) ts.add(v);
   JsonArray tb = o["tble"].to<JsonArray>();
@@ -130,6 +143,18 @@ void HubConfig::fromJson(JsonObjectConst o) {
   }
   for (int i = 0; i < cv::NUM_TEMPS; i++)
     if (o["tempAddr"][i].is<const char *>()) copyStr(tempAddr[i], sizeof(tempAddr[i]), o["tempAddr"][i]);
+  JsonObjectConst lv = o["lvl"];
+  if (!lv.isNull()) {
+    level.zeroed = lv["zeroed"] | false;
+    level.cal.zeroed = level.zeroed;
+    level.cal.fwdLearned = lv["fwd"] | false;
+    if (lv["up"].size() == 3)
+      level.cal.up = {lv["up"][0].as<float>(), lv["up"][1].as<float>(), lv["up"][2].as<float>()};
+    if (lv["f"].size() == 3)
+      level.cal.fwd = {lv["f"][0].as<float>(), lv["f"][1].as<float>(), lv["f"][2].as<float>()};
+    level.trackMm = lv["track"] | level.trackMm;
+    level.jockeyMm = lv["jockey"] | level.jockeyMm;
+  }
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
     tempSrc[i] = o["tsrc"][i] | tempSrc[i];
     if (o["tble"][i].is<const char *>()) copyStr(tempBle[i], sizeof(tempBle[i]), o["tble"][i]);

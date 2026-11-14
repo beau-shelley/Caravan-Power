@@ -135,7 +135,17 @@ void DisplayLink::loop(const cv::State &s) {
     send(doc);
   } else if ((int32_t)(now - nextPollMs_) >= 0) {
     nextPollMs_ = now + 250;
-    write("{\"t\":\"p\"}", 9);
+    if (s.lvl.online) {
+      // The poll slot carries the level reading, so the touchscreen's level
+      // page updates 4x a second instead of once.
+      JsonDocument doc;
+      JsonObject o = doc.to<JsonObject>();
+      o["t"] = "lvl";
+      cv::levelToJson(s.lvl, o);
+      send(doc);
+    } else {
+      write("{\"t\":\"p\"}", 9);
+    }
   }
 }
 

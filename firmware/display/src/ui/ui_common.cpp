@@ -211,9 +211,9 @@ static lv_obj_t *gBanner, *gBannerText, *gBannerBtn;
 static int gPage = -1;
 static int gSleepMin = 5;
 
-static const char *kPageNames[PAGE_COUNT] = {"Home", "Power", "Water", "Climate", "Alerts", "Settings"};
-static const char *kPageIcons[PAGE_COUNT] = {LV_SYMBOL_HOME, LV_SYMBOL_CHARGE, LV_SYMBOL_LOOP,
-                                             LV_SYMBOL_SHUFFLE, LV_SYMBOL_BELL, LV_SYMBOL_SETTINGS};
+static const char *kPageNames[PAGE_COUNT] = {"Home", "Power", "Water", "Climate", "Level", "Alerts", "Settings"};
+static const char *kPageIcons[PAGE_COUNT] = {LV_SYMBOL_HOME, LV_SYMBOL_CHARGE, LV_SYMBOL_LOOP, LV_SYMBOL_SHUFFLE,
+                                             LV_SYMBOL_GPS, LV_SYMBOL_BELL, LV_SYMBOL_SETTINGS};
 
 int sleepMinutes() { return gSleepMin; }
 
@@ -250,19 +250,19 @@ static void buildShell() {
   lv_obj_set_style_border_color(rail, c(col::BORDER), 0);
   lv_obj_set_style_border_width(rail, 1, 0);
   lv_obj_t *logo = lbl(rail, &lv_font_montserrat_20, col::ACCENT, LV_SYMBOL_CHARGE);
-  lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 12);
+  lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 8);
   for (int i = 0; i < PAGE_COUNT; i++) {
     lv_obj_t *b = lv_btn_create(rail);
-    lv_obj_set_size(b, 72, 66);
-    lv_obj_set_pos(b, 8, 46 + i * 72);
+    lv_obj_set_size(b, 72, 58);
+    lv_obj_set_pos(b, 8, 40 + i * 62);
     lv_obj_set_style_radius(b, 14, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_bg_color(b, c(col::TILE), 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
     lv_obj_t *ic = lbl(b, &lv_font_montserrat_24, col::MUTED, kPageIcons[i]);
-    lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, 6);
+    lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, 3);
     lv_obj_t *tx = lbl(b, &lv_font_montserrat_12, col::MUTED, kPageNames[i]);
-    lv_obj_align(tx, LV_ALIGN_BOTTOM_MID, 0, -4);
+    lv_obj_align(tx, LV_ALIGN_BOTTOM_MID, 0, -2);
     lv_obj_add_event_cb(b, navCb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     gNavBtns[i] = b;
   }
@@ -379,6 +379,7 @@ void begin() {
   buildPower(gPages[PAGE_POWER]);
   buildWater(gPages[PAGE_WATER]);
   buildClimate(gPages[PAGE_CLIMATE]);
+  buildLevel(gPages[PAGE_LEVEL]);
   buildAlerts(gPages[PAGE_ALERTS]);
   buildSettings(gPages[PAGE_SETTINGS]);
   showPage(PAGE_HOME);
@@ -400,6 +401,7 @@ static void replyHandler(JsonObjectConst m) {
   if (!strcmp(t, "err")) toast(m["msg"] | "Error", col::ALARM);
   else if (!strcmp(t, "ac_learn")) handleLearnReply(m);
   else if (!strcmp(t, "tank_cal")) toast("Tank calibration saved", col::CHARGE);
+  else if (!strcmp(t, "level")) toast(m["msg"] | "", col::ACCENT);
 }
 
 void loop() {
@@ -415,6 +417,7 @@ void loop() {
     case PAGE_POWER: updatePower(); break;
     case PAGE_WATER: updateWater(); break;
     case PAGE_CLIMATE: updateClimate(); break;
+    case PAGE_LEVEL: updateLevel(); break;
     case PAGE_ALERTS: updateAlerts(); break;
     case PAGE_SETTINGS: updateSettings(); break;
   }

@@ -134,6 +134,11 @@ int main() {
   shot("03-water");
   ui::showPage(ui::PAGE_CLIMATE);
   shot("04-climate");
+  app::state.lvl.online = app::state.lvl.zeroed = app::state.lvl.fwdLearned = true;
+  app::state.lvl.roll = -0.9f;   // left (door side) low
+  app::state.lvl.pitch = 0.6f;   // front high
+  ui::showPage(ui::PAGE_LEVEL);
+  shot("08-level");
 
   // An active alarm + a warning
   cv::State &s = app::state;

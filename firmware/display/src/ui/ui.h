@@ -9,7 +9,7 @@
 
 namespace ui {
 
-enum Page { PAGE_HOME, PAGE_POWER, PAGE_WATER, PAGE_CLIMATE, PAGE_ALERTS, PAGE_SETTINGS, PAGE_COUNT };
+enum Page { PAGE_HOME, PAGE_POWER, PAGE_WATER, PAGE_CLIMATE, PAGE_LEVEL, PAGE_ALERTS, PAGE_SETTINGS, PAGE_COUNT };
 
 void begin();   // build everything
 void loop();    // refresh widgets from app:: model (call often; cheap if nothing changed)
@@ -54,6 +54,8 @@ void buildWater(lv_obj_t *p);
 void updateWater();
 void buildClimate(lv_obj_t *p);
 void updateClimate();
+void buildLevel(lv_obj_t *p);
+void updateLevel();
 void buildAlerts(lv_obj_t *p);
 void updateAlerts();
 void buildSettings(lv_obj_t *p);
