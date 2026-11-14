@@ -21,6 +21,10 @@ NimBLECharacteristic *gDataChr = nullptr;
 // Commands written by a phone arrive on the NimBLE task; hand them to loop().
 volatile uint8_t gPendingCmd = 0;  // 1 zero, 2 front, 3 reset, 4 dims
 volatile uint16_t gPendingTrack = 0, gPendingJockey = 0;
+portMUX_TYPE gLocLock = portMUX_INITIALIZER_UNLOCKED;
+bool gLocPending = false;
+float gLocLat = 0, gLocLon = 0;
+char gLocName[24] = "";
 
 class CmdCb : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic *c) override {
@@ -28,7 +32,19 @@ class CmdCb : public NimBLECharacteristicCallbacks {
     if (v == "zero") gPendingCmd = 1;
     else if (v == "front") gPendingCmd = 2;
     else if (v == "reset") gPendingCmd = 3;
-    else if (v.rfind("dims:", 0) == 0) {  // "dims:1900,4500"
+    else if (v.rfind("loc:", 0) == 0) {  // "loc:-32.6012,149.5867,Mudgee NSW"
+      float lat, lon;
+      int used = 0;
+      if (sscanf(v.c_str() + 4, "%f,%f%n", &lat, &lon, &used) == 2) {
+        const char *rest = v.c_str() + 4 + used;
+        portENTER_CRITICAL(&gLocLock);
+        gLocLat = lat;
+        gLocLon = lon;
+        snprintf(gLocName, sizeof(gLocName), "%s", *rest == ',' ? rest + 1 : "");
+        gLocPending = true;
+        portEXIT_CRITICAL(&gLocLock);
+      }
+    } else if (v.rfind("dims:", 0) == 0) {  // "dims:1900,4500"
       unsigned t = 0, j = 0;
       if (sscanf(v.c_str() + 5, "%u,%u", &t, &j) == 2) {
         gPendingTrack = t;
@@ -78,6 +94,20 @@ bool LevelSensor::readAccel(float &x, float &y, float &z) {
   y = v[1];
   z = v[2];
   return true;
+}
+
+bool LevelSensor::takeLocation(float &lat, float &lon, char *name, size_t n) {
+  bool got = false;
+  portENTER_CRITICAL(&gLocLock);
+  if (gLocPending) {
+    gLocPending = false;
+    lat = gLocLat;
+    lon = gLocLon;
+    snprintf(name, n, "%s", gLocName);
+    got = true;
+  }
+  portEXIT_CRITICAL(&gLocLock);
+  return got;
 }
 
 void LevelSensor::startZero() {

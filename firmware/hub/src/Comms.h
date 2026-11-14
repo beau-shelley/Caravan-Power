@@ -28,6 +28,8 @@ class DisplayLink {
   void send(JsonDocument &doc);
   void requestStateSoon() { nextStateMs_ = 0; }
   void pushConfigSoon() { configDirty_ = true; }  // names/rules changed elsewhere
+  // Queue a message for the display from another task (hold StateLock).
+  void queueReply(const String &json) { pending_ = json; }
   bool displayOnline() const { return lastRxMs_ && millis() - lastRxMs_ < 10000; }
 
  private:
@@ -35,6 +37,7 @@ class DisplayLink {
   int de_ = -1;
   uint32_t nextStateMs_ = 0, nextPollMs_ = 0, lastRxMs_ = 0;
   volatile bool configDirty_ = false;
+  String pending_;
   void write(const char *buf, size_t n);
 };
 

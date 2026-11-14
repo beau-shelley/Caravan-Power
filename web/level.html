@@ -82,6 +82,8 @@ label { font-size:12px; color:var(--muted); }
   <button class="btn" id="front">Learn front</button>
 </div>
 
+<button class="btn" id="setLoc">📍 Set weather location here</button>
+
 <details class="card">
   <summary>Caravan dimensions &amp; calibration help</summary>
   <div class="row" style="margin-top:10px">
@@ -172,6 +174,24 @@ async function connect() {
 $("#connect").onclick = connect;
 $("#zero").onclick = () => { if (confirm("Is the van exactly level right now (checked with a spirit level)? Keep still for 2 seconds after pressing OK.")) sendCmd("zero"); };
 $("#front").onclick = () => { if (confirm("Wind the jockey UP so the front is 2-3 cm higher than level, then press OK.")) sendCmd("front"); };
+// Phone GPS works without internet; the hub fetches the forecast once it's online.
+$("#setLoc").onclick = () => {
+  if (!cmdChr) { alert("Connect to the caravan first"); return; }
+  if (!navigator.geolocation) { alert("This browser has no location access"); return; }
+  $("#setLoc").textContent = "📍 Getting location…";
+  navigator.geolocation.getCurrentPosition(async (p) => {
+    const lat = p.coords.latitude.toFixed(4), lon = p.coords.longitude.toFixed(4);
+    let name = "";
+    try {  // optional friendly name if the phone has internet
+      const ctl = new AbortController(); setTimeout(() => ctl.abort(), 4000);
+      const r = await (await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`, { signal: ctl.signal })).json();
+      name = [r.locality || r.city, r.principalSubdivisionCode?.split("-")[1]].filter(Boolean).join(" ").replace(/,/g, " ").slice(0, 23);
+    } catch (e) {}
+    await sendCmd(`loc:${lat},${lon}${name ? "," + name : ""}`);
+    $("#setLoc").textContent = `📍 Weather location set${name ? ": " + name : ""}`;
+  }, (e) => { $("#setLoc").textContent = "📍 Set weather location here"; alert("Location error: " + e.message); },
+  { enableHighAccuracy: false, timeout: 20000, maximumAge: 600000 });
+};
 $("#reset").onclick = () => { if (confirm("Forget the level calibration?")) sendCmd("reset"); };
 $("#saveDims").onclick = () => sendCmd(`dims:${Math.round(+$("#track").value)},${Math.round(+$("#jockey").value)}`);
 document.addEventListener("visibilitychange", async () => {

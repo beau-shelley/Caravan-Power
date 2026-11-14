@@ -12,7 +12,55 @@ namespace hub {
 
 WeatherClient gWeather;
 
+void WeatherClient::search(const char *q) {
+  StateLock l;
+  snprintf(query_, sizeof(query_), "%s", q ? q : "");
+}
+
+void WeatherClient::runSearch() {
+  char q[48];
+  {
+    StateLock l;
+    memcpy(q, query_, sizeof(q));
+    query_[0] = 0;
+  }
+  JsonDocument out;
+  out["t"] = "loc_results";
+  JsonArray list = out["list"].to<JsonArray>();
+  char path[200];
+  cv::geocodePath(path, sizeof(path), q);
+  WiFiClientSecure tls;
+  tls.setCACert(WEB_ROOTS_PEM);
+  HTTPClient http;
+  http.setTimeout(15000);
+  int code = -1;
+  if (WiFi.status() == WL_CONNECTED && http.begin(tls, String("https://geocoding-api.open-meteo.com") + path)) {
+    code = http.GET();
+    if (code == 200) {
+      JsonDocument in;
+      if (!deserializeJson(in, http.getString())) {
+        for (JsonObjectConst r : in["results"].as<JsonArrayConst>()) {
+          JsonObject o = list.add<JsonObject>();
+          char name[24];
+          snprintf(name, sizeof(name), "%s %s", r["name"] | "", cv::auStateAbbrev(r["admin1"] | ""));
+          o["name"] = name;
+          o["area"] = r["admin2"] | "";  // council area, helps tell duplicates apart
+          o["lat"] = r["latitude"] | 0.0f;
+          o["lon"] = r["longitude"] | 0.0f;
+        }
+      }
+    }
+    http.end();
+  }
+  if (code != 200) out["err"] = WiFi.status() == WL_CONNECTED ? "Search failed - try again" : "No internet connection";
+  String s;
+  serializeJson(out, s);
+  StateLock l;
+  gLink.queueReply(s);
+}
+
 void WeatherClient::loop(cv::State &s) {
+  if (query_[0]) runSearch();
   if (WiFi.status() != WL_CONNECTED || time(nullptr) < 1700000000) return;
 
   float lat, lon;

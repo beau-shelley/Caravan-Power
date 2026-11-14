@@ -119,7 +119,11 @@ void DisplayLink::loop(const cv::State &s) {
     }
   }
   uint32_t now = millis();
-  if (configDirty_) {
+  if (pending_.length()) {  // e.g. town search results from the network task
+    write(pending_.c_str(), pending_.length());
+    pending_ = "";
+    nextPollMs_ = now + 250;
+  } else if (configDirty_) {
     configDirty_ = false;
     JsonDocument doc;
     JsonDocument cmd;

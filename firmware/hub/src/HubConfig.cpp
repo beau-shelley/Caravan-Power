@@ -155,6 +155,8 @@ void HubConfig::fromJson(JsonObjectConst o) {
     location.lon = loc["lon"] | location.lon;
     if (loc["name"].is<const char *>()) copyStr(location.name, sizeof(location.name), loc["name"]);
   }
+  meta.locSrc = location.src;
+  copyStr(meta.locName, sizeof(meta.locName), location.name);
   JsonObjectConst lv = o["lvl"];
   if (!lv.isNull()) {
     level.zeroed = lv["zeroed"] | false;

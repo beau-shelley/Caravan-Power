@@ -152,6 +152,31 @@ void weatherFromJson(Weather &w, JsonObjectConst o) {
   }
 }
 
+const char *auStateAbbrev(const char *a) {
+  static const char *map[][2] = {{"New South Wales", "NSW"}, {"Victoria", "VIC"}, {"Queensland", "QLD"},
+                                 {"South Australia", "SA"}, {"Western Australia", "WA"}, {"Tasmania", "TAS"},
+                                 {"Northern Territory", "NT"}, {"Australian Capital Territory", "ACT"}};
+  if (!a) return "";
+  for (auto &m : map)
+    if (!strcmp(a, m[0])) return m[1];
+  return a;
+}
+
+void geocodePath(char *buf, size_t n, const char *q) {
+  int k = snprintf(buf, n, "/v1/search?count=6&language=en&countryCode=AU&name=");
+  static const char hex[] = "0123456789ABCDEF";
+  for (const unsigned char *p = (const unsigned char *)q; *p && k + 4 < (int)n; p++) {
+    if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '.') {
+      buf[k++] = (char)*p;
+    } else {  // percent-encode everything else (spaces, apostrophes, UTF-8)
+      buf[k++] = '%';
+      buf[k++] = hex[*p >> 4];
+      buf[k++] = hex[*p & 15];
+    }
+  }
+  buf[k] = 0;
+}
+
 // ---------------------------------------------------------------- NMEA
 static int hexv(char c) {
   if (c >= '0' && c <= '9') return c - '0';

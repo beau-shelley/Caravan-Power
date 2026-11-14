@@ -39,6 +39,29 @@ static bool gGpsOn = false;
 static uint32_t gGpsFixMs = 0;
 static bool gBleTempsOn = false;
 
+static void configChanged();
+
+// Sets the weather location (phone, town search or GPS) and refreshes the forecast.
+static bool applyLocation(float lat, float lon, const char *name, uint8_t src, const char **why) {
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180 || (lat == 0 && lon == 0)) {
+    if (why) *why = "bad coordinates";
+    return false;
+  }
+  if (src != cv::LOC_GPS && gGpsOn && gGpsFixMs && millis() - gGpsFixMs < 600000) {
+    if (why) *why = "The GPS has a fix - it sets the location automatically";
+    return false;
+  }
+  LocationCfg &loc = gConfig.location;
+  loc.src = src;
+  loc.lat = lat;
+  loc.lon = lon;
+  snprintf(loc.name, sizeof(loc.name), "%s", name ? name : "");
+  gConfig.meta.locSrc = src;
+  memcpy(gConfig.meta.locName, loc.name, sizeof(loc.name));
+  gWeather.refreshSoon();
+  return true;
+}
+
 // GPS fixes update the weather location (saved only after moving > 5 km, so
 // the last known spot survives a reboot without wearing out the flash).
 static void gpsLoop(uint32_t now) {
@@ -49,12 +72,8 @@ static void gpsLoop(uint32_t now) {
     LocationCfg &loc = gConfig.location;
     float lat = (float)gGps.lat(), lon = (float)gGps.lon();
     if (loc.src != cv::LOC_GPS || cv::distanceKm(lat, lon, loc.lat, loc.lon) > 5) {
-      loc.src = cv::LOC_GPS;
-      loc.lat = lat;
-      loc.lon = lon;
-      loc.name[0] = 0;
-      gConfig.save();
-      gWeather.refreshSoon();
+      applyLocation(lat, lon, "", cv::LOC_GPS, nullptr);
+      configChanged();
       Serial.printf("[gps] location %.4f, %.4f\n", lat, lon);
     }
   }
@@ -336,18 +355,17 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   // ---------------- weather location
   } else if (!strcmp(c, "location_set")) {
     // {"c":"location_set","lat":-32.6,"lon":149.6,"name":"Mudgee NSW","src":2}
-    float lat = cmd["lat"] | 999.0f, lon = cmd["lon"] | 999.0f;
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return replyErr(reply, "bad coordinates");
-    if (gGpsOn && gGpsFixMs && millis() - gGpsFixMs < 600000)
-      return replyErr(reply, "The GPS has a fix - it sets the location automatically");
-    LocationCfg &loc = gConfig.location;
-    loc.src = cmd["src"] | (uint8_t)cv::LOC_MANUAL;
-    loc.lat = lat;
-    loc.lon = lon;
-    snprintf(loc.name, sizeof(loc.name), "%s", cmd["name"] | "");
-    gConfig.save();
-    gWeather.refreshSoon();
+    const char *why = nullptr;
+    if (!applyLocation(cmd["lat"] | 999.0f, cmd["lon"] | 999.0f, cmd["name"] | "",
+                       cmd["src"] | (uint8_t)cv::LOC_MANUAL, &why))
+      return replyErr(reply, why);
+    configChanged();
     reply["t"] = "ok";
+  } else if (!strcmp(c, "location_search")) {
+    // Town search for the touchscreen; results arrive as {"t":"loc_results"}.
+    const char *q = cmd["q"] | "";
+    if (strlen(q) < 2) return replyErr(reply, "Type at least 2 letters");
+    gWeather.search(q);
   } else if (!strcmp(c, "weather_refresh")) {
     gWeather.refreshSoon();
 
@@ -595,6 +613,15 @@ void loop() {
     }
     gTemps.poll(gState);
     gLevel.loop(gState);
+    {
+      float lat, lon;
+      char name[24];
+      const char *why = nullptr;
+      if (gLevel.takeLocation(lat, lon, name, sizeof(name))) {
+        if (applyLocation(lat, lon, name, cv::LOC_PHONE, &why)) configChanged();
+        else Serial.printf("[loc] phone location refused: %s\n", why);
+      }
+    }
     gpsLoop(now);
     if (gBleTempsOn) gBleTemps.poll(gState);
     if (gConfig.tankSource == TANK_ADC) gTanks.poll(gState);

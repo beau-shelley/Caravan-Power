@@ -43,6 +43,11 @@ const char *wxEmoji(uint8_t code, bool isDay);    // for the web dashboard
 void weatherToJson(const Weather &w, JsonObject o);
 void weatherFromJson(Weather &w, JsonObjectConst o);
 
+// "New South Wales" -> "NSW" (other names returned unchanged).
+const char *auStateAbbrev(const char *admin1);
+// Open-Meteo place search path (append to https://geocoding-api.open-meteo.com).
+void geocodePath(char *buf, size_t n, const char *query);
+
 // ---------------------------------------------------------------- GPS
 // Minimal NMEA 0183 reader: $xxRMC sentences (any talker: GP, GN, GL...).
 class NmeaParser {

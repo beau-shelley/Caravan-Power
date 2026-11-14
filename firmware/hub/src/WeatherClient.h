@@ -11,11 +11,15 @@ class WeatherClient {
  public:
   void loop(cv::State &s);       // call from the network task
   void refreshSoon() { force_ = true; }
+  // Town search for the touchscreen (results are sent to the display).
+  void search(const char *query);
 
  private:
   uint32_t nextMs_ = 0;
   float lastLat_ = 0, lastLon_ = 0;
   bool force_ = true;
+  char query_[48] = "";
+  void runSearch();
 };
 
 extern WeatherClient gWeather;

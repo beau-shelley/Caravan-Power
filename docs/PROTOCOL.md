@@ -52,6 +52,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `soc_set` | `soc` | |
 | `sensors` / `sensor_assign` | `addr`, `role` | wired DS18B20 role mapping |
 | `location_set` | `lat`, `lon`, `name`, `src` (2 phone, 3 manual) | weather location (refused while a GPS has a fix) |
+| `location_search` | `q` | town search via the hub (used by the touchscreen); reply `{"t":"loc_results","list":[{name,area,lat,lon}]}` |
 | `weather_refresh` | | fetch the forecast now |
 | `level_zero` | | "Set level": averages 2 s and saves the mounting angle |
 | `level_front` | | "Learn front": with the front lifted 2-3 cm |
@@ -93,5 +94,5 @@ Actions: `none aircon_off inverter_off pumps_off`.
 |---|---|---|
 | `8d5c0001-6b0e-4e4f-9c6a-2f1c7a4e0001` | service | advertised by `caravan-hub` |
 | `8d5c0002-…-2f1c7a4e0001` | read / notify (5 Hz) | 9 bytes LE: int16 pitch×100, int16 roll×100, uint8 flags (1 sensor ok, 2 level set, 4 front learned, 8 calibrating), uint16 track mm, uint16 jockey mm |
-| `8d5c0003-…-2f1c7a4e0001` | write | text: `zero`, `front`, `reset`, `dims:<track>,<jockey>` |
+| `8d5c0003-…-2f1c7a4e0001` | write | text: `zero`, `front`, `reset`, `dims:<track>,<jockey>`, `loc:<lat>,<lon>[,<name>]` (weather location) |
 

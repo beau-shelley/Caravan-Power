@@ -209,7 +209,7 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
       </div>
       <div class="card span6" style="--dot:var(--water)">
         <div class="cap">Weather location</div>
-        <p class="muted small" id="locInfo">A GPS module on the hub sets this automatically. Otherwise use your phone's location or search for a town.</p>
+        <p class="muted small" id="locInfo">Use your phone's location or search for a town. (Also on the touchscreen: Settings → Weather location, and the phone level page.)</p>
         <div class="row"><button class="btn" id="locPhone">Use this phone's location</button></div>
         <div class="row" style="margin-top:8px"><input id="locQuery" placeholder="Town, e.g. Mudgee"><button class="btn" id="locSearch">Search</button></div>
         <div id="locResults" style="margin-top:6px"></div>
@@ -300,13 +300,13 @@ function wxIcon(c, day = true) {
   return c >= 51 ? "🌧️" : "☁️";
 }
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const LOC_SRC = ["", "GPS", "phone", "manual"];
+const LOC_SRC = ["", "GPS", "phone", "town search"];
 function renderWeather() {
   const w = S.wx;
   $("#wxCard").classList.toggle("hidden", !w || !w.ok);
   if (!w || !w.ok) { $("#locInfo").textContent = "No location set yet - the forecast appears once one is set."; return; }
   $("#wxPlace").textContent = `${w.pl || ""}${w.pl ? " · " : ""}${LOC_SRC[w.src] || ""} location`;
-  $("#locInfo").textContent = `Current: ${w.pl || "unnamed spot"} (${LOC_SRC[w.src]}). A GPS on the hub overrides this automatically.`;
+  $("#locInfo").textContent = `Current: ${w.pl || "unnamed spot"} (${LOC_SRC[w.src]}).`;
   $("#wx").innerHTML = `<div class="now"><span class="ico">${wxIcon(w.c, w.day)}</span><div><div class="big">${Math.round(w.t)}°</div>
       <div class="muted small">${WX_TEXT[w.c] || ""} · wind ${Math.round(w.w)} km/h, gusts ${Math.round(w.g)}</div></div></div>` +
     w.d.map(([c, wd, mx, mn, rp, mm, g], i) => `<div class="day"><b>${i === 0 ? "Today" : DAYS[wd] || "--"}</b><div class="ico" style="font-size:26px">${wxIcon(c)}</div>

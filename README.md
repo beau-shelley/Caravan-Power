@@ -15,8 +15,8 @@ It talks to the BMPRO system **wirelessly through the OdysseyLink** (the same Bl
 | ![climate](docs/img/04-climate.png) | ![alerts](docs/img/05-alerts.png) |
 | **Forecast** (tap the weather in the status bar) | **Level** (bubble + wheel/jockey mm) |
 | ![forecast](docs/img/09-forecast.png) | ![level](docs/img/08-level.png) |
-| **Level on your phone** (Bluetooth) | |
-| <img src="docs/img/web-level.png" width="240"> | |
+| **Level on your phone** (Bluetooth, + one-tap weather location) | **Weather location** (town search on the touchscreen) |
+| <img src="docs/img/web-level.png" width="240"> | ![location](docs/img/10-location-search.png) |
 
 Remote dashboard (desktop and phone, dark and light):
 
@@ -39,7 +39,7 @@ Remote dashboard (desktop and phone, dark and light):
 | Inverter control | Relay on the Powertech remote port (pulse or latch), with a 240 V output sense |
 | Air-con control | Learns IR codes from the Houghton remote and replays them (up to 8 presets plus OFF) |
 | Remote access over Starlink | Outbound MQTT over TLS, so it works behind Starlink CGNAT with no port forwarding |
-| Weather forecast | Current conditions in the touchscreen's status bar (on every page, including Home); tap for a 4-day forecast. Also on the dashboard. From [Open-Meteo](https://open-meteo.com) (free, no key). Location from an optional GPS module on the hub (follows you as you travel), your phone, or a town search. Forecast gusts / rain chance can trigger alerts (default: "Strong wind forecast" > 50 km/h) |
+| Weather forecast | Current conditions in the touchscreen's status bar (on every page, including Home); tap for a 4-day forecast. Also on the dashboard. From [Open-Meteo](https://open-meteo.com) (free, no key). Location set with one tap on the phone level page, a town search on the touchscreen, or the dashboard; no GPS module needed (one is supported but optional). Forecast gusts / rain chance can trigger alerts (default: "Strong wind forecast" > 50 km/h) |
 | Caravan levelling | MPU-6050 on the hub. Bubble level + "raise left wheel 30 mm / jockey down 45 mm" on the touchscreen and **on your phone over Bluetooth** (no Wi-Fi needed). Sensor can be mounted at any angle: *Set level* + *Learn front* calibration, saved permanently |
 | Modern UI on the 7" Waveshare | LVGL 8.3 dark UI, 800×480, nav rail plus 6 pages, screen sleep with wake on alarm |
 
@@ -57,7 +57,7 @@ Remote dashboard (desktop and phone, dark and light):
  │  Bluetooth ))))) thermometers: fridge / outside / inside (or 1-Wire DS18B20 probes)     │
  │  Relay ── inverter remote      Opto ── inverter 240 V present                          │
  │  IR LED / IR receiver ── Houghton aircon        I²C ── MPU-6050 level sensor           │
- │  UART ── optional GPS module (weather location)   HTTPS ── Open-Meteo forecast         │
+ │  HTTPS ── Open-Meteo forecast (location from phone / town search)                      │
  │  Bluetooth level service ))))) phone level page (web/level.html)                       │
  │  Local web UI http://caravan.local  +  WebSocket                                       │
  │  (optional wired fallbacks: VE.Direct, INA226 shunt, ADS1115 tank taps, pump relays)   │
@@ -144,7 +144,7 @@ All of them at once, comfortably:
 ```sh
 git clone --depth 1 -b v7.2.1  https://github.com/bblanchon/ArduinoJson ../ArduinoJson
 git clone --depth 1 -b v8.3.11 https://github.com/lvgl/lvgl ../lvgl
-make -C tests                 # 179 unit checks under ASan/UBSan: weather + GPS parsing, levelling maths, Bluetooth thermometers, Victron
+make -C tests                 # 182 unit checks under ASan/UBSan: weather + GPS parsing, levelling maths, Bluetooth thermometers, Victron
                               # BLE decrypt (incl. FIPS-197 AES vector), VE.Direct, alerts, JSON, SoC, RS485
 make -C tests/sim             # builds the real display UI against LVGL and renders every page to PNG
 ```

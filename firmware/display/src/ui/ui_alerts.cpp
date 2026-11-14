@@ -257,33 +257,35 @@ void handleLearnReply(JsonObjectConst m) {
   }
 }
 
+// Generic on-screen keyboard prompt.
+static void (*kbDone)(const char *text) = nullptr;
+
 static void kbEventCb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
   if (code == LV_EVENT_READY) {
-    String name = lv_textarea_get_text(kbTa);
+    String text = lv_textarea_get_text(kbTa);
     lv_obj_del(kbModal);
     kbModal = nullptr;
-    if (name.length() == 0) name = "Preset";
-    startLearn(learnSlot, name.c_str());
+    if (kbDone) kbDone(text.c_str());
   } else if (code == LV_EVENT_CANCEL) {
     lv_obj_del(kbModal);
     kbModal = nullptr;
   }
 }
 
-static void askName(int slot, const char *initial) {
-  learnSlot = slot;
+static void askText(const char *title, const char *initial, int maxLen, void (*done)(const char *)) {
+  kbDone = done;
   kbModal = lv_obj_create(lv_layer_top());
   lv_obj_set_size(kbModal, 800, 480);
   lv_obj_set_pos(kbModal, 0, 0);
   lv_obj_set_style_bg_color(kbModal, c(col::BG), 0);
   lv_obj_set_style_bg_opa(kbModal, LV_OPA_90, 0);
   lv_obj_set_style_border_width(kbModal, 0, 0);
-  lv_obj_t *t = lbl(kbModal, &lv_font_montserrat_20, col::TEXT, "Name this aircon preset (e.g. Cool 22 auto)");
+  lv_obj_t *t = lbl(kbModal, &lv_font_montserrat_20, col::TEXT, title);
   lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 10);
   kbTa = lv_textarea_create(kbModal);
   lv_textarea_set_one_line(kbTa, true);
-  lv_textarea_set_max_length(kbTa, 15);
+  lv_textarea_set_max_length(kbTa, maxLen);
   lv_textarea_set_text(kbTa, initial);
   lv_obj_set_width(kbTa, 420);
   lv_obj_align(kbTa, LV_ALIGN_TOP_MID, 0, 50);
@@ -292,6 +294,86 @@ static void askName(int slot, const char *initial) {
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_keyboard_set_textarea(kb, kbTa);
   lv_obj_add_event_cb(kb, kbEventCb, LV_EVENT_ALL, nullptr);
+}
+
+static void learnNameDone(const char *name) { startLearn(learnSlot, name[0] ? name : "Preset"); }
+static void askName(int slot, const char *initial) {
+  learnSlot = slot;
+  askText("Name this aircon preset (e.g. Cool 22 auto)", initial, 15, learnNameDone);
+}
+
+// ---------------- weather location (town search, no GPS needed)
+static lv_obj_t *sLocLbl, *locBox;
+
+static void locSearchDone(const char *q) {
+  if (strlen(q) < 2) return;
+  JsonDocument d;
+  d["c"] = "location_search";
+  d["q"] = q;
+  app::send(d);
+  toast("Searching...", col::ACCENT);
+}
+static void locSearchCb(lv_event_t *) { askText("Town or place name (e.g. Mudgee)", "", 40, locSearchDone); }
+
+struct LocChoice {
+  float lat, lon;
+  char name[24];
+};
+static LocChoice locChoices[6];
+
+static void closeLocBox(lv_event_t *) {
+  if (locBox) lv_obj_del_async(locBox);  // may be called from one of its own buttons
+  locBox = nullptr;
+}
+static void locPickCb(lv_event_t *e) {
+  const LocChoice *ch = (const LocChoice *)lv_event_get_user_data(e);
+  JsonDocument d;
+  d["c"] = "location_set";
+  d["lat"] = ch->lat;
+  d["lon"] = ch->lon;
+  d["name"] = ch->name;
+  d["src"] = 3;
+  app::send(d);
+  toast("Weather location set - forecast updating", col::CHARGE);
+  closeLocBox(nullptr);
+}
+
+void handleLocResults(JsonObjectConst m) {
+  closeLocBox(nullptr);
+  if (m["err"].is<const char *>()) {
+    toast(m["err"], col::WARN);
+    return;
+  }
+  JsonArrayConst list = m["list"];
+  if (list.size() == 0) {
+    toast("No places found - check the spelling", col::WARN);
+    return;
+  }
+  size_t n = list.size() > 6 ? 6 : list.size();
+  locBox = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(locBox, 520, 128 + 54 * n);
+  lv_obj_center(locBox);
+  lv_obj_set_style_bg_color(locBox, c(col::CARD), 0);
+  lv_obj_set_style_border_color(locBox, c(col::WATER), 0);
+  lv_obj_set_style_border_width(locBox, 2, 0);
+  lv_obj_set_style_radius(locBox, 16, 0);
+  lv_obj_set_flex_flow(locBox, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(locBox, 6, 0);
+  lbl(locBox, &lv_font_montserrat_16, col::MUTED, "Pick your location");
+  int i = 0;
+  for (JsonObjectConst r : list) {
+    if (i >= 6) break;
+    LocChoice &ch = locChoices[i++];
+    ch.lat = r["lat"] | 0.0f;
+    ch.lon = r["lon"] | 0.0f;
+    snprintf(ch.name, sizeof(ch.name), "%s", r["name"] | "");
+    char label[64];
+    const char *area = r["area"] | "";
+    snprintf(label, sizeof(label), "%s%s%s", ch.name, area[0] ? "  -  " : "", area);
+    lv_obj_t *b = button(locBox, 488, 46, label, col::TILE, locPickCb, &ch);
+    lv_obj_set_style_text_font(lv_obj_get_child(b, 0), &lv_font_montserrat_14, 0);
+  }
+  button(locBox, 488, 40, "Cancel", col::BG, closeLocBox);
 }
 
 static void learnNewCb(lv_event_t *) {
@@ -390,6 +472,15 @@ void buildSettings(lv_obj_t *p) {
                        "Set the remote to the mode/temp/fan you want, then press its button when asked.");
   lv_obj_set_pos(hint, 0, 76);
 
+  // ---- weather location
+  lv_obj_t *w = settingsCard(col, "WEATHER LOCATION", 96, col::WATER);
+  sLocLbl = lbl(w, &lv_font_montserrat_16, col::TEXT, "Not set");
+  lv_obj_set_pos(sLocLbl, 0, 30);
+  lv_obj_t *wl = lbl(w, &lv_font_montserrat_12, col::MUTED, "Or tap \"Set weather location here\" on the phone level page.");
+  lv_obj_set_pos(wl, 0, 56);
+  lv_obj_t *ws = button(w, 170, 40, LV_SYMBOL_GPS " Search town", col::TILE, locSearchCb);
+  lv_obj_align(ws, LV_ALIGN_TOP_RIGHT, 0, 22);
+
   // ---- tank calibration
   lv_obj_t *t = settingsCard(col, "WATER TANK CALIBRATION", 70 + cv::NUM_TANKS * 46, col::WATER);
   sTankCard = t;  // hidden when levels come from the BMPRO (calibrated there)
@@ -425,6 +516,10 @@ void updateSettings() {
       opts += app::meta.acPresetName[i];
     }
     lv_dropdown_set_options(sPresetDd, opts.length() ? opts.c_str() : "(none)");
+    static const char *srcName[] = {"", "GPS", "phone", "town search"};
+    if (app::meta.locSrc) setText(sLocLbl, "%s  (%s)", app::meta.locName[0] ? app::meta.locName : "Unnamed spot",
+                                  srcName[app::meta.locSrc & 3]);
+    else setText(sLocLbl, "Not set - no forecast yet");
     if (app::meta.tankCal) lv_obj_clear_flag(sTankCard, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(sTankCard, LV_OBJ_FLAG_HIDDEN);
     if (app::meta.remoteControl) lv_obj_add_state(sRemote, LV_STATE_CHECKED);

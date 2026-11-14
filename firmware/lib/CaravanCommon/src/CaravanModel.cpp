@@ -420,6 +420,8 @@ void metaToJson(const Meta &m, JsonObject o) {
   o["cap"] = m.batCapacityAh;
   o["rc"] = m.remoteControl;
   o["tcal"] = m.tankCal;
+  o["ls"] = m.locSrc;
+  o["ln"] = m.locName;
   o["fw"] = m.fw;
 }
 
@@ -442,6 +444,8 @@ void metaFromJson(Meta &m, JsonObjectConst o) {
   m.batCapacityAh = o["cap"] | m.batCapacityAh;
   m.remoteControl = o["rc"] | m.remoteControl;
   m.tankCal = o["tcal"] | m.tankCal;
+  m.locSrc = o["ls"] | m.locSrc;
+  if (o["ln"].is<const char *>()) copyStr(m.locName, sizeof(m.locName), o["ln"]);
   copyStr(m.fw, sizeof(m.fw), o["fw"] | m.fw);
 }
 

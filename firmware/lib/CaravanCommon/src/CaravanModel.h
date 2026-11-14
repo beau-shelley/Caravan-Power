@@ -190,6 +190,8 @@ struct Meta {
   uint8_t acPresetCount = 0;
   char acPresetName[MAX_AC_PRESETS][16] = {};
   float batCapacityAh = 300;
+  uint8_t locSrc = 0;      // weather location source (see LocationSource)
+  char locName[24] = "";   // weather location name
   bool remoteControl = true;
   bool tankCal = false;  // true when tanks are wired taps that need calibrating
   char fw[16] = "1.0.0";

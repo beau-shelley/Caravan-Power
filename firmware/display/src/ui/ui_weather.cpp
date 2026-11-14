@@ -39,7 +39,7 @@ static void closeOverlay(lv_event_t *) {
 static void openOverlay(lv_event_t *) {
   const cv::Weather &w = app::state.wx;
   if (!w.valid) {
-    toast("No forecast yet. Set the location in the dashboard (Setup) or fit a GPS.", col::WARN);
+    toast("No forecast yet. Set the location: Settings > Weather location.", col::WARN);
     return;
   }
   closeOverlay(nullptr);

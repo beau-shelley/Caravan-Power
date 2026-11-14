@@ -15,6 +15,10 @@ static uint32_t gNow = 1000;
 extern "C" uint32_t millis(void) { return gNow; }
 extern "C" void delay(uint32_t ms) { gNow += ms; }
 
+namespace ui {
+void handleLocResults(JsonObjectConst m);
+}
+
 namespace board {
 void begin() {}
 void backlight(bool) {}
@@ -97,6 +101,8 @@ static void demoData() {
   parseOpenMeteo(wxJson, strlen(wxJson), s.wx);
   s.wx.updated = s.ts - 12 * 60;
   strcpy(s.wx.place, "Mudgee NSW");
+  app::meta.locSrc = 3;
+  strcpy(app::meta.locName, "Mudgee NSW");
 
   Meta &m = app::meta;
   m.acPresetCount = 5;
@@ -170,6 +176,17 @@ int main() {
   s.temp[cv::TEMP_FRIDGE].c = 3.4f;
   ui::showPage(ui::PAGE_SETTINGS);
   shot("07-settings");
+  {
+    JsonDocument r;
+    deserializeJson(r, R"({"t":"loc_results","list":[{"name":"Mudgee NSW","area":"Mid-Western Regional","lat":-32.6,"lon":149.59},
+      {"name":"Mudgeeraba QLD","area":"Gold Coast","lat":-28.08,"lon":153.36}]})");
+    ui::handleLocResults(r.as<JsonObjectConst>());
+    shot("10-location-search");
+    JsonDocument none;  // closes the picker (empty result list)
+    deserializeJson(none, R"({"t":"loc_results","list":[]})");
+    ui::handleLocResults(none.as<JsonObjectConst>());
+    gNow += 5000;
+  }
   ui::showPage(ui::PAGE_HOME);
   ui::openWeatherForTest();
   shot("09-forecast");

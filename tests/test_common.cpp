@@ -473,6 +473,11 @@ static void testWeather() {
   CHECK(!feed("$GNRMC,051231.00,A,3236.0720,S,14935.2020,E,0.02,,141126,,,A*00\r\n"));  // bad checksum
   CHECK(!feed(withSum("GPGGA,051231.00,3236.0720,S,14935.2020,E,1,08,1.0,450.0,M,,M,,").c_str()));
   NEAR(distanceKm(-33.8688f, 151.2093f, -37.8136f, 144.9631f), 713.4f, 3.0f);  // Sydney-Melbourne
+  CHECK(!strcmp(auStateAbbrev("New South Wales"), "NSW"));
+  CHECK(!strcmp(auStateAbbrev("Somewhere"), "Somewhere"));
+  char gp[160];
+  geocodePath(gp, sizeof(gp), "Port Macquarie's");
+  CHECK(!strcmp(gp, "/v1/search?count=6&language=en&countryCode=AU&name=Port%20Macquarie%27s"));
 }
 
 int main() {

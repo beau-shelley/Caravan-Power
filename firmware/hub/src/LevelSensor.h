@@ -17,6 +17,8 @@ class LevelSensor {
   void setDims(uint16_t trackMm, uint16_t jockeyMm);
   const char *lastResult() const { return result_; }
   bool online() const { return ok_; }
+  // Location sent by the phone level page ("Set weather location here").
+  bool takeLocation(float &lat, float &lon, char *name, size_t n);
 
  private:
   bool ok_ = false;

@@ -396,7 +396,8 @@ void setSleepMinutes(int m) {
   p.end();
 }
 
-void handleLearnReply(JsonObjectConst m);  // ui_settings
+void handleLearnReply(JsonObjectConst m);  // ui_alerts.cpp
+void handleLocResults(JsonObjectConst m);  // ui_alerts.cpp
 
 static void replyHandler(JsonObjectConst m) {
   const char *t = m["t"] | "";
@@ -404,6 +405,7 @@ static void replyHandler(JsonObjectConst m) {
   else if (!strcmp(t, "ac_learn")) handleLearnReply(m);
   else if (!strcmp(t, "tank_cal")) toast("Tank calibration saved", col::CHARGE);
   else if (!strcmp(t, "level")) toast(m["msg"] | "", col::ACCENT);
+  else if (!strcmp(t, "loc_results")) handleLocResults(m);
 }
 
 void loop() {
