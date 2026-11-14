@@ -89,6 +89,14 @@ static void demoData() {
   s.ac.preset = 0;
   s.wifi = s.cloud = true;
   strcpy(s.ip, "192.168.1.42");
+  const char *wxJson = R"({"current":{"temperature_2m":27.4,"weather_code":2,"wind_speed_10m":14.2,
+    "wind_gusts_10m":31.0,"is_day":1},"daily":{"time":["2025-11-08","2025-11-09","2025-11-10","2025-11-11"],
+    "weather_code":[2,61,95,0],"temperature_2m_max":[29.1,24.0,22.3,26.8],"temperature_2m_min":[14.2,15.1,12.9,10.4],
+    "precipitation_probability_max":[10,80,95,0],"precipitation_sum":[0.0,6.2,18.4,0.0],
+    "wind_gusts_10m_max":[38.2,45.0,72.4,25.9]}})";
+  parseOpenMeteo(wxJson, strlen(wxJson), s.wx);
+  s.wx.updated = s.ts - 12 * 60;
+  strcpy(s.wx.place, "Mudgee NSW");
 
   Meta &m = app::meta;
   m.acPresetCount = 5;
@@ -162,5 +170,8 @@ int main() {
   s.temp[cv::TEMP_FRIDGE].c = 3.4f;
   ui::showPage(ui::PAGE_SETTINGS);
   shot("07-settings");
+  ui::showPage(ui::PAGE_HOME);
+  ui::openWeatherForTest();
+  shot("09-forecast");
   return 0;
 }

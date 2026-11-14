@@ -11,6 +11,8 @@ OUT ?= out
 INC := -Ishim -I$(DISP)/include -I$(DISP)/src -I$(LVGL) -I$(LVGL)/.. -I$(COMMON) -I$(ARDUINOJSON)/src -DLV_CONF_INCLUDE_SIMPLE
 LVGL_SRC := $(shell find $(LVGL)/src -name '*.c')
 LVGL_OBJ := $(patsubst $(LVGL)/%.c,obj/lvgl/%.o,$(LVGL_SRC))
+APP_C := $(wildcard $(DISP)/src/ui/*.c)
+APP_C_OBJ := $(patsubst $(DISP)/src/ui/%.c,obj/app/%.o,$(APP_C))
 APP_SRC := sim_main.cpp $(DISP)/src/link.cpp $(wildcard $(DISP)/src/ui/*.cpp) $(wildcard $(COMMON)/*.cpp)
 
 all: $(OUT)/sim
@@ -21,9 +23,13 @@ obj/lvgl/%.o: $(LVGL)/%.c
 	@mkdir -p $(dir $@)
 	@$(CC) -O1 -w $(INC) -c $< -o $@
 
-$(OUT)/sim: $(LVGL_OBJ) $(APP_SRC)
+obj/app/%.o: $(DISP)/src/ui/%.c
+	@mkdir -p $(dir $@)
+	@$(CC) -O1 -w $(INC) -c $< -o $@
+
+$(OUT)/sim: $(LVGL_OBJ) $(APP_C_OBJ) $(APP_SRC)
 	@mkdir -p $(OUT)
-	$(CXX) -std=c++17 -O1 -g -Wall -Wno-unused-function -Wno-maybe-uninitialized $(INC) $(APP_SRC) $(LVGL_OBJ) -lm -o $@
+	$(CXX) -std=c++17 -O1 -g -Wall -Wno-unused-function -Wno-maybe-uninitialized $(INC) $(APP_SRC) $(APP_C_OBJ) $(LVGL_OBJ) -lm -o $@
 
 clean:
 	rm -rf obj $(OUT)

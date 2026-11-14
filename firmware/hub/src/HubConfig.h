@@ -38,6 +38,12 @@ struct LevelCfg {
   uint16_t jockeyMm = 4500;  // axle to jockey wheel
 };
 
+struct LocationCfg {
+  uint8_t src = cv::LOC_NONE;  // GPS / phone / manual
+  float lat = 0, lon = 0;
+  char name[24] = "";
+};
+
 struct TankCal {
   float emptyMv = 300;   // ADS1115 reading (after divider) with tank empty
   float fullMv = 2800;   // ...and full. Inverted senders are fine (empty > full).
@@ -81,6 +87,7 @@ struct HubConfig {
   InverterCfg inverter;
   VictronCfg victron[cv::NUM_SOLAR];
   LevelCfg level;
+  LocationCfg location;
   char tempAddr[cv::NUM_TEMPS][17] = {};  // DS18B20 ROM as hex, "" = auto-assign
   uint8_t tempSrc[cv::NUM_TEMPS] = {TEMP_WIRED, TEMP_WIRED, TEMP_WIRED};
   char tempBle[cv::NUM_TEMPS][18] = {};   // Bluetooth thermometer address per role

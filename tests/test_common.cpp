@@ -12,6 +12,7 @@
 #include "VictronBle.h"
 #include "BleSensors.h"
 #include "Leveling.h"
+#include "Weather.h"
 
 static int failures = 0, checks = 0;
 #define CHECK(cond)                                                 \
@@ -411,7 +412,71 @@ static void testLeveling() {
   NEAR(adv.jockeyMm, -39.3f, 0.2f);
 }
 
+static void testWeather() {
+  // Shape of a real Open-Meteo response (trimmed units blocks).
+  const char *json = R"({"latitude":-32.6,"longitude":149.6,"utc_offset_seconds":39600,
+    "current":{"time":"2026-11-14T15:30","interval":900,"temperature_2m":27.4,"weather_code":2,
+      "wind_speed_10m":14.2,"wind_gusts_10m":31.0,"is_day":1},
+    "daily":{"time":["2026-11-14","2026-11-15","2026-11-16","2026-11-17"],
+      "weather_code":[2,61,95,0],"temperature_2m_max":[29.1,24.0,22.3,26.8],
+      "temperature_2m_min":[14.2,15.1,12.9,10.4],"precipitation_probability_max":[10,80,95,0],
+      "precipitation_sum":[0.0,6.2,18.4,0.0],"wind_gusts_10m_max":[38.2,45.0,72.4,25.9]}})";
+  Weather w;
+  strcpy(w.place, "Mudgee");
+  CHECK(parseOpenMeteo(json, strlen(json), w));
+  CHECK(w.valid && w.code == 2 && w.isDay);
+  NEAR(w.temp, 27.4f, 0.01f);
+  CHECK(w.day[0].wday == 6);  // 14 Nov 2026 is a Saturday
+  CHECK(w.day[1].wday == 0);
+  CHECK(w.day[2].code == 95 && w.day[2].rainProb == 95);
+  NEAR(w.day[2].gustMax, 72.4f, 0.01f);
+  CHECK(!strcmp(w.place, "Mudgee"));
+  Weather bad;
+  CHECK(!parseOpenMeteo("{\"reason\":\"x\"}", 14, bad) && !bad.valid);
+  CHECK(wxIcon(0, false) == 0xF02E && wxIcon(63, true) == 0xF019);
+  CHECK(!strcmp(wxText(95), "Thunderstorm"));
+
+  JsonDocument d;
+  weatherToJson(w, d.to<JsonObject>());
+  std::string out;
+  serializeJson(d, out);
+  CHECK(out.size() < 260);
+  Weather w2;
+  weatherFromJson(w2, d.as<JsonObjectConst>());
+  CHECK(w2.valid && w2.day[3].wday == 2 && w2.day[1].rainProb == 80);
+  NEAR(w2.day[2].tMin, 12.9f, 0.01f);
+  CHECK(!strcmp(w2.place, "Mudgee"));
+
+  char path[400];
+  openMeteoPath(path, sizeof(path), -32.6012f, 149.5867f);
+  CHECK(strstr(path, "latitude=-32.601&longitude=149.587") != nullptr);
+
+  // NMEA RMC from a u-blox receiver (checksums computed per spec).
+  NmeaParser g;
+  auto feed = [&](const char *s) {
+    bool any = false;
+    for (const char *p = s; *p; p++) any |= g.feed((uint8_t)*p);
+    return any;
+  };
+  auto withSum = [](const char *body) {
+    uint8_t x = 0;
+    for (const char *p = body; *p; p++) x ^= (uint8_t)*p;
+    char b[120];
+    snprintf(b, sizeof(b), "$%s*%02X\r\n", body, x);
+    return std::string(b);
+  };
+  CHECK(!feed(withSum("GNRMC,051230.00,V,,,,,,,141126,,,N").c_str()));
+  CHECK(!g.hasFix());
+  CHECK(feed(withSum("GNRMC,051231.00,A,3236.0720,S,14935.2020,E,0.02,,141126,,,A").c_str()));
+  NEAR((float)g.lat(), -32.60120f, 0.00001f);
+  NEAR((float)g.lon(), 149.58670f, 0.00001f);
+  CHECK(!feed("$GNRMC,051231.00,A,3236.0720,S,14935.2020,E,0.02,,141126,,,A*00\r\n"));  // bad checksum
+  CHECK(!feed(withSum("GPGGA,051231.00,3236.0720,S,14935.2020,E,1,08,1.0,450.0,M,,M,,").c_str()));
+  NEAR(distanceKm(-33.8688f, 151.2093f, -37.8136f, 144.9631f), 713.4f, 3.0f);  // Sydney-Melbourne
+}
+
 int main() {
+  testWeather();
   testLeveling();
   testBleSensors();
   testVictronBle();

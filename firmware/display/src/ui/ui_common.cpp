@@ -287,6 +287,7 @@ static void buildShell() {
   lv_obj_align(gIcoLink, LV_ALIGN_RIGHT_MID, -138, 2);
   gClock = lbl(bar, &lv_font_montserrat_20, col::TEXT, "--:--");
   lv_obj_align(gClock, LV_ALIGN_RIGHT_MID, -180, 2);
+  buildWeatherWidget(bar);
 
   // Pages
   for (int i = 0; i < PAGE_COUNT; i++) {
@@ -318,6 +319,7 @@ static void buildShell() {
 
 static void updateShell() {
   const cv::State &s = app::state;
+  updateWeather();
   lv_obj_set_style_text_color(gIcoLink, c(app::linkUp ? col::CHARGE : col::ALARM), 0);
   lv_obj_set_style_text_color(gIcoWifi, c(app::linkUp && s.wifi ? col::TEXT : col::DIM), 0);
   lv_obj_set_style_text_color(gIcoCloud, c(app::linkUp && s.cloud ? col::ACCENT : col::DIM), 0);

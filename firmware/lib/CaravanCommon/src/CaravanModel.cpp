@@ -20,6 +20,8 @@ static const MetricInfo kMetrics[M_COUNT] = {
     {"tank1", "Tank 1", "%", 5.0f},
     {"tank2", "Tank 2", "%", 5.0f},
     {"tank3", "Tank 3", "%", 5.0f},
+    {"wx_gust", "Forecast gusts", "km/h", 5.0f},
+    {"wx_rain", "Forecast rain chance", "%", 10.0f},
 };
 
 const MetricInfo &metricInfo(Metric m) { return kMetrics[m < M_COUNT ? m : 0]; }
@@ -52,6 +54,9 @@ bool metricValue(const State &s, Metric m, float &out) {
     case M_TANK1: out = s.tank[0].pct; return s.tank[0].online;
     case M_TANK2: out = s.tank[1].pct; return s.tank[1].online;
     case M_TANK3: out = s.tank[2].pct; return s.tank[2].online;
+    // Forecast metrics: only while the forecast is reasonably fresh (6 h).
+    case M_WX_GUST: out = s.wx.day[0].gustMax; return s.wx.valid && s.ts && s.ts - s.wx.updated < 6 * 3600;
+    case M_WX_RAIN: out = s.wx.day[0].rainProb; return s.wx.valid && s.ts && s.ts - s.wx.updated < 6 * 3600;
     default: return false;
   }
 }
@@ -146,6 +151,7 @@ void loadDefaultRules(RuleSet &rs) {
   addRule(rs, "Fresh 1 low", M_TANK1, CMP_LT, 15, 5, 30, SEV_INFO);
   addRule(rs, "Fresh 2 low", M_TANK2, CMP_LT, 15, 5, 30, SEV_INFO);
   addRule(rs, "Grey tank full", M_TANK3, CMP_GT, 85, 5, 30, SEV_WARN);
+  addRule(rs, "Strong wind forecast", M_WX_GUST, CMP_GT, 50, 10, 0, SEV_WARN);  // bring the awning in
 }
 
 // ---------------------------------------------------------------- JSON helpers
@@ -227,6 +233,7 @@ void stateToJson(const State &s, JsonObject o) {
   ac["pre"] = s.ac.preset;
 
   levelToJson(s.lvl, o["lvl"].to<JsonObject>());
+  weatherToJson(s.wx, o["wx"].to<JsonObject>());
 
   JsonArray al = o["alerts"].to<JsonArray>();
   for (int i = 0; i < s.alertCount && i < MAX_ACTIVE_ALERTS; i++) {
@@ -310,6 +317,7 @@ void stateFromJson(State &s, JsonObjectConst o) {
   s.ac.preset = o["ac"]["pre"] | -1;
 
   if (o["lvl"].is<JsonObjectConst>()) levelFromJson(s.lvl, o["lvl"]);
+  if (o["wx"].is<JsonObjectConst>()) weatherFromJson(s.wx, o["wx"]);
 
   JsonArrayConst al = o["alerts"];
   s.alertCount = 0;

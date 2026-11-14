@@ -80,6 +80,11 @@ void HubConfig::toJson(JsonObject o) const {
   f.add(level.cal.fwd.z);
   lv["track"] = level.trackMm;
   lv["jockey"] = level.jockeyMm;
+  JsonObject loc = o["loc"].to<JsonObject>();
+  loc["src"] = location.src;
+  loc["lat"] = location.lat;
+  loc["lon"] = location.lon;
+  loc["name"] = location.name;
   JsonArray ts = o["tsrc"].to<JsonArray>();
   for (auto v : tempSrc) ts.add(v);
   JsonArray tb = o["tble"].to<JsonArray>();
@@ -143,6 +148,13 @@ void HubConfig::fromJson(JsonObjectConst o) {
   }
   for (int i = 0; i < cv::NUM_TEMPS; i++)
     if (o["tempAddr"][i].is<const char *>()) copyStr(tempAddr[i], sizeof(tempAddr[i]), o["tempAddr"][i]);
+  JsonObjectConst loc = o["loc"];
+  if (!loc.isNull()) {
+    location.src = loc["src"] | location.src;
+    location.lat = loc["lat"] | location.lat;
+    location.lon = loc["lon"] | location.lon;
+    if (loc["name"].is<const char *>()) copyStr(location.name, sizeof(location.name), loc["name"]);
+  }
   JsonObjectConst lv = o["lvl"];
   if (!lv.isNull()) {
     level.zeroed = lv["zeroed"] | false;

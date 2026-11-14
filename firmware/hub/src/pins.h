@@ -35,5 +35,11 @@
 #define PIN_IR_TX 5
 #define PIN_IR_RX 6
 
+// Optional GPS module (u-blox NEO-6M/M8N etc., 9600 baud NMEA) for the
+// weather location. Uses UART2, so not available together with the VE.Direct
+// cable fallback for solar controller 2.
+#define PIN_GPS_RX 39   // <- GPS TX
+#define PIN_GPS_TX 40   // -> GPS RX (optional)
+
 // Piezo buzzer (active buzzer via transistor) for un-acknowledged alarms
 #define PIN_BUZZER 7

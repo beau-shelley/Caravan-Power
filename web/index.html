@@ -88,6 +88,12 @@ dialog { background:var(--card); color:var(--text); border:1px solid var(--borde
 dialog::backdrop { background:rgba(0,0,0,.55); }
 pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px; border-radius:10px; max-height:360px; overflow:auto; }
 .hidden { display:none !important; }
+.wx { display:grid; grid-template-columns:1.3fr repeat(4, 1fr); gap:10px; align-items:center; }
+.wx .now { display:flex; align-items:center; gap:10px; }
+.wx .ico { font-size:34px; line-height:1; }
+.wx .day { background:var(--tile); border-radius:12px; padding:8px; text-align:center; font-size:13px; }
+@media (max-width: 700px) { .wx { grid-template-columns:repeat(4, 1fr); } .wx .now { grid-column:1 / -1; }
+  .wx .day { font-size:11px; padding:6px 3px; } }
 #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--card); border:1px solid var(--accent);
   padding:10px 16px; border-radius:12px; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90vw; }
 #toast.show { opacity:1; }
@@ -116,6 +122,10 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
   <section id="tab-overview">
     <div id="alertBox" class="alerts" style="margin-bottom:12px"></div>
     <div class="grid">
+      <div class="card span12 hidden" id="wxCard" style="--dot:var(--water)">
+        <div class="cap">Weather <span id="wxPlace" class="muted" style="text-transform:none; letter-spacing:0"></span></div>
+        <div id="wx" class="wx"></div>
+      </div>
       <div class="card span4" style="--dot:var(--charge)">
         <div class="cap">Battery <span class="sp"></span></div>
         <div class="ring">
@@ -197,6 +207,13 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <div class="row" style="margin-top:8px"><button class="btn" id="vicScan">Find nearby</button></div>
         <div id="vicSeen" class="small muted" style="margin-top:6px"></div>
       </div>
+      <div class="card span6" style="--dot:var(--water)">
+        <div class="cap">Weather location</div>
+        <p class="muted small" id="locInfo">A GPS module on the hub sets this automatically. Otherwise use your phone's location or search for a town.</p>
+        <div class="row"><button class="btn" id="locPhone">Use this phone's location</button></div>
+        <div class="row" style="margin-top:8px"><input id="locQuery" placeholder="Town, e.g. Mudgee"><button class="btn" id="locSearch">Search</button></div>
+        <div id="locResults" style="margin-top:6px"></div>
+      </div>
       <div class="card span6" id="calCard">
         <div class="cap">Tank calibration</div>
         <p class="muted small">Fill or empty a tank, then press the matching button to store the sender reading.</p>
@@ -275,8 +292,31 @@ function socColor(s) { return s >= 50 ? "var(--charge)" : s >= 25 ? "var(--warn)
 function localTime(ts) { if (!ts) return "--"; return new Date(ts * 1000).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }); }
 
 // ---------------------------------------------------------------- rendering
+const WX_TEXT = {0:"Clear",1:"Mostly clear",2:"Partly cloudy",3:"Cloudy",45:"Fog",48:"Fog",51:"Drizzle",53:"Drizzle",55:"Drizzle",
+  61:"Light rain",63:"Rain",65:"Heavy rain",71:"Snow",73:"Snow",75:"Snow",80:"Showers",81:"Showers",82:"Heavy showers",95:"Thunderstorm",96:"Storm, hail",99:"Storm, hail"};
+function wxIcon(c, day = true) {
+  if (c === 0) return day ? "☀️" : "🌙"; if (c <= 2) return "⛅"; if (c === 3) return "☁️"; if (c === 45 || c === 48) return "🌫️";
+  if (c >= 95) return "⛈️"; if (c >= 80 && c <= 82) return "🌦️"; if (c >= 71 && c <= 77 || c === 85 || c === 86) return "❄️";
+  return c >= 51 ? "🌧️" : "☁️";
+}
+const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const LOC_SRC = ["", "GPS", "phone", "manual"];
+function renderWeather() {
+  const w = S.wx;
+  $("#wxCard").classList.toggle("hidden", !w || !w.ok);
+  if (!w || !w.ok) { $("#locInfo").textContent = "No location set yet - the forecast appears once one is set."; return; }
+  $("#wxPlace").textContent = `${w.pl || ""}${w.pl ? " · " : ""}${LOC_SRC[w.src] || ""} location`;
+  $("#locInfo").textContent = `Current: ${w.pl || "unnamed spot"} (${LOC_SRC[w.src]}). A GPS on the hub overrides this automatically.`;
+  $("#wx").innerHTML = `<div class="now"><span class="ico">${wxIcon(w.c, w.day)}</span><div><div class="big">${Math.round(w.t)}°</div>
+      <div class="muted small">${WX_TEXT[w.c] || ""} · wind ${Math.round(w.w)} km/h, gusts ${Math.round(w.g)}</div></div></div>` +
+    w.d.map(([c, wd, mx, mn, rp, mm, g], i) => `<div class="day"><b>${i === 0 ? "Today" : DAYS[wd] || "--"}</b><div class="ico" style="font-size:26px">${wxIcon(c)}</div>
+      <div><b>${Math.round(mx)}°</b> / ${Math.round(mn)}°</div><div style="color:${rp >= 50 ? "var(--water)" : "var(--muted)"}">${rp}% · ${mm.toFixed(0)} mm</div>
+      <div style="color:${g >= 50 ? "var(--warn)" : "var(--muted)"}">gusts ${Math.round(g)}</div></div>`).join("");
+}
+
 function render() {
   if (!S) return;
+  renderWeather();
   const b = S.bat;
   const soc = b.on ? b.soc : 0;
   $("#socArc").setAttribute("stroke-dasharray", `${(235.6 * soc / 100).toFixed(1)} 314.2`);
@@ -445,7 +485,9 @@ function demoTransport() {
     pump:[{ on:true, sn:true, lk:false, rt:94 }, { on:false, sn:false, lk:false, rt:0 }],
     inv:{ on:false, ac:false }, ac:{ on:true, pre:0 },
     alerts:[{ id:7, sev:2, ack:false, since: Math.floor(Date.now() / 1000) - 1500, msg:"Fridge warm: 7.4°C (> 6.0)" }],
-    net:{ wifi:true, cloud:true, ip:"192.168.1.42" } };
+    net:{ wifi:true, cloud:true, ip:"192.168.1.42" },
+    wx:{ ok:true, up: Math.floor(Date.now() / 1000) - 720, src:2, pl:"Mudgee NSW", t:27.4, c:2, day:true, w:14.2, g:31,
+      d:[[2,6,29.1,14.2,10,0,38.2],[61,0,24,15.1,80,6.2,45],[95,1,22.3,12.9,95,18.4,72.4],[0,2,26.8,10.4,0,0,25.9]] } };
   setTimeout(() => {
     onMessage({ t:"hello", meta:{ ...META, acp:["Cool 22 auto","Cool 24 low","Heat 21","Dry","Fan only"] },
       rules:[{ id:1, en:true, name:"Battery low", m:"bat_v", cmp:"<", thr:12.4, hys:0.3, dly:60, sev:1, ntf:true, act:"none" },
@@ -475,6 +517,31 @@ $("#soc100").onclick = () => { if (confirm("Set battery state of charge to 100%?
 $("#calRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-cal]"); if (!b) return;
   if (confirm(`Store current reading as ${b.dataset.pt.toUpperCase()} for ${META.tank[b.dataset.cal]}?`)) send({ c:"tank_cal", i:+b.dataset.cal, point:b.dataset.pt }); });
 $("#scanSensors").onclick = () => send({ c:"sensors" });
+// Weather location: phone GPS (needs HTTPS - works on the GitHub Pages dashboard) or a town search.
+$("#locPhone").onclick = () => {
+  if (!navigator.geolocation) { toast("This browser has no location access"); return; }
+  if (!window.isSecureContext) { toast("Location needs the HTTPS dashboard (GitHub Pages), not caravan.local"); return; }
+  navigator.geolocation.getCurrentPosition(async (p) => {
+    const lat = +p.coords.latitude.toFixed(4), lon = +p.coords.longitude.toFixed(4);
+    let name = "";
+    try {  // free reverse geocoding (no key) - optional, just for a friendly name
+      const r = await (await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`)).json();
+      name = [r.locality || r.city, r.principalSubdivisionCode?.split("-")[1]].filter(Boolean).join(" ");
+    } catch (e) {}
+    send({ c:"location_set", lat, lon, name: name.slice(0, 23), src:2 });
+  }, (e) => toast("Location error: " + e.message), { enableHighAccuracy:false, timeout:15000 });
+};
+$("#locSearch").onclick = async () => {
+  const q = $("#locQuery").value.trim(); if (!q) return;
+  try {
+    const r = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=en&countryCode=AU`)).json();
+    $("#locResults").innerHTML = (r.results || []).map((x) =>
+      `<button class="btn" style="margin:3px" data-lat="${x.latitude}" data-lon="${x.longitude}" data-name="${esc((x.name + " " + (x.admin1_code || x.admin1 || "")).trim().slice(0, 23))}">
+        ${esc(x.name)}, ${esc(x.admin1 || "")}</button>`).join("") || `<span class="muted">No matches</span>`;
+  } catch (e) { toast("Search needs internet"); }
+};
+$("#locResults").addEventListener("click", (e) => { const b = e.target.closest("button[data-lat]"); if (!b) return;
+  send({ c:"location_set", lat:+b.dataset.lat, lon:+b.dataset.lon, name:b.dataset.name, src:3 }); $("#locResults").innerHTML = ""; });
 $("#scanBle").onclick = () => send({ c:"ble_sensors" });
 $("#bleRows").addEventListener("change", (e) => { const s = e.target; if (!s.dataset.bleaddr || s.value < 0) return;
   send({ c:"temp_set", role:+s.value, src:1, addr:s.dataset.bleaddr }); setTimeout(() => send({ c:"ble_sensors" }), 800); });

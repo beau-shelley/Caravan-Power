@@ -28,6 +28,7 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 | 1 | 940 nm IR LED + 2N2222/BC337 + 33 Ω, TSOP38238 receiver | aircon |
 | 1 | Active buzzer 3–5 V + NPN | local alarm |
 | 1 | MPU-6050 (GY-521) module | caravan levelling |
+| 0-1 | GPS module, e.g. u-blox NEO-6M / NEO-M8N with antenna | optional: weather follows you as you travel |
 | — | Fuses/holders, ferrules, heatshrink, enclosure | 2 A for the electronics |
 
 Only needed for the wired fallbacks: VE.Direct pigtails (solar), ADS1115 + 3 dividers (tanks), INA226 + 300 A shunt (battery), relays + Schottky diodes + opto (pumps).
@@ -52,6 +53,8 @@ Only needed for the wired fallbacks: VE.Direct pigtails (solar), ADS1115 + 3 div
 | 5 | IR LED driver | transistor base via 1 kΩ |
 | 6 | IR receiver | TSOP38238 OUT (powered from 3V3) |
 | 7 | Buzzer | transistor base via 1 kΩ |
+| 39 | GPS RX | GPS module TX (optional; shares UART2 with the VE.Direct #2 fallback) |
+| 40 | GPS TX | GPS module RX (optional, not needed) |
 
 Do not use GPIO 0, 3, 45 or 46 (strapping pins), 19/20 (USB), 26–37 (flash/PSRAM) or 48 (on-board LED).
 
@@ -191,6 +194,29 @@ GY-521 VCC ── 3V3      GND ── GND      SDA ── GPIO8      SCL ── 
 - **iPhone:** Safari can't use Web Bluetooth, so open it in the free **Bluefy** browser.
 
 Host the page with GitHub Pages (see [CLOUD_SETUP.md](CLOUD_SETUP.md)). Open it once while you have internet and it's cached for offline use, and *Add to Home Screen* makes it an app icon. Tap **Connect** and pick `caravan-hub`.
+
+## Weather location: optional GPS module
+
+The forecast needs to know where the van is. There are three ways:
+
+| Source | How | Notes |
+|---|---|---|
+| **GPS module** (best) | wire it to the hub (below) | Fully automatic. The forecast follows you as you travel and refreshes after moving more than 5 km. |
+| **Your phone** | dashboard → *Setup* → *Use this phone's location* | Needs the HTTPS dashboard (GitHub Pages); browsers block location on `http://caravan.local`. |
+| **Town search** | dashboard → *Setup* → search e.g. "Mudgee" | Uses Open-Meteo's free place search. |
+
+A GPS fix always takes over from a phone or town location.
+
+**GPS wiring:** any 3.3 V NMEA module at 9600 baud works, e.g. a u-blox NEO-6M or NEO-M8N board. They're cheap and usually come with a small patch antenna.
+
+```
+GPS VCC ── 3V3 (or 5V if the board has its own regulator)    GND ── GND
+GPS TX  ── GPIO39                                            (GPS RX ── GPIO40, optional)
+```
+
+**Antenna:** place the patch antenna where it can see the sky, e.g. under a plastic roof hatch, a fibreglass panel or a window. A metal roof blocks it.
+
+**Fetch schedule:** the hub fetches the forecast from Open-Meteo every 30 minutes whenever it has internet (Starlink). That's about 2 KB a time, so negligible data. The last forecast stays on screen while you're offline, and the touchscreen shows how old it is.
 
 ## Buzzer
 

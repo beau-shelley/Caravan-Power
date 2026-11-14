@@ -17,6 +17,7 @@
 #include "VictronBle.h"
 #include "BleTempRx.h"
 #include "LevelSensor.h"
+#include "WeatherClient.h"
 #include "VictronBleRx.h"
 #include "pins.h"
 
@@ -33,20 +34,48 @@ static SwitchedOutput gInverter;
 static AirconIr gAircon;
 static bool gBmproOn = false;
 static bool gVictronBleOn = false;
+static cv::NmeaParser gGps;
+static bool gGpsOn = false;
+static uint32_t gGpsFixMs = 0;
 static bool gBleTempsOn = false;
+
+// GPS fixes update the weather location (saved only after moving > 5 km, so
+// the last known spot survives a reboot without wearing out the flash).
+static void gpsLoop(uint32_t now) {
+  if (!gGpsOn) return;
+  while (Serial2.available()) {
+    if (!gGps.feed((uint8_t)Serial2.read())) continue;
+    gGpsFixMs = now;
+    LocationCfg &loc = gConfig.location;
+    float lat = (float)gGps.lat(), lon = (float)gGps.lon();
+    if (loc.src != cv::LOC_GPS || cv::distanceKm(lat, lon, loc.lat, loc.lon) > 5) {
+      loc.src = cv::LOC_GPS;
+      loc.lat = lat;
+      loc.lon = lon;
+      loc.name[0] = 0;
+      gConfig.save();
+      gWeather.refreshSoon();
+      Serial.printf("[gps] location %.4f, %.4f\n", lat, lon);
+    }
+  }
+}
 
 static void startBleTemps() {
   if (gBleTempsOn) return;
   gBleTemps.begin();
   gBleTempsOn = true;
 }
+
 static bool gVeDirectOn[cv::NUM_SOLAR] = {};
 
 static void startSolar(int i) {
   const VictronCfg &v = gConfig.victron[i];
   if (v.src == SOLAR_VEDIRECT && !gVeDirectOn[i]) {
     if (i == 0) gVictron[0].begin(Serial1, PIN_VE1_RX, PIN_VE1_TX);
-    else gVictron[1].begin(Serial2, PIN_VE2_RX, PIN_VE2_TX);
+    else {
+      gGpsOn = false;  // UART2 is shared with the optional GPS
+      gVictron[1].begin(Serial2, PIN_VE2_RX, PIN_VE2_TX);
+    }
     gVeDirectOn[i] = true;
   }
   if (v.src == SOLAR_BLE) {
@@ -304,6 +333,24 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     configChanged();
     startSolar(i);
     reply["t"] = "ok";
+  // ---------------- weather location
+  } else if (!strcmp(c, "location_set")) {
+    // {"c":"location_set","lat":-32.6,"lon":149.6,"name":"Mudgee NSW","src":2}
+    float lat = cmd["lat"] | 999.0f, lon = cmd["lon"] | 999.0f;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return replyErr(reply, "bad coordinates");
+    if (gGpsOn && gGpsFixMs && millis() - gGpsFixMs < 600000)
+      return replyErr(reply, "The GPS has a fix - it sets the location automatically");
+    LocationCfg &loc = gConfig.location;
+    loc.src = cmd["src"] | (uint8_t)cv::LOC_MANUAL;
+    loc.lat = lat;
+    loc.lon = lon;
+    snprintf(loc.name, sizeof(loc.name), "%s", cmd["name"] | "");
+    gConfig.save();
+    gWeather.refreshSoon();
+    reply["t"] = "ok";
+  } else if (!strcmp(c, "weather_refresh")) {
+    gWeather.refreshSoon();
+
   // ---------------- levelling
   } else if (!strcmp(c, "level_zero")) {
     gLevel.startZero();
@@ -484,6 +531,7 @@ static void netTask(void *) {
   for (;;) {
     gWeb.loop(gState);
     gCloud.loop(gState);
+    gWeather.loop(gState);
     {
       StateLock l;
       gState.cloud = gCloud.connected();
@@ -522,6 +570,10 @@ void setup() {
   gNet.begin();
   gNotify.begin();
   for (int i = 0; i < cv::NUM_SOLAR; i++) startSolar(i);
+  if (gConfig.victron[1].src != SOLAR_VEDIRECT) {  // UART2 is free for a GPS
+    Serial2.begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
+    gGpsOn = true;
+  }
   for (auto s : gConfig.tempSrc)
     if (s == TEMP_BLE) startBleTemps();
   if (gConfig.usesBmpro()) {
@@ -543,6 +595,7 @@ void loop() {
     }
     gTemps.poll(gState);
     gLevel.loop(gState);
+    gpsLoop(now);
     if (gBleTempsOn) gBleTemps.poll(gState);
     if (gConfig.tankSource == TANK_ADC) gTanks.poll(gState);
     gShunt.poll(gState, now);

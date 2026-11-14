@@ -63,6 +63,10 @@ void updateSettings();
 
 void flushRuleEdits();  // ui_alerts.cpp - debounced rule threshold edits
 
+void buildWeatherWidget(lv_obj_t *statusBar);  // ui_weather.cpp
+void updateWeather();
+void openWeatherForTest();
+
 // shared actions
 void togglePump(int i);
 void toggleInverter();

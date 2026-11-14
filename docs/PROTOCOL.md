@@ -31,6 +31,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `ac` | `on`, `pre` preset index |
 | `alerts[]` | `id`, `sev` (0 info, 1 warn, 2 alarm), `ack`, `since`, `val`, `msg` |
 | `lvl` | `on`, `z` (level set), `f` (front learned), `p` pitch ° (+ front high), `r` roll ° (+ left high), `tr` track mm, `jk` axle-to-jockey mm. Also sent alone as `{"t":"lvl",…}` 4×/s on RS485 |
+| `wx` | `ok`, `up` fetched (unix), `src` (1 GPS, 2 phone, 3 manual), `pl` place, `t` °C, `c` WMO code, `day`, `w`/`g` wind/gust km/h, `d[4]` = `[code, weekday 0=Sun, max, min, rain %, rain mm, gust]` |
 | `net` | `wifi`, `cloud`, `ip` |
 
 ## Commands (`{"c": …}`)
@@ -50,6 +51,8 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `tank_cal` | `i`, `point` (`empty`/`full`), optional `mv` | omit `mv` to use the current reading |
 | `soc_set` | `soc` | |
 | `sensors` / `sensor_assign` | `addr`, `role` | wired DS18B20 role mapping |
+| `location_set` | `lat`, `lon`, `name`, `src` (2 phone, 3 manual) | weather location (refused while a GPS has a fix) |
+| `weather_refresh` | | fetch the forecast now |
 | `level_zero` | | "Set level": averages 2 s and saves the mounting angle |
 | `level_front` | | "Learn front": with the front lifted 2-3 cm |
 | `level_reset`, `level_status` | | forget calibration / last calibration result |
@@ -67,7 +70,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 
 When remote control is off, every command except the read-only ones is refused from MQTT.
 
-Rule metric keys: `bat_v bat_soc bat_a load_a charge_a solar_w solar1_w solar2_w temp_in temp_out temp_fridge tank1 tank2 tank3`.
+Rule metric keys: `bat_v bat_soc bat_a load_a charge_a solar_w solar1_w solar2_w temp_in temp_out temp_fridge tank1 tank2 tank3 wx_gust wx_rain` (the last two are today's forecast max gust and rain chance).
 Actions: `none aircon_off inverter_off pumps_off`.
 
 ## Hub config (`GET/POST /api/config`)
@@ -80,6 +83,7 @@ Actions: `none aircon_off inverter_off pumps_off`.
 - `tankSrc`: 0 BMPRO (default), 1 ADS1115 taps, 2 none
 - `bmproAddr`: OdysseyLink Bluetooth address
 - `inv`: `mode`, `pulse`, `sense`
+- `loc`: `src`, `lat`, `lon`, `name` (weather location)
 - `tsrc[]` (0 wired, 1 Bluetooth per role), `tble[]` (Bluetooth address per role)
 - `tempAddr[]`, `cloudInt` s, `buzzer`, `bmproExplorer` (verbose Bluetooth logging)
 
