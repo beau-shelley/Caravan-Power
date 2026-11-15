@@ -109,15 +109,11 @@ void begin() {
   Serial.printf("[board] PSRAM: %u bytes, free internal heap: %u bytes\n", ESP.getPsramSize(), ESP.getFreeHeap());
   Wire.begin(PIN_SDA, PIN_SCL, 400000);
 
-  // Verified 7B boot order: CH32 direction and outputs, pulse LCD reset,
-  // then set inverted PWM to full brightness before starting the RGB panel.
+  // EXPERIMENT (stripe band): match Waveshare's 06_LCD demo, which shows no
+  // band on this board. It only sets the CH32 pins to outputs (all high) and
+  // never pulses LCD reset or writes the backlight PWM register.
   bool ioOk = exioWrite(REG_MODE, 0xff);
   exioWrite(REG_OUTPUT, gExio);
-  exioPin(IO_LCD_RESET, false);
-  delay(10);
-  exioPin(IO_LCD_RESET, true);
-  delay(120);
-  exioWrite(REG_PWM, 0x00);
   gBacklight = true;
   Serial.printf("[board] CH32 IO extension: %s\n", ioOk ? "OK" : "FAILED");
 
