@@ -308,6 +308,12 @@ static WiFiClientSecure gTls;
 static PubSubClient gMqtt(gTls);
 static String gBase = String("caravan/") + DEVICE_ID + "/";
 
+// Alert events are queued from the logic task and published from the cloud loop.
+static QueueHandle_t gEventQ = nullptr;
+struct EventMsg {
+  char json[200];
+};
+
 static void onMqtt(char *topic, byte *payload, unsigned int len) {
   JsonDocument in, reply;
   if (deserializeJson(in, payload, len)) return;
@@ -340,11 +346,6 @@ void Cloud::publish(const char *sub, JsonDocument &doc, bool retain) {
   serializeJson(doc, out);
   gMqtt.publish((gBase + sub).c_str(), (const uint8_t *)out.c_str(), out.length(), retain);
 }
-
-static QueueHandle_t gEventQ = nullptr;
-struct EventMsg {
-  char json[200];
-};
 
 void Cloud::queueEvent(JsonDocument &doc) {
   if (!gEventQ) return;
