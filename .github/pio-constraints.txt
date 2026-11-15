@@ -1,0 +1,3 @@
+# Python packages pinned for PlatformIO builds in CI (see build.yml).
+# pioarduino 6.2.0.post1 fails the pioarduino platform's ">=6.2.0" engine check.
+pioarduino==6.2.0
