@@ -42,7 +42,7 @@ With the hub bolted behind the display, the only wires are power, the two RS485 
 
 | ESP32 pin | Goes to |
 |---|---|
-| VIN (5 V), GND | buck converter 5 V out |
+| VIN (5 V), GND | buck converter 5 V out (the display's PH2.0 **POWER** header, 5V/GND, takes the same feed) |
 | 3V3, GND | MAX485 VCC/GND and MPU-6050 VCC/GND |
 | GPIO16 (RX2) | MAX485 RO |
 | GPIO17 (TX2) | MAX485 DI |
@@ -50,6 +50,8 @@ With the hub bolted behind the display, the only wires are power, the two RS485 
 | GPIO21 / GPIO22 | MPU-6050 SDA / SCL |
 | MAX485 A / B | display RS485 header A / B |
 | *fallbacks / later:* GPIO23 1-Wire, GPIO25 buzzer, GPIO26 IR LED, GPIO34 IR receiver, GPIO32/33 pump relays, GPIO27 inverter relay, GPIO13 spare relay, GPIO14/18 pump sense, GPIO19 inverter sense, GPIO36 VE.Direct #1 RX, GPIO39 GPS RX | |
+
+**Display power:** feed the buck's 5 V into the display's PH2.0 **POWER** header (pins 5V and GND, next to RS-485), not its USB-C. Leave both USB-C ports empty in normal use. Before plugging a PC into either board's USB, switch the 12 V off, so the two 5 V sources never meet. Set the buck to 5.1–5.2 V, and use at least 0.5 mm² wire for the 5 V feed.
 
 What's different from the S3 hub:
 - **One spare UART instead of two.** The USB port uses UART0, and the display link uses UART2. The VE.Direct #1 cable fallback and a GPS module share UART1, so you can have one or the other. There's no VE.Direct #2 cable fallback (both Victrons still work over Bluetooth).

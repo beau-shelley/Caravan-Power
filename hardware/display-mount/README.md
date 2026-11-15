@@ -18,7 +18,7 @@ These numbers come from photos, so measure them on the real parts and edit `PARA
 
 - **`boss_dx`, `boss_dy`:** the boss hole spacing, centre to centre. The default is 126.2 × 65.65 mm, the Raspberry Pi 7" display pattern, which the photos match within a couple of mm. The tray's holes are slotted ±1.5 mm along the long side to absorb small errors.
 - **`boss_screw_d`:** clearance for the boss thread size. It's set for M3; use 2.9 for M2.5.
-- **`spacer_h`:** from the top of a boss to the top of the tallest thing on the display board, including the USB-C plug, plus about 2 mm. The default is 14 mm.
+- **`spacer_h`:** from the top of a boss to the top of the tallest thing on the display board, plus about 2 mm (no USB-C plug is needed, since the display is powered through its POWER header). The default is 14 mm.
 - **ESP32 holes:** set to 44.6 × 23.7 mm, measured from the DevKit V1 photos.
 
 Then run:
@@ -34,7 +34,7 @@ python mount.py      # rewrites the STLs and layout.svg
    - **ESP32:** mount it **upside down** (pins toward the lid) on its four standoffs, using M2.5 self-tapping screws. Its USB-C port lines up with the notch in the end wall, so you can flash it without taking anything apart.
    - **MPU-6050:** mount it on its two standoffs. It needs to be solid; any angle is fine, because *Set level* calibrates it out.
    - **MAX485 and buck converter:** hold them down with zip ties through the slot pairs, with foam tape underneath.
-2. **Wire it up** per [docs/WIRING.md](../../docs/WIRING.md#hub-on-a-classic-esp32-mounted-behind-the-display). Run the display's USB-C power lead and the RS485 A/B pair down through the two centre slots. A right-angle USB-C plug fits best.
+2. **Wire it up** per [docs/WIRING.md](../../docs/WIRING.md#hub-on-a-classic-esp32-mounted-behind-the-display). Run the display's 5 V power lead (to its PH2.0 POWER header) and the RS485 A/B pair down through the two centre slots. Both go to the same header row, so a pair of PH2.0 pigtails does it.
 3. **Fit the tray to the display:** put a spacer on each boss, then fit four M3 × 20 screws from inside the tray, through the floor and the spacers, into the bosses.
 4. **Lid to the wall:** screw the lid to the wall over the old Trek 3 spot with four countersunk screws, and feed the 12 V cable through its centre hole.
 5. **Hang the display:** connect the 12 V to the buck, fit the tray onto the lid's rim, and fix it with four M3 self-tapping screws through the lid into the posts.

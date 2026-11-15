@@ -28,7 +28,7 @@ PARAMS = dict(
     boss_screw_d=3.4,      # clearance for M3 (use 2.9 for M2.5)
     slot_extra=3.0,        # holes are slotted this much along X to absorb measuring error
     spacer_h=14.0,         # MEASURE: boss top to the top of the tallest part on the display
-                           # board, incl. the USB-C plug, plus ~2 mm
+                           # board (PH2.0 plugs included), plus ~2 mm
     spacer_d=8.0,
     # --- tray ---
     tray=(140.0, 80.0),    # outside size
@@ -38,7 +38,7 @@ PARAMS = dict(
     lid_t=3.0,
     lid_post=8.0,
     lid_pilot_d=2.6,       # M3 self-tapping into the lid posts
-    pass_slot=(14.0, 9.0), # wire pass-throughs to the display (USB-C power lead, RS485 A/B)
+    pass_slot=(14.0, 9.0), # wire pass-throughs to the display (5 V power + RS485 A/B leads)
     # --- hub ESP32 DevKit V1 (30-pin), mounted upside down, pins toward the lid ---
     esp_hole_dx=44.6, esp_hole_dy=23.7,  # measured from Beau's photos (44-45 x 23.7)
     esp_pcb=(51.0, 28.5),
