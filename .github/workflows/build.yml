@@ -39,4 +39,4 @@ jobs:
       - run: pip install platformio
       - name: Build ${{ matrix.project }}
         working-directory: firmware/${{ matrix.project }}
-        run: pio run
+        run: pio run ${{ matrix.project == 'hub' && '-e hub-esp32 -e hub' || '' }}
