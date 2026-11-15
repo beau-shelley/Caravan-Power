@@ -148,8 +148,8 @@ void loadDefaultRules(RuleSet &rs) {
   addRule(rs, "Fridge freezing", M_TEMP_FRIDGE, CMP_LT, -1, 1, 1800, SEV_WARN, ACT_NONE, false);
   addRule(rs, "Inside hot", M_TEMP_IN, CMP_GT, 35, 2, 300, SEV_WARN);
   addRule(rs, "Inside cold", M_TEMP_IN, CMP_LT, 5, 1, 300, SEV_WARN);
-  addRule(rs, "Fresh 1 low", M_TANK1, CMP_LT, 15, 5, 30, SEV_INFO);
-  addRule(rs, "Fresh 2 low", M_TANK2, CMP_LT, 15, 5, 30, SEV_INFO);
+  addRule(rs, "Tank 1 low", M_TANK1, CMP_LT, 15, 5, 30, SEV_INFO);
+  addRule(rs, "Tank 2 low", M_TANK2, CMP_LT, 15, 5, 30, SEV_INFO);
   addRule(rs, "Grey tank full", M_TANK3, CMP_GT, 85, 5, 30, SEV_WARN);
   addRule(rs, "Strong wind forecast", M_WX_GUST, CMP_GT, 50, 10, 0, SEV_WARN);  // bring the awning in
 }

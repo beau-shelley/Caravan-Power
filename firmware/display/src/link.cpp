@@ -3,6 +3,9 @@
 #include "LinkCodec.h"
 #include "app.h"
 #include "board.h"
+#ifdef DISPLAY_DEMO_MODE
+#include "demo.h"
+#endif
 
 namespace app {
 
@@ -32,6 +35,10 @@ void linkBegin() {
 }
 
 void send(JsonDocument &cmd) {
+#ifdef DISPLAY_DEMO_MODE
+  demo::command(cmd);  // no hub in demo builds: apply the command locally
+  return;
+#endif
   if (gQCount >= QLEN) return;  // drop if the hub is unreachable
   String s;
   serializeJson(cmd, s);

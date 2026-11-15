@@ -288,7 +288,7 @@ const SEV = ["Info","Warning","Alarm"], SEVC = ["var(--accent)","var(--warn)","v
 // Matches FEATURE_INVERTER_CONTROL / FEATURE_AIRCON_CONTROL in the display's ui.h.
 const FEATURES = { inverter:false, aircon:false };
 
-let S = null, META = { sol:["Roof","Portable"], tmp:["Inside","Outside","Fridge"], tank:["Fresh 1","Fresh 2","Grey"],
+let S = null, META = { sol:["Roof","Portable"], tmp:["Inside","Outside","Fridge"], tank:["Tank 1","Tank 2","Grey"],
   pump:["Main pump","Aux pump"], acp:[], rc:true }, RULES = [];
 let transport = null, lastMsg = 0;
 
@@ -504,7 +504,7 @@ function demoTransport() {
       rules:[{ id:1, en:true, name:"Battery low", m:"bat_v", cmp:"<", thr:12.4, hys:0.3, dly:60, sev:1, ntf:true, act:"none" },
              { id:2, en:true, name:"Battery critical", m:"bat_v", cmp:"<", thr:11.8, hys:0.6, dly:30, sev:2, ntf:true, act:"inverter_off" },
              { id:7, en:true, name:"Fridge warm", m:"temp_fridge", cmp:">", thr:6, hys:1, dly:1200, sev:2, ntf:true, act:"none" },
-             { id:11, en:true, name:"Fresh 1 low", m:"tank1", cmp:"<", thr:15, hys:5, dly:30, sev:0, ntf:true, act:"none" }] });
+             { id:11, en:true, name:"Tank 1 low", m:"tank1", cmp:"<", thr:15, hys:5, dly:30, sev:0, ntf:true, act:"none" }] });
     onMessage(st);
   }, 50);
   return { kind:"demo", ready: () => true, send: (c) => toast("Demo: " + JSON.stringify(c)) };

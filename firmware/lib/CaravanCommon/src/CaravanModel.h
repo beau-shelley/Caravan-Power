@@ -185,7 +185,7 @@ void loadDefaultRules(RuleSet &rs);
 struct Meta {
   char solarName[NUM_SOLAR][16] = {"Roof", "Portable"};
   char tempName[NUM_TEMPS][16] = {"Inside", "Outside", "Fridge"};
-  char tankName[NUM_TANKS][16] = {"Fresh 1", "Fresh 2", "Grey"};
+  char tankName[NUM_TANKS][16] = {"Tank 1", "Tank 2", "Grey"};
   char pumpName[NUM_PUMPS][16] = {"Main pump", "Aux pump"};
   uint8_t acPresetCount = 0;
   char acPresetName[MAX_AC_PRESETS][16] = {};

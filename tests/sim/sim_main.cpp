@@ -176,7 +176,7 @@ int main() {
   s.alerts[1].ruleId = 12;
   s.alerts[1].sev = cv::SEV_INFO;
   s.alerts[1].since = s.ts - 3600;
-  strcpy(s.alerts[1].msg, "Fresh 2 low: 18% (< 20)");
+  strcpy(s.alerts[1].msg, "Tank 2 low: 18% (< 20)");
   ui::showPage(ui::PAGE_ALERTS);
   shot("05-alerts");
   ui::showPage(ui::PAGE_HOME);

@@ -100,7 +100,7 @@ void begin() {
   s.alerts[0].ruleId = 12;
   s.alerts[0].sev = SEV_WARN;
   s.alerts[0].since = s.ts - 3600;
-  strcpy(s.alerts[0].msg, "Fresh 2 low: 18% (< 20)");
+  strcpy(s.alerts[0].msg, "Tank 2 low: 18% (< 20)");
 
   app::metaVer++;
   app::rulesVer++;
@@ -124,6 +124,28 @@ void loop() {
   s.bat.chargeA = s.bat.solarA;
   s.bat.a = s.bat.chargeA - s.bat.loadA;
   s.pump[0].runSec += s.pump[0].on ? elapsed : 0;
+  app::stateDirty = true;
+}
+
+void command(const JsonDocument &cmd) {
+  cv::State &s = app::state;
+  const char *c = cmd["c"] | "";
+  if (!strcmp(c, "ack")) {
+    for (int i = 0; i < s.alertCount; i++) s.alerts[i].acked = true;
+  } else if (!strcmp(c, "pump")) {
+    int i = cmd["i"] | -1;
+    if (i < 0 || i >= cv::NUM_PUMPS) return;
+    s.pump[i].on = s.pump[i].sensed = cmd["on"] | false;
+    s.pump[i].runSec = 0;
+  } else if (!strcmp(c, "inverter")) {
+    s.inv.on = cmd["on"] | false;
+  } else if (!strcmp(c, "aircon")) {
+    int p = (cmd["off"] | false) ? -1 : (int)(cmd["preset"] | -1);
+    s.ac.on = p >= 0;
+    s.ac.preset = p;
+  } else {
+    return;  // settings, rules etc. aren't simulated
+  }
   app::stateDirty = true;
 }
 
