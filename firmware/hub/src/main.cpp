@@ -11,6 +11,7 @@
 #include "Bmpro.h"
 #include "CaravanModel.h"
 #include "Comms.h"
+#include "Demo.h"
 #include "HubConfig.h"
 #include "Inputs.h"
 #include "Outputs.h"
@@ -591,6 +592,7 @@ void setup() {
   gAircon.begin(PIN_IR_TX, PIN_IR_RX);
 
   gLink.begin(LINK_SERIAL, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE);
+  if (demo::kOn) demo::begin(gState);
   gNet.begin();
   gNotify.begin();
   for (int i = 0; i < cv::NUM_SOLAR; i++) startSolar(i);
@@ -611,6 +613,7 @@ void loop() {
   uint32_t now = millis();
   {
     StateLock l;
+    if (!demo::kOn) {
     for (int i = 0; i < cv::NUM_SOLAR; i++) {
       uint8_t src = gConfig.victron[i].src;
       if (src == SOLAR_VEDIRECT && gVeDirectOn[i]) gVictron[i].poll(gState.solar[i]);
@@ -636,8 +639,10 @@ void loop() {
       bool pumps = gConfig.pumpViaBmpro(0) || gConfig.pumpViaBmpro(1);
       gBmpro.loop(gState, gConfig.bat.source == cv::BAT_SRC_BMPRO, gConfig.tankSource == TANK_BMPRO, pumps);
     }
+    }  // !demo::kOn
     updateLoads(now);
     gNet.loop(gState);
+    if (demo::kOn) demo::tick(gState, now);
 
     static uint32_t nextEval = 0;
     if ((int32_t)(now - nextEval) >= 0) {
