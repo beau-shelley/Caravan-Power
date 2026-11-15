@@ -56,7 +56,7 @@ What's different from the S3 hub:
 - **Power the MAX485 from 3.3 V**, not 5 V, so its RO output is safe for the ESP32. The MAX485 is a 5 V part, but this works fine over a short link. If you see garbled data, swap it for a MAX3485 module.
 - **No termination needed:** the link is a few centimetres long. Leave the display's 120 Ω DIP switch as shipped.
 
-A 3D-printed case that holds the display by its glass and carries the hub, level sensor, MAX485 and buck converter on its rear cover is in [hardware/display-mount](../hardware/display-mount/).
+A 3D-printed backpack that bolts to the display's four screw bosses and carries the hub, level sensor, MAX485 and buck converter is in [hardware/display-mount](../hardware/display-mount/).
 
 ## Hub (ESP32-S3-DevKitC-1) pin map
 
