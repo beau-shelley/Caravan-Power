@@ -10,7 +10,8 @@ static constexpr int CX = 192, CY = 196;     // bullseye centre inside the card
 static constexpr float PX_PER_DEG = 160 / 3.0f;
 static constexpr float LEVEL_TOL = 0.3f;     // degrees counted as "level"
 
-static lv_obj_t *bubble, *lRoll, *lPitch, *lAdvice, *lStatus, *lDims, *lOffline;
+static lv_obj_t *bubble, *lRoll, *lPitch, *lAdvice, *lStatus, *lDims, *lOffline, *bLoc;
+static uint32_t levelSinceMs = 0;
 
 static lv_obj_t *ring(lv_obj_t *p, int r, uint32_t color, int width) {
   lv_obj_t *o = lv_obj_create(p);
@@ -24,6 +25,7 @@ static lv_obj_t *ring(lv_obj_t *p, int r, uint32_t color, int width) {
   return o;
 }
 
+static void locCb(lv_event_t *) { openTownSearch(); }
 static void zeroDo(void *) { app::cmd("level_zero"); }
 static void frontDo(void *) { app::cmd("level_front"); }
 static void zeroCb(lv_event_t *) {
@@ -108,9 +110,15 @@ void buildLevel(lv_obj_t *p) {
   lStatus = lbl(a, &lv_font_montserrat_12, col::MUTED, "");
   lv_obj_set_width(lStatus, 236);
   lv_label_set_long_mode(lStatus, LV_LABEL_LONG_WRAP);
-  lv_obj_set_pos(lStatus, 0, 250);
+  lv_obj_set_pos(lStatus, 0, 262);
   lDims = lbl(a, &lv_font_montserrat_12, col::DIM, "");
-  lv_obj_set_pos(lDims, 0, 300);
+  lv_obj_set_pos(lDims, 0, 306);
+  // Shown once the van has been level for a few seconds: good moment to set
+  // the weather location for this site (the phone level page offers the same).
+  bLoc = button(a, 236, 40, LV_SYMBOL_GPS " Set weather location", col::CHARGE, locCb);
+  lv_obj_set_style_text_color(lv_obj_get_child(bLoc, 0), c(col::BG), 0);
+  lv_obj_set_pos(bLoc, 0, 208);
+  lv_obj_add_flag(bLoc, LV_OBJ_FLAG_HIDDEN);
   lv_obj_t *bz = button(a, 114, 42, "Set level", col::TILE, zeroCb);
   lv_obj_align(bz, LV_ALIGN_BOTTOM_LEFT, 0, 0);
   lv_obj_t *bf = button(a, 114, 42, "Learn front", col::TILE, frontCb);
@@ -163,7 +171,15 @@ void updateLevel() {
   setText(lAdvice, "%s\n%s", a1, a2);
   lv_obj_set_style_text_color(lAdvice, c(rollOk && pitchOk ? col::CHARGE : col::TEXT), 0);
 
-  if (!l.zeroed) setText(lStatus, LV_SYMBOL_WARNING " Not calibrated. Park on level ground and press Set level.");
+  bool level = l.zeroed && rollOk && pitchOk;
+  if (!level) levelSinceMs = 0;
+  else if (!levelSinceMs) levelSinceMs = millis();
+  bool offer = level && millis() - levelSinceMs > 3000;
+  if (offer) lv_obj_clear_flag(bLoc, LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(bLoc, LV_OBJ_FLAG_HIDDEN);
+
+  if (level) setText(lStatus, "Level. Chock the wheels and lower the stabilisers.");
+  else if (!l.zeroed) setText(lStatus, LV_SYMBOL_WARNING " Not calibrated. Park on level ground and press Set level.");
   else if (!l.fwdLearned) setText(lStatus, "Calibrated. Optional: Learn front if the sensor isn't square to the van. Do the wheels first, then the jockey.");
   else setText(lStatus, "Calibrated. Do the wheels first, then the jockey.");
   setText(lDims, "Wheels %u mm apart, jockey %u mm\nfrom axle (change in dashboard)", l.trackMm, l.jockeyMm);

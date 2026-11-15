@@ -36,6 +36,12 @@ input { background:var(--tile); color:var(--text); border:1px solid var(--border
 label { font-size:12px; color:var(--muted); }
 .hidden { display:none !important; }
 #bubble { transition:cx .25s, cy .25s, fill .25s; }
+/* "Caravan is level - set weather location?" sheet */
+#levelSheet { position:fixed; left:12px; right:12px; bottom:max(14px, env(safe-area-inset-bottom)); z-index:10;
+  background:var(--card); border:2px solid var(--ok); border-radius:18px; padding:16px; box-shadow:0 10px 40px rgba(0,0,0,.5);
+  transform:translateY(140%); transition:transform .3s ease; }
+#levelSheet.show { transform:none; }
+#levelSheet h2 { margin:0 0 4px; font-size:20px; color:var(--ok); }
 </style>
 </head>
 <body>
@@ -84,6 +90,15 @@ label { font-size:12px; color:var(--muted); }
 
 <button class="btn" id="setLoc">📍 Set weather location here</button>
 
+<div id="levelSheet" role="dialog" aria-live="polite">
+  <h2>✓ Caravan is level</h2>
+  <div class="muted" style="font-size:15px; margin-bottom:12px">Set the weather forecast to this site?</div>
+  <div class="row">
+    <button class="btn" id="sheetNo">Not now</button>
+    <button class="btn primary" id="sheetYes">📍 Set location</button>
+  </div>
+</div>
+
 <details class="card">
   <summary>Caravan dimensions &amp; calibration help</summary>
   <div class="row" style="margin-top:10px">
@@ -115,6 +130,7 @@ function show(d) {
   let bx = -d.roll * PX_PER_DEG, by = -d.pitch * PX_PER_DEG;  // bubble floats to the high side
   const r = Math.hypot(bx, by); if (r > 180) { bx *= 180 / r; by *= 180 / r; }
   const rollOk = Math.abs(d.roll) <= TOL, pitchOk = Math.abs(d.pitch) <= TOL;
+  onLevelState(d.zeroed && rollOk && pitchOk && !d.calibrating);
   const b = $("#bubble");
   b.setAttribute("cx", bx.toFixed(1)); b.setAttribute("cy", by.toFixed(1));
   b.setAttribute("fill", rollOk && pitchOk ? "var(--ok)" : Math.abs(d.roll) < 1 && Math.abs(d.pitch) < 1 ? "var(--warn)" : "var(--bad)");
@@ -175,23 +191,69 @@ $("#connect").onclick = connect;
 $("#zero").onclick = () => { if (confirm("Is the van exactly level right now (checked with a spirit level)? Keep still for 2 seconds after pressing OK.")) sendCmd("zero"); };
 $("#front").onclick = () => { if (confirm("Wind the jockey UP so the front is 2-3 cm higher than level, then press OK.")) sendCmd("front"); };
 // Phone GPS works without internet; the hub fetches the forecast once it's online.
-$("#setLoc").onclick = () => {
-  if (!cmdChr) { alert("Connect to the caravan first"); return; }
-  if (!navigator.geolocation) { alert("This browser has no location access"); return; }
-  $("#setLoc").textContent = "📍 Getting location…";
-  navigator.geolocation.getCurrentPosition(async (p) => {
-    const lat = p.coords.latitude.toFixed(4), lon = p.coords.longitude.toFixed(4);
+// ---------------------------------------------------------------- weather location
+// Phone GPS works without internet; the hub fetches the forecast once it's online.
+const LAST_LOC_KEY = "caravan-last-loc";
+function lastLoc() { try { return JSON.parse(localStorage.getItem(LAST_LOC_KEY) || "null"); } catch (e) { return null; } }
+function kmBetween(a, b) {
+  const r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+function getPosition() {
+  return new Promise((ok, fail) => navigator.geolocation.getCurrentPosition(
+    (p) => ok({ lat: +p.coords.latitude.toFixed(4), lon: +p.coords.longitude.toFixed(4) }), fail,
+    { enableHighAccuracy: false, timeout: 20000, maximumAge: 600000 }));
+}
+async function setWeatherLocation(pos) {
+  const btn = $("#setLoc");
+  if (!cmdChr) { alert("Connect to the caravan first"); return false; }
+  if (!navigator.geolocation) { alert("This browser has no location access"); return false; }
+  btn.textContent = "📍 Getting location…";
+  try {
+    pos = pos || await getPosition();
     let name = "";
     try {  // optional friendly name if the phone has internet
       const ctl = new AbortController(); setTimeout(() => ctl.abort(), 4000);
-      const r = await (await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`, { signal: ctl.signal })).json();
+      const r = await (await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${pos.lat}&longitude=${pos.lon}&localityLanguage=en`, { signal: ctl.signal })).json();
       name = [r.locality || r.city, r.principalSubdivisionCode?.split("-")[1]].filter(Boolean).join(" ").replace(/,/g, " ").slice(0, 23);
     } catch (e) {}
-    await sendCmd(`loc:${lat},${lon}${name ? "," + name : ""}`);
-    $("#setLoc").textContent = `📍 Weather location set${name ? ": " + name : ""}`;
-  }, (e) => { $("#setLoc").textContent = "📍 Set weather location here"; alert("Location error: " + e.message); },
-  { enableHighAccuracy: false, timeout: 20000, maximumAge: 600000 });
+    await sendCmd(`loc:${pos.lat},${pos.lon}${name ? "," + name : ""}`);
+    try { localStorage.setItem(LAST_LOC_KEY, JSON.stringify({ ...pos, t: Date.now() })); } catch (e) {}
+    btn.textContent = `📍 Weather location set${name ? ": " + name : ""}`;
+    return true;
+  } catch (e) {
+    btn.textContent = "📍 Set weather location here";
+    alert("Location error: " + e.message);
+    return false;
+  }
+}
+$("#setLoc").onclick = () => setWeatherLocation();
+
+// Once the van has been level for a few seconds, offer to set the weather
+// location - once per visit, and not if we're still at the last site (< 2 km).
+let levelSince = 0, levelPrompted = false;
+async function onLevelState(isLevel) {
+  if (!isLevel) { levelSince = 0; return; }
+  if (!levelSince) levelSince = Date.now();
+  if (levelPrompted || Date.now() - levelSince < 3000 || !cmdChr) return;
+  levelPrompted = true;
+  navigator.vibrate?.([80, 60, 80]);
+  const prev = lastLoc();
+  if (prev) {
+    try {  // only check silently if location permission was already given
+      const perm = await navigator.permissions?.query({ name: "geolocation" });
+      if (perm?.state === "granted" && kmBetween(prev, await getPosition()) < 2) return;  // same site
+    } catch (e) {}
+  }
+  $("#levelSheet").classList.add("show");
+}
+$("#sheetNo").onclick = () => $("#levelSheet").classList.remove("show");
+$("#sheetYes").onclick = async () => {
+  $("#levelSheet").classList.remove("show");
+  await setWeatherLocation();
 };
+
 $("#reset").onclick = () => { if (confirm("Forget the level calibration?")) sendCmd("reset"); };
 $("#saveDims").onclick = () => sendCmd(`dims:${Math.round(+$("#track").value)},${Math.round(+$("#jockey").value)}`);
 document.addEventListener("visibilitychange", async () => {
@@ -200,7 +262,9 @@ document.addEventListener("visibilitychange", async () => {
 
 if (new URLSearchParams(location.search).has("demo")) {
   setConn("Demo", "ok"); $("#connect").classList.add("hidden");
-  let t = 0; setInterval(() => { t += 0.05; show({ pitch: 0.6 * Math.cos(t), roll: -0.9 * Math.cos(t * 0.7), online: true, zeroed: true, fwd: true, track: 1900, jockey: 4500 }); }, 200);
+  // Demo: wobble, then settle level so the "set location" prompt appears.
+  let t = 0; setInterval(() => { t += 0.05; const k = Math.max(0, 1 - t / 2.5);
+    show({ pitch: 0.6 * k * Math.cos(t), roll: -0.9 * k * Math.cos(t * 0.7), online: true, zeroed: true, fwd: true, track: 1900, jockey: 4500 }); }, 200);
   cmdChr = { writeValue: async (v) => alert("Demo: " + new TextDecoder().decode(v)) };
 } else if (!navigator.bluetooth) {
   $("#unsupported").classList.remove("hidden"); $("#connect").classList.add("hidden");

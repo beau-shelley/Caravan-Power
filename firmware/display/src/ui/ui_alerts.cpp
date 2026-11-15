@@ -313,7 +313,8 @@ static void locSearchDone(const char *q) {
   app::send(d);
   toast("Searching...", col::ACCENT);
 }
-static void locSearchCb(lv_event_t *) { askText("Town or place name (e.g. Mudgee)", "", 40, locSearchDone); }
+void openTownSearch() { askText("Town or place name (e.g. Mudgee)", "", 40, locSearchDone); }
+static void locSearchCb(lv_event_t *) { openTownSearch(); }
 
 struct LocChoice {
   float lat, lon;

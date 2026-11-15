@@ -155,6 +155,10 @@ int main() {
   shot("08-level");
   ui::showPage(ui::PAGE_MORE);
   shot("11-more");
+  app::state.lvl.roll = 0.1f;  // now level -> "Set weather location" appears
+  app::state.lvl.pitch = -0.2f;
+  ui::showPage(ui::PAGE_LEVEL);
+  for (int i = 0; i < 4; i++) shot("12-level-done");  // level held > 3 s (sim refreshes once per shot)
 
   // An active alarm + a warning
   cv::State &s = app::state;

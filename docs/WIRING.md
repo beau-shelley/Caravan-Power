@@ -200,8 +200,8 @@ The forecast needs to know where the van is. **No GPS module or roof penetration
 
 | How | Where | Notes |
 |---|---|---|
-| **Phone level page** | `level.html` → **📍 Set weather location here** | One tap while you're levelling anyway. Your phone's GPS works without internet, and the location goes to the hub over Bluetooth. |
-| **Town search on the touchscreen** | *Settings* → *Weather location* → **Search town** | Type e.g. "Mudgee" and pick from the list. The hub looks it up, so it needs Starlink up. |
+| **Phone level page** | Once the van is level, the phone buzzes and asks **"Set the weather forecast to this site?"**. Tap **Set location**. (Or use **📍 Set weather location here** any time.) | Your phone's GPS works without internet, and the location goes to the hub over Bluetooth. The prompt appears once per visit, and not at all if you're within 2 km of the last site you set. |
+| **Town search on the touchscreen** | A **Set weather location** button appears on the *Level* page once the van is level, or use *More → Settings → Weather location* → **Search town** | Type e.g. "Mudgee" and pick from the list. The hub looks it up, so it needs Starlink up. |
 | **Dashboard** | *Setup* → *Weather location* | Phone location or town search. |
 
 **Saved until you change it:** the location survives reboots, so you only set it at each new site. The hub then fetches the forecast from Open-Meteo every 30 minutes whenever it has internet, about 2 KB a time. The last forecast stays on screen while you're offline, and the touchscreen shows how old it is.
