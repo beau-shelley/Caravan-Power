@@ -10,8 +10,8 @@ namespace {
 constexpr int W = board::SCREEN_W, H = board::SCREEN_H;
 constexpr int PIN_SDA = 8, PIN_SCL = 9;
 constexpr uint8_t IO_ADDR = 0x24;
-constexpr uint8_t REG_MODE = 0x02, REG_OUTPUT = 0x03, REG_PWM = 0x05;
-constexpr int IO_BACKLIGHT = 2, IO_LCD_RESET = 3;
+constexpr uint8_t REG_MODE = 0x02, REG_OUTPUT = 0x03;  // 0x05 = backlight PWM: don't write it at boot (see begin())
+constexpr int IO_BACKLIGHT = 2;  // IO3 = LCD reset: left high, never pulsed
 
 esp_lcd_panel_handle_t gPanel = nullptr;
 lv_disp_draw_buf_t gDrawBuf;
@@ -109,15 +109,12 @@ void begin() {
   Serial.printf("[board] PSRAM: %u bytes, free internal heap: %u bytes\n", ESP.getPsramSize(), ESP.getFreeHeap());
   Wire.begin(PIN_SDA, PIN_SCL, 400000);
 
-  // Verified 7B boot order: CH32 direction and outputs, pulse LCD reset,
-  // then set inverted PWM to full brightness before starting the RGB panel.
+  // Same start-up as Waveshare's 06_LCD demo: CH32 pins to outputs (all high,
+  // so backlight on and LCD out of reset) and nothing else. Pulsing LCD reset
+  // (IO3) and writing the backlight PWM register here left a faint band of
+  // vertical stripes across the panel; confirmed on hardware by A/B flash.
   bool ioOk = exioWrite(REG_MODE, 0xff);
   exioWrite(REG_OUTPUT, gExio);
-  exioPin(IO_LCD_RESET, false);
-  delay(10);
-  exioPin(IO_LCD_RESET, true);
-  delay(120);
-  exioWrite(REG_PWM, 0x00);
   gBacklight = true;
   Serial.printf("[board] CH32 IO extension: %s\n", ioOk ? "OK" : "FAILED");
 
