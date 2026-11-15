@@ -99,7 +99,7 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
    ```sh
    cd firmware/hub
    cp src/secrets.example.h src/secrets.h    # Wi-Fi, MQTT, ntfy topic, web password
-   pio run -t upload                          # firmware
+   pio run -t upload                          # firmware (classic ESP32; add -e hub for an ESP32-S3)
    pio run -t uploadfs                        # web dashboard -> LittleFS
    pio device monitor                         # watch it find sensors
    ```

@@ -17,9 +17,9 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 | Qty | Part | Notes |
 |---|---|---|
 | 1 | Waveshare **ESP32-S3-Touch-LCD-7** | you already have it |
-| 1 | **ESP32-S3-DevKitC-1** (N8R2 or N8R8) | the hub |
+| 1 | **ESP32 DevKit** (classic ESP32-WROOM-32, 30-pin) *or* ESP32-S3-DevKitC-1 | the hub; see [Hub on a classic ESP32](#hub-on-a-classic-esp32-mounted-behind-the-display) |
 | 1 | 12 V → 5 V 3 A automotive buck converter | powers the hub (and the display if your board has no 7–36 V input) |
-| 1 | MAX3485 / "TTL to RS485" 3.3 V module | hub side of the display link (an auto-direction module is fine; set `PIN_LINK_DE` to -1) |
+| 1 | MAX3485 or MAX485 "TTL to RS485" module, powered from 3.3 V | hub side of the display link (an auto-direction module is fine; set `PIN_LINK_DE` to -1) |
 | 1 | 4-core shielded cable (e.g. 0.5 mm²) | hub ↔ display: 12 V, GND, RS485 A, B |
 | 2-3 | Bluetooth thermometers (see *Temperature sensors*) | e.g. 2-3 × ThermoPro TP357 + 1 × Shelly BLU H&T |
 | 0-3 | DS18B20 waterproof probes + 4.7 kΩ resistor | only for roles you want wired |
@@ -31,6 +31,32 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 | — | Fuses/holders, ferrules, heatshrink, enclosure | 2 A for the electronics |
 
 Only needed for the wired fallbacks: VE.Direct pigtails (solar), ADS1115 + 3 dividers (tanks), INA226 + 300 A shunt (battery), relays + Schottky diodes + opto (pumps).
+
+## Hub on a classic ESP32, mounted behind the display
+
+The hub can be a classic ESP32 DevKit (the common 30-pin ESP32-WROOM-32 board with a CH340 or CP2102 USB chip). Build and flash it with `pio run -e hub-esp32 -t upload` (it's the default env). The display needs no changes.
+
+![Hub wiring](img/hub-wiring-esp32.svg)
+
+With the hub bolted behind the display, the only wires are power, the two RS485 wires and the level sensor. Everything else is Bluetooth.
+
+| ESP32 pin | Goes to |
+|---|---|
+| VIN (5 V), GND | buck converter 5 V out |
+| 3V3, GND | MAX485 VCC/GND and MPU-6050 VCC/GND |
+| GPIO16 (RX2) | MAX485 RO |
+| GPIO17 (TX2) | MAX485 DI |
+| GPIO4 | MAX485 DE and RE, bridged together |
+| GPIO21 / GPIO22 | MPU-6050 SDA / SCL |
+| MAX485 A / B | display RS485 header A / B |
+| *fallbacks / later:* GPIO23 1-Wire, GPIO25 buzzer, GPIO26 IR LED, GPIO34 IR receiver, GPIO32/33 pump relays, GPIO27 inverter relay, GPIO13 spare relay, GPIO14/18 pump sense, GPIO19 inverter sense, GPIO36 VE.Direct #1 RX, GPIO39 GPS RX | |
+
+What's different from the S3 hub:
+- **One spare UART instead of two.** The USB port uses UART0, and the display link uses UART2. The VE.Direct #1 cable fallback and a GPS module share UART1, so you can have one or the other. There's no VE.Direct #2 cable fallback (both Victrons still work over Bluetooth).
+- **Power the MAX485 from 3.3 V**, not 5 V, so its RO output is safe for the ESP32. The MAX485 is a 5 V part, but this works fine over a short link. If you see garbled data, swap it for a MAX3485 module.
+- **No termination needed:** the link is a few centimetres long. Leave the display's 120 Ω DIP switch as shipped.
+
+A 3D-printed case that holds the display by its glass and carries the hub, level sensor, MAX485 and buck converter on its rear cover is in [hardware/display-mount](../hardware/display-mount/).
 
 ## Hub (ESP32-S3-DevKitC-1) pin map
 
