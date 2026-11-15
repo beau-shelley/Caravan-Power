@@ -32,7 +32,7 @@ class VeDirectParser {
   uint32_t badBlocks() const { return bad_; }
 
  private:
-  enum St : uint8_t { IDLE, LABEL, VALUE, CHECKSUM, HEX };
+  enum St : uint8_t { IDLE, LABEL, VALUE, CHECKSUM, HEX_FRAME };  // not "HEX": Arduino #defines it
   St st_ = IDLE, beforeHex_ = IDLE;
   uint8_t sum_ = 0;
   char label_[10];

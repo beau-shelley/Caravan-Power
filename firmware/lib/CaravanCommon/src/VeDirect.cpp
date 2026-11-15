@@ -14,11 +14,11 @@ void VeDirectParser::storeField() {
 }
 
 bool VeDirectParser::feed(uint8_t b) {
-  if (b == ':' && st_ != CHECKSUM && st_ != HEX) {
+  if (b == ':' && st_ != CHECKSUM && st_ != HEX_FRAME) {
     beforeHex_ = st_;
-    st_ = HEX;
+    st_ = HEX_FRAME;
   }
-  if (st_ == HEX) {
+  if (st_ == HEX_FRAME) {
     if (b == '\n') st_ = beforeHex_;
     return false;  // hex bytes are excluded from the checksum
   }
