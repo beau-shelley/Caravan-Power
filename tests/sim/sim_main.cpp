@@ -26,10 +26,13 @@ bool backlightOn() { return true; }
 uint32_t lastTouchMs() { return gNow; }
 }  // namespace board
 
-static std::vector<uint16_t> fb(800 * 480);
+// Same resolution as the firmware (board.h); override with
+//   make -C tests/sim RES="-DDISPLAY_HOR_RES=800 -DDISPLAY_VER_RES=480"
+static constexpr int W = board::SCREEN_W, H = board::SCREEN_H;
+static std::vector<uint16_t> fb(W * H);
 static void flush(lv_disp_drv_t *d, const lv_area_t *a, lv_color_t *px) {
   for (int y = a->y1; y <= a->y2; y++)
-    for (int x = a->x1; x <= a->x2; x++) fb[y * 800 + x] = (px++)->full;
+    for (int x = a->x1; x <= a->x2; x++) fb[y * W + x] = (px++)->full;
   lv_disp_flush_ready(d);
 }
 
@@ -50,7 +53,7 @@ static void shot(const char *name) {
   char path[256];
   snprintf(path, sizeof(path), "%s/%s.ppm", getenv("OUT") ? getenv("OUT") : ".", name);
   FILE *f = fopen(path, "wb");
-  fprintf(f, "P6\n800 480\n255\n");
+  fprintf(f, "P6\n%d %d\n255\n", W, H);
   for (uint16_t p : fb) {
     uint8_t r = ((p >> 11) & 31) * 255 / 31, g = ((p >> 5) & 63) * 255 / 63, b = (p & 31) * 255 / 31;
     fputc(r, f);
@@ -116,12 +119,12 @@ static void demoData() {
 int main() {
   lv_init();
   static lv_disp_draw_buf_t db;
-  static std::vector<lv_color_t> buf(800 * 480);
-  lv_disp_draw_buf_init(&db, buf.data(), nullptr, 800 * 480);
+  static std::vector<lv_color_t> buf(W * H);
+  lv_disp_draw_buf_init(&db, buf.data(), nullptr, W * H);
   static lv_disp_drv_t drv;
   lv_disp_drv_init(&drv);
-  drv.hor_res = 800;
-  drv.ver_res = 480;
+  drv.hor_res = W;
+  drv.ver_res = H;
   drv.flush_cb = flush;
   drv.draw_buf = &db;
   lv_disp_drv_register(&drv);

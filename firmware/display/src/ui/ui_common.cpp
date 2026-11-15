@@ -29,7 +29,7 @@ lv_obj_t *card(lv_obj_t *parent, int x, int y, int w, int h, const char *title, 
   lv_obj_set_style_border_color(o, c(col::BORDER), 0);
   lv_obj_set_style_border_width(o, 1, 0);
   lv_obj_set_style_radius(o, 16, 0);
-  lv_obj_set_style_pad_all(o, 14, 0);
+  lv_obj_set_style_pad_all(o, CARD_PAD, 0);
   lv_obj_set_style_shadow_width(o, 18, 0);
   lv_obj_set_style_shadow_color(o, lv_color_black(), 0);
   lv_obj_set_style_shadow_opa(o, LV_OPA_30, 0);
@@ -89,11 +89,11 @@ lv_obj_t *tile(lv_obj_t *parent, int w, int h, const char *sym, const char *text
   lv_obj_set_style_border_width(b, 1, 0);
   lv_obj_set_style_border_color(b, c(col::BORDER), 0);
   lv_obj_set_style_pad_all(b, 6, 0);
-  lv_obj_t *ic = lbl(b, &lv_font_montserrat_20, col::MUTED, sym);
+  lv_obj_t *ic = lbl(b, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::MUTED, sym);
   lv_obj_align(ic, LV_ALIGN_TOP_LEFT, 2, 2);
-  lv_obj_t *t = lbl(b, &lv_font_montserrat_14, col::TEXT, text);
-  lv_obj_align(t, LV_ALIGN_BOTTOM_LEFT, 2, -16);
-  lv_obj_t *s = lbl(b, &lv_font_montserrat_12, col::MUTED, "Off");
+  lv_obj_t *t = lbl(b, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, col::TEXT, text);
+  lv_obj_align(t, LV_ALIGN_BOTTOM_LEFT, 2, LARGE ? -19 : -16);
+  lv_obj_t *s = lbl(b, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "Off");
   lv_obj_set_width(s, w - 16);
   lv_label_set_long_mode(s, LV_LABEL_LONG_DOT);
   lv_obj_align(s, LV_ALIGN_BOTTOM_LEFT, 2, 0);
@@ -152,10 +152,10 @@ void toast(const char *msg, uint32_t color) {
   lv_obj_set_style_border_width(t, 2, 0);
   lv_obj_set_style_radius(t, 12, 0);
   lv_obj_set_style_pad_all(t, 12, 0);
-  lv_obj_set_width(t, 520);
+  lv_obj_set_width(t, PAGE_W * 3 / 4);
   lv_label_set_long_mode(t, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_align(t, LV_ALIGN_BOTTOM_MID, 44, -18);
+  lv_obj_align(t, LV_ALIGN_BOTTOM_MID, RAIL_W / 2, -18);  // centred over the page, not the rail
   lv_obj_del_delayed(t, 3500);
 }
 
@@ -175,7 +175,7 @@ static void confirmCb(lv_event_t *e) {
 void confirm(const char *title, const char *msg, void (*onYes)(void *), void *ud) {
   static const char *btns[] = {"Yes", "Cancel", ""};
   lv_obj_t *m = lv_msgbox_create(nullptr, title, msg, btns, false);
-  lv_obj_set_width(m, 420);
+  lv_obj_set_width(m, LARGE ? 500 : 420);
   lv_obj_center(m);
   lv_obj_add_event_cb(m, confirmCb, LV_EVENT_VALUE_CHANGED, new ConfirmCtx{onYes, ud});
 }
@@ -251,33 +251,35 @@ static void bellCb(lv_event_t *) { showPage(PAGE_ALERTS); }
 
 // "More" page: big tiles for the things you only need now and then.
 static void moreTileCb(lv_event_t *e) { showPage((int)(intptr_t)lv_event_get_user_data(e)); }
-static lv_obj_t *moreTile(lv_obj_t *p, int x, int page, const char *sym, const char *title, const char *sub,
+static lv_obj_t *moreTile(lv_obj_t *p, int i, int page, const char *sym, const char *title, const char *sub,
                           uint32_t accent) {
+  constexpr int w = colW(3), h = LARGE ? 280 : 220;
   lv_obj_t *b = lv_btn_create(p);
-  lv_obj_set_size(b, 216, 220);
-  lv_obj_set_pos(b, x, 96);  // vertically centred in the page
+  lv_obj_set_size(b, w, h);
+  lv_obj_set_pos(b, colX(i, 3), (PAGE_H - h) / 2);  // vertically centred in the page
   lv_obj_set_style_bg_color(b, c(col::CARD), 0);
   lv_obj_set_style_border_color(b, c(col::BORDER), 0);
   lv_obj_set_style_border_width(b, 1, 0);
   lv_obj_set_style_radius(b, 18, 0);
   lv_obj_set_style_shadow_width(b, 0, 0);
   lv_obj_add_event_cb(b, moreTileCb, LV_EVENT_CLICKED, (void *)(intptr_t)page);
+  constexpr int top = (h - 220) / 2 + 28;  // icon / title / caption block centred in the tile
   lv_obj_t *ic = lbl(b, &lv_font_montserrat_48, accent, sym);
-  lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, 28);
-  lv_obj_t *t = lbl(b, &lv_font_montserrat_20, col::TEXT, title);
-  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 112);
-  lv_obj_t *s = lbl(b, &lv_font_montserrat_14, col::MUTED, sub);
-  lv_obj_set_width(s, 190);
+  lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, top);
+  lv_obj_t *t = lbl(b, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, title);
+  lv_obj_align(t, LV_ALIGN_TOP_MID, 0, top + 84);
+  lv_obj_t *s = lbl(b, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, col::MUTED, sub);
+  lv_obj_set_width(s, w - 26);
   lv_obj_set_style_text_align(s, LV_TEXT_ALIGN_CENTER, 0);
   lv_label_set_long_mode(s, LV_LABEL_LONG_WRAP);
-  lv_obj_align(s, LV_ALIGN_TOP_MID, 0, 146);
+  lv_obj_align(s, LV_ALIGN_TOP_MID, 0, top + (LARGE ? 124 : 118));
   return s;
 }
 
 static void buildMore(lv_obj_t *p) {
-  moreTile(p, 12, PAGE_LEVEL, LV_SYMBOL_GPS, "Caravan level", "Bubble level and wheel / jockey heights", col::ACCENT);
-  gMoreAlerts = moreTile(p, 248, PAGE_ALERTS, LV_SYMBOL_BELL, "Alerts & rules", "", col::WARN);
-  moreTile(p, 484, PAGE_SETTINGS, LV_SYMBOL_SETTINGS, "Settings", "Aircon, weather location, display", col::MUTED);
+  moreTile(p, 0, PAGE_LEVEL, LV_SYMBOL_GPS, "Caravan level", "Bubble level and wheel / jockey heights", col::ACCENT);
+  gMoreAlerts = moreTile(p, 1, PAGE_ALERTS, LV_SYMBOL_BELL, "Alerts & rules", "", col::WARN);
+  moreTile(p, 2, PAGE_SETTINGS, LV_SYMBOL_SETTINGS, "Settings", "Aircon, weather location, display", col::MUTED);
 }
 
 static void updateMore() {
@@ -293,7 +295,7 @@ static void buildShell() {
   lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
   // Nav rail
-  lv_obj_t *rail = panel(scr, 0, 0, 88, 480);
+  lv_obj_t *rail = panel(scr, 0, 0, RAIL_W, SCR_H);
   lv_obj_set_style_bg_color(rail, c(col::RAIL), 0);
   lv_obj_set_style_bg_opa(rail, LV_OPA_COVER, 0);
   lv_obj_set_style_border_side(rail, LV_BORDER_SIDE_RIGHT, 0);
@@ -305,27 +307,30 @@ static void buildShell() {
   lv_obj_t *demoTag = lbl(rail, &lv_font_montserrat_12, col::WARN, "DEMO");
   lv_obj_align(demoTag, LV_ALIGN_TOP_MID, 0, 34);
 #endif
+  // Nav buttons share the rail height below the logo.
+  constexpr int navTop = LARGE ? 60 : 52, navStep = (SCR_H - navTop - 4) / NAV_COUNT;
+  constexpr int navBtn = navStep - 12 < RAIL_W - 16 ? navStep - 12 : RAIL_W - 16;
   for (int i = 0; i < NAV_COUNT; i++) {
     int pg = kRail[i];
     lv_obj_t *b = lv_btn_create(rail);
-    lv_obj_set_size(b, 72, 72);
-    lv_obj_set_pos(b, 8, 52 + i * 84);
+    lv_obj_set_size(b, navBtn, navBtn);
+    lv_obj_set_pos(b, (RAIL_W - navBtn) / 2, navTop + i * navStep + (navStep - 12 - navBtn) / 2);
     lv_obj_set_style_pad_all(b, 0, 0);
     lv_obj_set_style_radius(b, 14, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_bg_color(b, c(col::TILE), 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
     lv_obj_t *ic = lbl(b, &lv_font_montserrat_28, col::MUTED, kPageIcons[pg]);
-    lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, 8);
-    lv_obj_t *tx = lbl(b, &lv_font_montserrat_12, col::MUTED, kPageNames[pg]);
-    lv_obj_align(tx, LV_ALIGN_BOTTOM_MID, 0, -6);
+    lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, LARGE ? 12 : 8);
+    lv_obj_t *tx = lbl(b, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, kPageNames[pg]);
+    lv_obj_align(tx, LV_ALIGN_BOTTOM_MID, 0, LARGE ? -10 : -6);
     lv_obj_add_event_cb(b, navCb, LV_EVENT_CLICKED, (void *)(intptr_t)pg);
     gNavBtns[i] = b;
   }
 
   // Status bar
-  lv_obj_t *bar = panel(scr, 88, 0, 712, 44);
-  gTitle = lbl(bar, &lv_font_montserrat_20, col::TEXT, "Home");
+  lv_obj_t *bar = panel(scr, RAIL_W, 0, PAGE_W, BAR_H);
+  gTitle = lbl(bar, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "Home");
   lv_obj_align(gTitle, LV_ALIGN_LEFT_MID, 16, 2);
   lv_obj_add_flag(gTitle, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_set_ext_click_area(gTitle, 10);
@@ -347,21 +352,24 @@ static void buildShell() {
   lv_obj_align(gIcoWifi, LV_ALIGN_RIGHT_MID, -98, 2);
   gIcoLink = lbl(bar, &lv_font_montserrat_20, col::DIM, LV_SYMBOL_USB);
   lv_obj_align(gIcoLink, LV_ALIGN_RIGHT_MID, -138, 2);
-  gClock = lbl(bar, &lv_font_montserrat_20, col::TEXT, "--:--");
+  gClock = lbl(bar, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "--:--");
   lv_obj_align(gClock, LV_ALIGN_RIGHT_MID, -180, 2);
   buildWeatherWidget(bar);
 
   // Pages
   for (int i = 0; i < PAGE_COUNT; i++) {
-    gPages[i] = panel(scr, 88, 44, 712, 436);
+    gPages[i] = panel(scr, RAIL_W, BAR_H, PAGE_W, PAGE_H);
     lv_obj_add_flag(gPages[i], LV_OBJ_FLAG_HIDDEN);
   }
 
   // Alert banner (top layer so it floats over every page)
   gBanner = lv_obj_create(lv_layer_top());
   // Lives in the status bar (replacing the page title) so it never hides content.
-  lv_obj_set_size(gBanner, 452, 36);
-  lv_obj_set_pos(gBanner, 96, 4);
+  // Spans from the title to just left of the weather widget (see ui_weather.cpp).
+  // On a small screen that leaves too little room, so it covers the widget instead.
+  constexpr int bannerW = LARGE ? PAGE_W - WX_RIGHT_EDGE - 8 - 16 : 452;
+  lv_obj_set_size(gBanner, bannerW, BAR_H - 8);
+  lv_obj_set_pos(gBanner, RAIL_W + 8, 4);
   lv_obj_set_style_radius(gBanner, 10, 0);
   lv_obj_set_style_border_width(gBanner, 0, 0);
   lv_obj_set_style_pad_hor(gBanner, 10, 0);
@@ -369,7 +377,7 @@ static void buildShell() {
   lv_obj_clear_flag(gBanner, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_event_cb(gBanner, bannerCb, LV_EVENT_CLICKED, nullptr);
   gBannerText = lbl(gBanner, &lv_font_montserrat_14, col::TEXT, "");
-  lv_obj_set_width(gBannerText, 346);
+  lv_obj_set_width(gBannerText, bannerW - 2 * 10 - 76 - 10);
   lv_label_set_long_mode(gBannerText, LV_LABEL_LONG_DOT);
   lv_obj_align(gBannerText, LV_ALIGN_LEFT_MID, 0, 0);
   gBannerBtn = button(gBanner, 76, 28, LV_SYMBOL_OK " Ack", 0x000000, ackCb);

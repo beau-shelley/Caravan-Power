@@ -44,7 +44,7 @@ static void openOverlay(lv_event_t *) {
   }
   closeOverlay(nullptr);
   wxOverlay = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(wxOverlay, 800, 480);
+  lv_obj_set_size(wxOverlay, SCR_W, SCR_H);
   lv_obj_set_pos(wxOverlay, 0, 0);
   lv_obj_set_style_bg_color(wxOverlay, c(col::BG), 0);
   lv_obj_set_style_bg_opa(wxOverlay, LV_OPA_80, 0);
@@ -53,7 +53,10 @@ static void openOverlay(lv_event_t *) {
 
   char title[48];
   snprintf(title, sizeof(title), "FORECAST%s%s", w.place[0] ? "  -  " : "", w.place);
-  lv_obj_t *cd = card(wxOverlay, 50, 60, 700, 360, title, col::WATER);
+  constexpr int cw = SCR_W - (LARGE ? 120 : 100), ch = LARGE ? 400 : 360;
+  constexpr int dayGap = 10, dayW = (innerOf(cw) - (cv::WX_DAYS - 1) * dayGap) / cv::WX_DAYS;
+  constexpr int dayH = innerOf(ch) - 106 + 4;
+  lv_obj_t *cd = card(wxOverlay, (SCR_W - cw) / 2, (SCR_H - ch) / 2, cw, ch, title, col::WATER);
   lv_obj_add_flag(cd, LV_OBJ_FLAG_EVENT_BUBBLE);  // tap anywhere closes
 
   // Current conditions
@@ -74,9 +77,9 @@ static void openOverlay(lv_event_t *) {
   // 4 days
   for (int i = 0; i < cv::WX_DAYS; i++) {
     const cv::DailyWx &dy = w.day[i];
-    int x = i * 168;
+    int x = i * (dayW + dayGap);
     lv_obj_t *col_ = lv_obj_create(cd);
-    lv_obj_set_size(col_, 158, 214);
+    lv_obj_set_size(col_, dayW, dayH);
     lv_obj_set_pos(col_, x, 106);
     lv_obj_set_style_bg_color(col_, c(col::TILE), 0);
     lv_obj_set_style_border_width(col_, 0, 0);
@@ -85,18 +88,19 @@ static void openOverlay(lv_event_t *) {
     lv_obj_clear_flag(col_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(col_, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_t *n = lbl(col_, &lv_font_montserrat_16, col::TEXT, i == 0 ? "Today" : (dy.wday >= 0 ? kDays[dy.wday] : "--"));
-    lv_obj_align(n, LV_ALIGN_TOP_MID, 0, 0);
+    constexpr int y0 = (dayH - 20 - 194) / 2;  // centre the 194 px block in the column
+    lv_obj_align(n, LV_ALIGN_TOP_MID, 0, y0);
     lv_obj_t *di = lbl(col_, &wx_icons_48, iconColor(dy.code, true), glyph(cv::wxIcon(dy.code, true)));
-    lv_obj_align(di, LV_ALIGN_TOP_MID, 0, 26);
-    lv_obj_t *hl = lbl(col_, &lv_font_montserrat_20, col::TEXT, "");
+    lv_obj_align(di, LV_ALIGN_TOP_MID, 0, y0 + 26);
+    lv_obj_t *hl = lbl(col_, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "");
     setText(hl, "%.0f\xC2\xB0 / %.0f\xC2\xB0", dy.tMax, dy.tMin);
-    lv_obj_align(hl, LV_ALIGN_TOP_MID, 0, 96);
-    lv_obj_t *rn = lbl(col_, &lv_font_montserrat_14, dy.rainProb >= 50 ? col::WATER : col::MUTED, "");
+    lv_obj_align(hl, LV_ALIGN_TOP_MID, 0, y0 + 96);
+    lv_obj_t *rn = lbl(col_, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, dy.rainProb >= 50 ? col::WATER : col::MUTED, "");
     setText(rn, "Rain %u%%  %.0f mm", dy.rainProb, dy.rainMm);
-    lv_obj_align(rn, LV_ALIGN_TOP_MID, 0, 130);
-    lv_obj_t *gs = lbl(col_, &lv_font_montserrat_14, dy.gustMax >= 50 ? col::WARN : col::MUTED, "");
+    lv_obj_align(rn, LV_ALIGN_TOP_MID, 0, y0 + 132);
+    lv_obj_t *gs = lbl(col_, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, dy.gustMax >= 50 ? col::WARN : col::MUTED, "");
     setText(gs, "Gusts %.0f km/h", dy.gustMax);
-    lv_obj_align(gs, LV_ALIGN_TOP_MID, 0, 154);
+    lv_obj_align(gs, LV_ALIGN_TOP_MID, 0, y0 + 158);
   }
   wxShownUpdated = w.updated;
 }
@@ -105,8 +109,8 @@ void openWeatherForTest() { openOverlay(nullptr); }
 
 void buildWeatherWidget(lv_obj_t *bar) {
   wxBox = lv_obj_create(bar);
-  lv_obj_set_size(wxBox, 196, 40);
-  lv_obj_align(wxBox, LV_ALIGN_RIGHT_MID, -248, 0);
+  lv_obj_set_size(wxBox, WX_W, BAR_H - 4);
+  lv_obj_align(wxBox, LV_ALIGN_RIGHT_MID, -WX_RIGHT_OFS, 0);
   lv_obj_set_style_bg_opa(wxBox, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(wxBox, 0, 0);
   lv_obj_set_style_pad_all(wxBox, 0, 0);
@@ -115,10 +119,10 @@ void buildWeatherWidget(lv_obj_t *bar) {
   lv_obj_add_event_cb(wxBox, openOverlay, LV_EVENT_CLICKED, nullptr);
   wxIcon = lbl(wxBox, &wx_icons_24, col::MUTED, "");
   lv_obj_align(wxIcon, LV_ALIGN_LEFT_MID, 0, 2);
-  wxTemp = lbl(wxBox, &lv_font_montserrat_20, col::TEXT, "");
+  wxTemp = lbl(wxBox, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "");
   lv_obj_align(wxTemp, LV_ALIGN_LEFT_MID, 40, 2);
-  wxSub = lbl(wxBox, &lv_font_montserrat_12, col::MUTED, "");
-  lv_obj_align(wxSub, LV_ALIGN_LEFT_MID, 92, 2);
+  wxSub = lbl(wxBox, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
+  lv_obj_align(wxSub, LV_ALIGN_LEFT_MID, LARGE ? 100 : 92, 2);
 }
 
 void updateWeather() {

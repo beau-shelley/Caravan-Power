@@ -15,7 +15,7 @@
   header p { color: #94a3b8; margin: 0; font-size: 14px; }
   .badge { color: #67e8f9; background: #123143; border: 1px solid #205568; border-radius: 100px; padding: 8px 13px; font-size: 12px; white-space: nowrap; }
   .device { border: 1px solid #354354; background: #151d28; border-radius: 26px; padding: clamp(8px, 2vw, 17px); box-shadow: 0 30px 80px #0009, inset 0 1px #ffffff18; }
-  .screen { position: relative; aspect-ratio: 800 / 480; overflow: hidden; background: #0b1220; border-radius: 7px; }
+  .screen { position: relative; aspect-ratio: 1024 / 600; overflow: hidden; background: #0b1220; border-radius: 7px; }
   .screen img { width: 100%; height: 100%; display: block; }
   #hotspots { position: absolute; inset: 0; }
   .hotspot { position: absolute; border: 0; background: transparent; padding: 0; color: inherit; cursor: pointer; border-radius: 10px; }
@@ -55,7 +55,7 @@
   </div></div>
   <div id="message" role="status" aria-live="polite">Tap the screen or use the keyboard to explore.</div>
   <div class="below">
-    <p>Preview based on screenshots from the actual 800 × 480 LVGL interface. Navigation and selected controls are simulated; values and screenshots do not represent live equipment. This is not a running copy of the firmware or a 1024 × 600 layout.</p>
+    <p>Preview based on screenshots of the actual LVGL interface at the Waveshare 7B's 1024 × 600 resolution. Navigation and selected controls are simulated; values and screenshots do not represent live equipment. This is not a running copy of the firmware.</p>
     <a href="index.html?demo">Open the separate web dashboard demo →</a>
   </div>
 </main>
@@ -70,8 +70,10 @@
   const message = document.getElementById('message');
   const state = { page: 'home', previous: 'home', pump: [true, false], inverter: false, ac: 0 };
   const presets = ['Cool 22 auto', 'Cool 24 low', 'Heat 21', 'Dry', 'Fan only'];
+  // Coordinates are panel pixels on the 1024 x 600 screenshots (see firmware/display/src/ui).
+  const W = 1024, H = 600;
   function rect(el, x, y, w, h) {
-    Object.assign(el.style, { left: `${x / 8}%`, top: `${y / 4.8}%`, width: `${w / 8}%`, height: `${h / 4.8}%` });
+    Object.assign(el.style, { left: `${x * 100 / W}%`, top: `${y * 100 / H}%`, width: `${w * 100 / W}%`, height: `${h * 100 / H}%` });
   }
   function graphic(x, y, w, h, text, classes) {
     const el = document.createElement('div'); el.className = `replacement ${classes}`; el.textContent = text;
@@ -93,59 +95,59 @@
     image.alt = `${page} touchscreen preview with example data`;
     layer.replaceChildren();
     if (page === 'forecast') {
-      action('Close forecast', 0, 0, 800, 480, () => show(state.previous));
+      action('Close forecast', 0, 0, W, H, () => show(state.previous));
       return;
     }
     if (page === 'home') {
-      const tiles = [[599,327,'Pump 1',state.pump[0]], [691,327,'Pump 2',state.pump[1]], [599,397,'Inverter',state.inverter], [691,397,'Aircon',state.ac >= 0]];
+      const tiles = [[731,383,'Pump 1',state.pump[0]], [871,383,'Pump 2',state.pump[1]], [731,485,'Inverter',state.inverter], [871,485,'Aircon',state.ac >= 0]];
       tiles.forEach(([x,y,label,on]) => {
-        const el = graphic(x,y,84,64,'',`home-tile${on ? ' on' : ''}`);
+        const el = graphic(x,y,132,94,'',`home-tile${on ? ' on' : ''}`);
         el.append(document.createTextNode(label)); const small = document.createElement('small'); small.textContent = on ? 'On' : 'Off'; el.append(small);
       });
-      action('Battery details', 100,55,264,228, () => show('power'));
-      action('Solar details', 375,55,412,228, () => show('power'));
-      action('Temperature details', 100,296,228,172, () => show('climate'));
-      action('Water details', 340,296,236,172, () => show('water'));
-      action('Toggle pump 1',599,327,84,64,() => togglePump(0));
-      action('Toggle pump 2',691,327,84,64,() => togglePump(1));
-      action('Toggle inverter',599,397,84,64,toggleInverter);
-      action('Toggle air conditioner',691,397,84,64,() => setAc(state.ac < 0 ? 0 : -1));
+      action('Battery details', 112,64,328,276, () => show('power'));
+      action('Solar details', 452,64,560,276, () => show('power'));
+      action('Temperature details', 112,352,292,236, () => show('climate'));
+      action('Water details', 416,352,292,236, () => show('water'));
+      action('Toggle pump 1',731,383,132,94,() => togglePump(0));
+      action('Toggle pump 2',871,383,132,94,() => togglePump(1));
+      action('Toggle inverter',731,485,132,94,toggleInverter);
+      action('Toggle air conditioner',871,485,132,94,() => setAc(state.ac < 0 ? 0 : -1));
     }
     if (page === 'water') {
       [0,1].forEach(i => {
-        const x = i ? 450 : 100;
-        graphic(x+15,388,175,25,state.pump[i] ? 'Running (simulated)' : 'Off','water-state');
-        graphic(x+203,362,120,84,'⏻',`power-button${state.pump[i] ? ' on' : ''}`);
-        action(`Toggle pump ${i+1}`,x+203,362,120,84,() => togglePump(i));
+        const x = i ? 568 : 112;
+        graphic(x+15,447,250,26,state.pump[i] ? 'Running (simulated)' : 'Off','water-state');
+        graphic(x+279,435,150,110,'⏻',`power-button${state.pump[i] ? ' on' : ''}`);
+        action(`Toggle pump ${i+1}`,x+279,435,150,110,() => togglePump(i));
       });
     }
     if (page === 'climate') {
-      graphic(115,243,310,25,state.ac < 0 ? 'Off' : `On - ${presets[state.ac]}`,'climate-status');
+      graphic(127,276,420,32,state.ac < 0 ? 'Off' : `On - ${presets[state.ac]}`,'climate-status');
       presets.forEach((name, i) => {
-        const x = 115 + (i % 4) * 104, y = 285 + Math.floor(i / 4) * 60;
-        graphic(x,y,96,52,name,`preset${state.ac === i ? ' on' : ''}`);
-        action(`Select ${name}`,x,y,96,52,() => setAc(i));
+        const x = 127 + (i % 4) * 141, y = 329 + Math.floor(i / 4) * 72;
+        graphic(x,y,133,64,name,`preset${state.ac === i ? ' on' : ''}`);
+        action(`Select ${name}`,x,y,133,64,() => setAc(i));
       });
-      action('Turn air conditioner off',437,237,96,36,() => setAc(-1));
-      graphic(614,249,120,120,'⏻',`inverter-button${state.inverter ? ' on' : ''}`);
-      graphic(620,407,108,24,state.inverter ? 'On' : 'Off','inverter-status');
-      graphic(611,435,130,20,state.inverter ? 'Simulated output' : 'No 240 V output','inverter-status');
-      action('Toggle inverter',614,249,120,120,toggleInverter);
+      action('Turn air conditioner off',573,273,110,42,() => setAc(-1));
+      graphic(781,291,160,160,'⏻',`inverter-button${state.inverter ? ' on' : ''}`);
+      graphic(725,518,272,32,state.inverter ? 'On' : 'Off','inverter-status');
+      graphic(725,553,272,22,state.inverter ? 'Simulated output' : 'No 240 V output','inverter-status');
+      action('Toggle inverter',781,291,160,160,toggleInverter);
     }
     if (page === 'more') {
-      action('Caravan level',100,140,216,220,() => show('level'));
-      action('Alerts and rules',336,140,216,220,() => show('alerts'));
-      action('Settings',572,140,216,220,() => show('settings'));
+      action('Caravan level',112,186,292,280,() => show('level'));
+      action('Alerts and rules',416,186,292,280,() => show('alerts'));
+      action('Settings',720,186,292,280,() => show('settings'));
     }
-    if (['level','alerts','settings'].includes(page)) action('Back to More',95,0,160,44,() => show('more'));
+    if (['level','alerts','settings'].includes(page)) action('Back to More',105,0,180,52,() => show('more'));
     if (page === 'level') {
-      action('Simulate setting level', 440,410,115,45, () => notice('Set level is a simulated action; no sensor is connected.'));
-      action('Simulate learning front', 565,410,115,45, () => notice('Learn front is a simulated action; no sensor is connected.'));
+      action('Simulate setting level', 663,523,164,50, () => notice('Set level is a simulated action; no sensor is connected.'));
+      action('Simulate learning front', 835,523,164,50, () => notice('Learn front is a simulated action; no sensor is connected.'));
     }
-    if (page === 'alerts') action('Acknowledge alerts',293,65,92,32,() => notice('Acknowledgement is simulated; the example screenshot remains unchanged.'));
-    [['home',53],['power',137],['water',221],['climate',305],['more',389]].forEach(([name,y]) => action(`Go to ${name}`, 8,y,72,72,() => show(name)));
-    action('Open forecast', 350,0,205,44,() => { state.previous = page; show('forecast'); });
-    action('Open alerts', 750,0,45,44,() => show('alerts'));
+    if (page === 'alerts') action('Acknowledge alerts',348,73,104,34,() => notice('Acknowledgement is simulated; the example screenshot remains unchanged.'));
+    [['home',65],['power',172],['water',279],['climate',386],['more',493]].forEach(([name,y]) => action(`Go to ${name}`, 8,y,84,84,() => show(name)));
+    action('Open forecast', 552,2,210,48,() => { state.previous = page; show('forecast'); });
+    action('Open alerts', 970,0,54,52,() => show('alerts'));
   }
   render();
 })();

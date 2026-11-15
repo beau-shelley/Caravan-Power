@@ -24,6 +24,10 @@ static int rowCount = 0;
 static uint8_t pendingId = 0;
 static uint32_t pendingAtMs = 0;
 
+// Active alerts | rules, side by side.
+static constexpr int AL_W = splitW(40), RULES_W = INNER_W - GAP - AL_W;
+static constexpr int RULE_LIST_W = innerOf(RULES_W), STEP_BTN = LARGE ? 44 : 36;
+
 static void ackAllCb(lv_event_t *) { app::cmd("ack"); }
 
 static void describeRule(const cv::Rule &r, char *buf, size_t n) {
@@ -80,7 +84,7 @@ static void rebuildRules() {
   for (int i = 0; i < app::rules.count && i < cv::MAX_RULES; i++) {
     const cv::Rule &r = app::rules.rules[i];
     lv_obj_t *row = lv_obj_create(ruleList);
-    lv_obj_set_size(row, lv_pct(100), 58);
+    lv_obj_set_size(row, lv_pct(100), LARGE ? 66 : 58);
     lv_obj_set_style_bg_color(row, c(col::TILE), 0);
     lv_obj_set_style_border_width(row, 0, 0);
     lv_obj_set_style_radius(row, 12, 0);
@@ -92,15 +96,15 @@ static void rebuildRules() {
     lv_obj_set_size(rr.sw, 44, 24);
     lv_obj_align(rr.sw, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_add_event_cb(rr.sw, ruleSwCb, LV_EVENT_VALUE_CHANGED, (void *)(intptr_t)rowCount);
-    rr.name = lbl(row, &lv_font_montserrat_14, col::TEXT, "");
+    rr.name = lbl(row, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, col::TEXT, "");
     lv_obj_set_pos(rr.name, 54, 2);
-    rr.desc = lbl(row, &lv_font_montserrat_12, col::MUTED, "");
-    lv_obj_set_width(rr.desc, 190);
+    rr.desc = lbl(row, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
+    lv_obj_set_width(rr.desc, RULE_LIST_W - 12 - 54 - 2 * STEP_BTN - 14);
     lv_label_set_long_mode(rr.desc, LV_LABEL_LONG_DOT);
-    lv_obj_set_pos(rr.desc, 54, 24);
-    lv_obj_t *mn = button(row, 36, 36, LV_SYMBOL_MINUS, col::CARD, ruleMinusCb, (void *)(intptr_t)rowCount);
-    lv_obj_align(mn, LV_ALIGN_RIGHT_MID, -42, 0);
-    lv_obj_t *pl = button(row, 36, 36, LV_SYMBOL_PLUS, col::CARD, rulePlusCb, (void *)(intptr_t)rowCount);
+    lv_obj_set_pos(rr.desc, 54, LARGE ? 28 : 24);
+    lv_obj_t *mn = button(row, STEP_BTN, STEP_BTN, LV_SYMBOL_MINUS, col::CARD, ruleMinusCb, (void *)(intptr_t)rowCount);
+    lv_obj_align(mn, LV_ALIGN_RIGHT_MID, -(STEP_BTN + 6), 0);
+    lv_obj_t *pl = button(row, STEP_BTN, STEP_BTN, LV_SYMBOL_PLUS, col::CARD, rulePlusCb, (void *)(intptr_t)rowCount);
     lv_obj_align(pl, LV_ALIGN_RIGHT_MID, 0, 0);
     rowCount++;
     refreshRow(rowCount - 1);
@@ -108,12 +112,12 @@ static void rebuildRules() {
 }
 
 void buildAlerts(lv_obj_t *p) {
-  lv_obj_t *a = card(p, 12, 12, 300, 412, "ACTIVE ALERTS", col::ALARM);
-  lv_obj_t *ack = button(a, 92, 30, LV_SYMBOL_OK " Ack all", col::TILE, ackAllCb);
-  lv_obj_set_style_text_font(lv_obj_get_child(ack, 0), &lv_font_montserrat_12, 0);
+  lv_obj_t *a = card(p, GAP, GAP, AL_W, INNER_H, "ACTIVE ALERTS", col::ALARM);
+  lv_obj_t *ack = button(a, LARGE ? 104 : 92, LARGE ? 34 : 30, LV_SYMBOL_OK " Ack all", col::TILE, ackAllCb);
+  lv_obj_set_style_text_font(lv_obj_get_child(ack, 0), LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, 0);
   lv_obj_align(ack, LV_ALIGN_TOP_RIGHT, 0, -6);
   alList = lv_obj_create(a);
-  lv_obj_set_size(alList, 272, 350);
+  lv_obj_set_size(alList, innerOf(AL_W), innerOf(INNER_H) - 34);
   lv_obj_set_pos(alList, 0, 32);
   lv_obj_set_style_bg_opa(alList, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(alList, 0, 0);
@@ -123,9 +127,9 @@ void buildAlerts(lv_obj_t *p) {
   alEmpty = lbl(a, &lv_font_montserrat_16, col::CHARGE, LV_SYMBOL_OK "  All clear");
   lv_obj_align(alEmpty, LV_ALIGN_CENTER, 0, 0);
 
-  lv_obj_t *r = card(p, 324, 12, 376, 412, "ALERT RULES  -  tap +/- to adjust", col::WARN);
+  lv_obj_t *r = card(p, GAP + AL_W + GAP, GAP, RULES_W, INNER_H, "ALERT RULES  -  tap +/- to adjust", col::WARN);
   ruleList = lv_obj_create(r);
-  lv_obj_set_size(ruleList, 348, 364);
+  lv_obj_set_size(ruleList, RULE_LIST_W, innerOf(INNER_H) - 20);
   lv_obj_set_pos(ruleList, 0, 22);
   lv_obj_set_style_bg_opa(ruleList, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(ruleList, 0, 0);
@@ -224,7 +228,7 @@ static void startLearn(int slot, const char *name) {
   app::send(d);
   closeLearn();
   learnBox = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(learnBox, 460, 220);
+  lv_obj_set_size(learnBox, LARGE ? 540 : 460, LARGE ? 250 : 220);
   lv_obj_center(learnBox);
   lv_obj_set_style_bg_color(learnBox, c(col::CARD), 0);
   lv_obj_set_style_border_color(learnBox, c(col::CLIMATE), 0);
@@ -234,7 +238,7 @@ static void startLearn(int slot, const char *name) {
   lv_obj_set_size(sp, 60, 60);
   lv_obj_align(sp, LV_ALIGN_TOP_MID, 0, 6);
   learnLbl = lbl(learnBox, &lv_font_montserrat_16, col::TEXT, "");
-  lv_obj_set_width(learnLbl, 420);
+  lv_obj_set_width(learnLbl, LARGE ? 500 : 420);
   lv_label_set_long_mode(learnLbl, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(learnLbl, LV_TEXT_ALIGN_CENTER, 0);
   setText(learnLbl, "Point the aircon remote at the IR receiver\nand press the button for \"%s\"", name);
@@ -276,7 +280,7 @@ static void kbEventCb(lv_event_t *e) {
 static void askText(const char *title, const char *initial, int maxLen, void (*done)(const char *)) {
   kbDone = done;
   kbModal = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(kbModal, 800, 480);
+  lv_obj_set_size(kbModal, SCR_W, SCR_H);
   lv_obj_set_pos(kbModal, 0, 0);
   lv_obj_set_style_bg_color(kbModal, c(col::BG), 0);
   lv_obj_set_style_bg_opa(kbModal, LV_OPA_90, 0);
@@ -287,10 +291,10 @@ static void askText(const char *title, const char *initial, int maxLen, void (*d
   lv_textarea_set_one_line(kbTa, true);
   lv_textarea_set_max_length(kbTa, maxLen);
   lv_textarea_set_text(kbTa, initial);
-  lv_obj_set_width(kbTa, 420);
+  lv_obj_set_width(kbTa, SCR_W / 2);
   lv_obj_align(kbTa, LV_ALIGN_TOP_MID, 0, 50);
   lv_obj_t *kb = lv_keyboard_create(kbModal);
-  lv_obj_set_size(kb, 780, 280);
+  lv_obj_set_size(kb, SCR_W - 20, SCR_H * 7 / 12);
   lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_keyboard_set_textarea(kb, kbTa);
   lv_obj_add_event_cb(kb, kbEventCb, LV_EVENT_ALL, nullptr);
@@ -352,7 +356,8 @@ void handleLocResults(JsonObjectConst m) {
   }
   size_t n = list.size() > 6 ? 6 : list.size();
   locBox = lv_obj_create(lv_layer_top());
-  lv_obj_set_size(locBox, 520, 128 + 54 * n);
+  constexpr int locW = LARGE ? 600 : 520;
+  lv_obj_set_size(locBox, locW, 140 + 54 * n);
   lv_obj_center(locBox);
   lv_obj_set_style_bg_color(locBox, c(col::CARD), 0);
   lv_obj_set_style_border_color(locBox, c(col::WATER), 0);
@@ -371,10 +376,10 @@ void handleLocResults(JsonObjectConst m) {
     char label[64];
     const char *area = r["area"] | "";
     snprintf(label, sizeof(label), "%s%s%s", ch.name, area[0] ? "  -  " : "", area);
-    lv_obj_t *b = button(locBox, 488, 46, label, col::TILE, locPickCb, &ch);
+    lv_obj_t *b = button(locBox, locW - 32, 46, label, col::TILE, locPickCb, &ch);
     lv_obj_set_style_text_font(lv_obj_get_child(b, 0), &lv_font_montserrat_14, 0);
   }
-  button(locBox, 488, 40, "Cancel", col::BG, closeLocBox);
+  button(locBox, locW - 32, 40, "Cancel", col::BG, closeLocBox);
 }
 
 static void learnNewCb(lv_event_t *) {
@@ -425,13 +430,13 @@ static void resetRulesCb(lv_event_t *) {
 }
 
 static lv_obj_t *settingsCard(lv_obj_t *parent, const char *title, int h, uint32_t accent) {
-  lv_obj_t *cd = card(parent, 0, 0, 676, h, title, accent);
+  lv_obj_t *cd = card(parent, 0, 0, INNER_W - 12, h, title, accent);  // 12 px left for the scrollbar
   return cd;
 }
 
 void buildSettings(lv_obj_t *p) {
   lv_obj_t *col = lv_obj_create(p);
-  lv_obj_set_size(col, 712, 436);
+  lv_obj_set_size(col, PAGE_W, PAGE_H);
   lv_obj_set_pos(col, 0, 0);
   lv_obj_set_style_bg_opa(col, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(col, 0, 0);
@@ -492,9 +497,9 @@ void buildSettings(lv_obj_t *p) {
     calCtx[i * 2] = {i, false};
     calCtx[i * 2 + 1] = {i, true};
     lv_obj_t *e = button(t, 130, 38, "Set EMPTY", col::TILE, calCb, &calCtx[i * 2]);
-    lv_obj_set_pos(e, 360, y);
+    lv_obj_align(e, LV_ALIGN_TOP_RIGHT, -(130 + 10), y);
     lv_obj_t *f = button(t, 130, 38, "Set FULL", col::TILE, calCb, &calCtx[i * 2 + 1]);
-    lv_obj_set_pos(f, 500, y);
+    lv_obj_align(f, LV_ALIGN_TOP_RIGHT, 0, y);
   }
 
   // ---- maintenance

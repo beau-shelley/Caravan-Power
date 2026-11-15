@@ -14,11 +14,11 @@ static lv_chart_series_t *serSolar, *serLoad;
 static uint32_t seenMetaPower = UINT32_MAX;
 
 static lv_obj_t *miniStat(lv_obj_t *parent, int x, int y, const char *cap, lv_obj_t **capOut = nullptr) {
-  lv_obj_t *l = lbl(parent, &lv_font_montserrat_12, col::MUTED, cap);
+  lv_obj_t *l = lbl(parent, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, cap);
   lv_obj_set_pos(l, x, y);
   if (capOut) *capOut = l;
-  lv_obj_t *v = lbl(parent, &lv_font_montserrat_16, col::TEXT, "--");
-  lv_obj_set_pos(v, x, y + 16);
+  lv_obj_t *v = lbl(parent, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::TEXT, "--");
+  lv_obj_set_pos(v, x, y + (LARGE ? 18 : 16));
   return v;
 }
 
@@ -33,39 +33,50 @@ static void socBtnCb(lv_event_t *) {
   confirm("Battery full?", "Set state of charge to 100%?\nOnly do this when the battery is fully charged.", socFullCb);
 }
 
+// Top: one card per solar controller. Bottom: battery detail | 30-minute chart.
+static constexpr int PW_TOP_H = (INNER_H - GAP) * 46 / 100, PW_BOT_H = INNER_H - GAP - PW_TOP_H;
+static constexpr int PW_BOT_Y = GAP + PW_TOP_H + GAP;
+static constexpr int PW_BAT_W = splitW(LARGE ? 37 : 39), PW_CHART_W = INNER_W - GAP - PW_BAT_W;
+
 void buildPower(lv_obj_t *p) {
+  constexpr int sw = colW(cv::NUM_SOLAR), statStep = innerOf(sw) / 4;
   for (int i = 0; i < cv::NUM_SOLAR; i++) {
-    lv_obj_t *cd = card(p, 12 + i * 350, 12, 338, 196, i == 0 ? "SOLAR CONTROLLER 1" : "SOLAR CONTROLLER 2", col::SOLAR);
+    lv_obj_t *cd = card(p, colX(i, cv::NUM_SOLAR), GAP, sw, PW_TOP_H, i == 0 ? "SOLAR CONTROLLER 1" : "SOLAR CONTROLLER 2",
+                        col::SOLAR);
     spName[i] = lbl(cd, &lv_font_montserrat_20, col::TEXT, app::meta.solarName[i]);
     lv_obj_set_pos(spName[i], 0, 22);
     spChip[i] = chip(cd);
     lv_obj_align(spChip[i], LV_ALIGN_TOP_RIGHT, 0, 24);
-    spW[i] = lbl(cd, &lv_font_montserrat_40, col::SOLAR, "-- W");
+    spW[i] = lbl(cd, LARGE ? &lv_font_montserrat_48 : &lv_font_montserrat_40, col::SOLAR, "-- W");
     lv_obj_set_pos(spW[i], 0, 50);
-    spPv[i] = miniStat(cd, 0, 116, "PANEL", &spPvCap[i]);
-    spA[i] = miniStat(cd, 74, 116, "CHARGE");
-    spToday[i] = miniStat(cd, 148, 116, "TODAY");
-    spMax[i] = miniStat(cd, 244, 116, "PEAK");
+    constexpr int statY = innerOf(PW_TOP_H) - (LARGE ? 42 : 38);  // stats row along the bottom
+    spPv[i] = miniStat(cd, 0, statY, "PANEL", &spPvCap[i]);
+    spA[i] = miniStat(cd, statStep - 6, statY, "CHARGE");
+    spToday[i] = miniStat(cd, 2 * statStep - 12, statY, "TODAY");
+    spMax[i] = miniStat(cd, 3 * statStep + 12, statY, "PEAK");
     spErr[i] = lbl(cd, &lv_font_montserrat_12, col::ALARM, "");
     lv_obj_align(spErr[i], LV_ALIGN_TOP_RIGHT, 0, 64);
   }
 
-  lv_obj_t *b = card(p, 12, 220, 264, 204, "BATTERY DETAIL", col::CHARGE);
+  lv_obj_t *b = card(p, GAP, PW_BOT_Y, PW_BAT_W, PW_BOT_H, "BATTERY DETAIL", col::CHARGE);
   static const char *caps[] = {"Voltage", "Current", "Charge", "Solar in", "Charger in", "Loads", "Source"};
+  constexpr int rowStep = (innerOf(PW_BOT_H) - 24) / 7;
+  const lv_font_t *rf = rowStep >= 30 ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
   for (int i = 0; i < 7; i++) {
-    lv_obj_t *cl = lbl(b, &lv_font_montserrat_14, col::MUTED, caps[i]);
-    lv_obj_set_pos(cl, 0, 24 + i * 21);
-    bpRows[i] = lbl(b, &lv_font_montserrat_14, col::TEXT, "--");
-    lv_obj_align(bpRows[i], LV_ALIGN_TOP_RIGHT, 0, 24 + i * 21);
+    lv_obj_t *cl = lbl(b, rf, col::MUTED, caps[i]);
+    lv_obj_set_pos(cl, 0, 24 + i * rowStep);
+    bpRows[i] = lbl(b, rf, col::TEXT, "--");
+    lv_obj_align(bpRows[i], LV_ALIGN_TOP_RIGHT, 0, 24 + i * rowStep);
   }
   lv_obj_t *btn = button(b, 96, 24, "Set 100%", col::TILE, socBtnCb);
   lv_obj_align(btn, LV_ALIGN_TOP_RIGHT, 0, -6);
   lv_obj_t *lb = lv_obj_get_child(btn, 0);
   lv_obj_set_style_text_font(lb, &lv_font_montserrat_12, 0);
 
-  lv_obj_t *cc = card(p, 288, 220, 412, 204, "LAST 30 MIN  -  solar W / load W", col::SOLAR);
+  lv_obj_t *cc = card(p, GAP + PW_BAT_W + GAP, PW_BOT_Y, PW_CHART_W, PW_BOT_H, "LAST 30 MIN  -  solar W / load W",
+                     col::SOLAR);
   chart = lv_chart_create(cc);
-  lv_obj_set_size(chart, 384, 160);
+  lv_obj_set_size(chart, innerOf(PW_CHART_W), innerOf(PW_BOT_H) - 20);
   lv_obj_set_pos(chart, 0, 20);
   lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
   lv_chart_set_point_count(chart, 180);  // one point / 10 s
@@ -163,24 +174,28 @@ static uint32_t seenMetaWater = UINT32_MAX;
 static void pumpBtnCb(lv_event_t *e) { togglePump((int)(intptr_t)lv_event_get_user_data(e)); }
 
 void buildWater(lv_obj_t *p) {
+  // Top: one card per tank. Bottom: one card per pump.
+  constexpr int tankH = (INNER_H - GAP) * 58 / 100, pumpH = INNER_H - GAP - tankH, pumpY = GAP + tankH + GAP;
   for (int i = 0; i < cv::NUM_TANKS; i++) {
-    lv_obj_t *cd = card(p, 12 + i * 232, 12, 220, 252, "TANK", col::WATER);
-    wName[i] = lbl(cd, &lv_font_montserrat_20, col::TEXT, app::meta.tankName[i]);
+    lv_obj_t *cd = card(p, colX(i, cv::NUM_TANKS), GAP, colW(cv::NUM_TANKS), tankH, "TANK", col::WATER);
+    wName[i] = lbl(cd, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, app::meta.tankName[i]);
     lv_obj_set_pos(wName[i], 0, 20);
-    wBar[i] = vbar(cd, 70, 170, col::WATER);
+    wBar[i] = vbar(cd, LARGE ? 84 : 70, innerOf(tankH) - 54, col::WATER);
     lv_obj_set_pos(wBar[i], 0, 54);
-    wPct[i] = lbl(cd, &lv_font_montserrat_40, col::TEXT, "--");
+    wPct[i] = lbl(cd, LARGE ? &lv_font_montserrat_48 : &lv_font_montserrat_40, col::TEXT, "--");
     lv_obj_align(wPct[i], LV_ALIGN_BOTTOM_RIGHT, 0, -6);
   }
+  constexpr int pw = colW(cv::NUM_PUMPS), btnW = LARGE ? 150 : 120;
   for (int i = 0; i < cv::NUM_PUMPS; i++) {
-    lv_obj_t *cd = card(p, 12 + i * 350, 276, 338, 148, "WATER PUMP", col::WATER);
-    pName[i] = lbl(cd, &lv_font_montserrat_20, col::TEXT, app::meta.pumpName[i]);
+    lv_obj_t *cd = card(p, colX(i, cv::NUM_PUMPS), pumpY, pw, pumpH, "WATER PUMP", col::WATER);
+    pName[i] = lbl(cd, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, app::meta.pumpName[i]);
     lv_obj_set_pos(pName[i], 0, 22);
-    pStatus[i] = lbl(cd, &lv_font_montserrat_14, col::MUTED, "--");
-    lv_obj_set_width(pStatus[i], 170);
+    pStatus[i] = lbl(cd, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, col::MUTED, "--");
+    lv_obj_set_width(pStatus[i], innerOf(pw) - btnW - 16);
     lv_label_set_long_mode(pStatus[i], LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(pStatus[i], 0, 54);
-    pBtn[i] = button(cd, 120, 84, LV_SYMBOL_POWER, col::TILE, pumpBtnCb, (void *)(intptr_t)i);
+    lv_obj_set_pos(pStatus[i], 0, LARGE ? 60 : 54);
+    constexpr int btnH = innerOf(pumpH) - 20 < (LARGE ? 110 : 84) ? innerOf(pumpH) - 20 : (LARGE ? 110 : 84);
+    pBtn[i] = button(cd, btnW, btnH, LV_SYMBOL_POWER, col::TILE, pumpBtnCb, (void *)(intptr_t)i);
     lv_obj_set_style_text_font(lv_obj_get_child(pBtn[i], 0), &lv_font_montserrat_28, 0);
     lv_obj_align(pBtn[i], LV_ALIGN_RIGHT_MID, 0, 10);
   }
@@ -219,6 +234,7 @@ void updateWater() {
 static lv_obj_t *cName[cv::NUM_TEMPS], *cVal[cv::NUM_TEMPS], *cMinMax[cv::NUM_TEMPS];
 static lv_obj_t *acGrid, *acStatus, *acOff;
 static lv_obj_t *acBtns[cv::MAX_AC_PRESETS];
+static int acGridW, acGridH;
 static lv_obj_t *invBtn, *invLbl, *invAc;
 static uint32_t seenMetaClimate = UINT32_MAX;
 
@@ -236,48 +252,57 @@ static void rebuildPresets() {
     lv_obj_set_pos(h, 0, 10);
     return;
   }
+  // 4 x 2 grid filling the preset area
+  const int gw = acGridW, gh = acGridH;
+  const int bw = (gw - 3 * 8) / 4, bh = (gh - 8) / 2 < 64 ? (gh - 8) / 2 : 64;
   for (int i = 0; i < n; i++) {
-    acBtns[i] = button(acGrid, 96, 52, app::meta.acPresetName[i], col::TILE, acPresetCb, (void *)(intptr_t)i);
-    lv_obj_set_pos(acBtns[i], (i % 4) * 104, (i / 4) * 60);
+    acBtns[i] = button(acGrid, bw, bh, app::meta.acPresetName[i], col::TILE, acPresetCb, (void *)(intptr_t)i);
+    lv_obj_set_pos(acBtns[i], (i % 4) * (bw + 8), (i / 4) * (bh + 8));
     lv_obj_t *l = lv_obj_get_child(acBtns[i], 0);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
-    lv_obj_set_width(l, 88);
+    lv_obj_set_style_text_font(l, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, 0);
+    lv_obj_set_width(l, bw - 8);
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
   }
 }
 
 void buildClimate(lv_obj_t *p) {
+  // Top: one card per temperature. Bottom: aircon presets | inverter.
+  constexpr int tempH = LARGE ? 168 : 140, botY = GAP + tempH + GAP, botH = INNER_H - GAP - tempH;
+  constexpr int acW = splitW(66), invW = INNER_W - GAP - acW;
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
-    lv_obj_t *cd = card(p, 12 + i * 232, 12, 220, 140, "TEMPERATURE", col::CLIMATE);
-    cName[i] = lbl(cd, &lv_font_montserrat_16, col::MUTED, app::meta.tempName[i]);
+    lv_obj_t *cd = card(p, colX(i, cv::NUM_TEMPS), GAP, colW(cv::NUM_TEMPS), tempH, "TEMPERATURE", col::CLIMATE);
+    cName[i] = lbl(cd, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED, app::meta.tempName[i]);
     lv_obj_set_pos(cName[i], 0, 20);
     cVal[i] = lbl(cd, &lv_font_montserrat_48, col::TEXT, "--");
     lv_obj_set_pos(cVal[i], 0, 42);
-    cMinMax[i] = lbl(cd, &lv_font_montserrat_12, col::MUTED, "");
+    cMinMax[i] = lbl(cd, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
     lv_obj_align(cMinMax[i], LV_ALIGN_BOTTOM_LEFT, 0, 0);
   }
 
-  lv_obj_t *ac = card(p, 12, 164, 448, 260, "AIR CONDITIONER", col::CLIMATE);
-  acStatus = lbl(ac, &lv_font_montserrat_20, col::TEXT, "Off");
+  lv_obj_t *ac = card(p, GAP, botY, acW, botH, "AIR CONDITIONER", col::CLIMATE);
+  acStatus = lbl(ac, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "Off");
   lv_obj_set_pos(acStatus, 0, 20);
-  acOff = button(ac, 96, 36, LV_SYMBOL_POWER " Off", col::TILE, acOffCb);
+  acOff = button(ac, LARGE ? 110 : 96, LARGE ? 42 : 36, LV_SYMBOL_POWER " Off", col::TILE, acOffCb);
   lv_obj_align(acOff, LV_ALIGN_TOP_RIGHT, 0, 14);
-  acGrid = panel(ac, 0, 62, 420, 172);
+  acGridW = innerOf(acW);
+  acGridH = innerOf(botH) - (LARGE ? 70 : 62);
+  acGrid = panel(ac, 0, LARGE ? 70 : 62, acGridW, acGridH);
   rebuildPresets();
 
-  lv_obj_t *iv = card(p, 472, 164, 228, 260, "INVERTER 3000W", col::SOLAR);
+  lv_obj_t *iv = card(p, GAP + acW + GAP, botY, invW, botH, "INVERTER 3000W", col::SOLAR);
+  constexpr int invD = LARGE ? 160 : 120;
   invBtn = lv_btn_create(iv);
-  lv_obj_set_size(invBtn, 120, 120);
-  lv_obj_align(invBtn, LV_ALIGN_TOP_MID, 0, 26);
+  lv_obj_set_size(invBtn, invD, invD);
+  lv_obj_align(invBtn, LV_ALIGN_TOP_MID, 0, LARGE ? 32 : 26);
   lv_obj_set_style_radius(invBtn, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_shadow_width(invBtn, 0, 0);
   lv_obj_add_event_cb(invBtn, invBtnCb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *ic = lbl(invBtn, &lv_font_montserrat_48, col::MUTED, LV_SYMBOL_POWER);
   lv_obj_center(ic);
-  invLbl = lbl(iv, &lv_font_montserrat_20, col::TEXT, "Off");
+  invLbl = lbl(iv, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "Off");
   lv_obj_align(invLbl, LV_ALIGN_BOTTOM_MID, 0, -24);
-  invAc = lbl(iv, &lv_font_montserrat_12, col::MUTED, "");
+  invAc = lbl(iv, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
   lv_obj_align(invAc, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 

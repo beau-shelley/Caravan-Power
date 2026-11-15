@@ -16,7 +16,7 @@ Pin numbers are defined in [`firmware/hub/src/pins.h`](../firmware/hub/src/pins.
 
 | Qty | Part | Notes |
 |---|---|---|
-| 1 | Waveshare **ESP32-S3-Touch-LCD-7** | you already have it |
+| 1 | Waveshare **ESP32-S3-Touch-LCD-7B** (1024×600) | you already have it; the plain LCD-7 (800×480) uses a different IO expander and is not supported by `board.cpp` |
 | 1 | **ESP32-S3-DevKitC-1** (N8R2 or N8R8) | the hub |
 | 1 | 12 V → 5 V 3 A automotive buck converter | powers the hub (and the display if your board has no 7–36 V input) |
 | 1 | MAX3485 / "TTL to RS485" 3.3 V module | hub side of the display link (an auto-direction module is fine; set `PIN_LINK_DE` to -1) |
@@ -69,7 +69,7 @@ The hub and display draw roughly 0.15 A and 0.4 A at 12 V; the display backlight
 
 ## RS485 link to the display
 
-The Waveshare board has an on-board auto-direction RS485 transceiver on GPIO15 (TX) / GPIO16 (RX), brought out on its screw terminal.
+The Waveshare 7B has an on-board auto-direction RS485 transceiver on GPIO16 (TX) / GPIO15 (RX) (see `PIN_RS485_TX/RX` in [`firmware/display/src/board.h`](../firmware/display/src/board.h)), brought out on its screw terminal.
 
 ```
 Hub MAX3485 A ─────────────── Display RS485 A

@@ -1,13 +1,39 @@
-// Touchscreen UI (LVGL 8.3) - 800x480 landscape.
+// Touchscreen UI (LVGL 8.3) - landscape, sized from board::SCREEN_W/H
+// (1024x600 on the Waveshare 7B).
 //   +--------+-------------------------------------------+
 //   |  nav   |  status bar: page, clock, link/wifi/cloud |
 //   |  rail  +-------------------------------------------+
-//   |        |  page content (712 x 436)                 |
+//   |        |  page content (PAGE_W x PAGE_H)           |
 //   +--------+-------------------------------------------+
 #pragma once
 #include <lvgl.h>
 
+#include "../board.h"
+
 namespace ui {
+
+// ---------------------------------------------------------------- layout
+// Every page is laid out from these, never from literal screen sizes.
+constexpr int SCR_W = board::SCREEN_W, SCR_H = board::SCREEN_H;
+constexpr bool LARGE = SCR_W >= 1000;          // 1024x600 class vs 800x480 class
+constexpr int RAIL_W = LARGE ? 100 : 88;       // nav rail
+constexpr int BAR_H = LARGE ? 52 : 44;         // status bar
+constexpr int PAGE_W = SCR_W - RAIL_W, PAGE_H = SCR_H - BAR_H;
+constexpr int GAP = 12;                        // outer margin and gutter between cards
+constexpr int CARD_PAD = 14;                   // card() inner padding
+constexpr int INNER_W = PAGE_W - 2 * GAP, INNER_H = PAGE_H - 2 * GAP;
+// n equal columns across the page: width of one, and x of column i.
+constexpr int colW(int n) { return (INNER_W - (n - 1) * GAP) / n; }
+constexpr int colX(int i, int n) { return GAP + i * (colW(n) + GAP); }
+// Split the page into two columns, the left one `pct` percent wide.
+constexpr int splitW(int pct) { return (INNER_W - GAP) * pct / 100; }
+// Content size inside a card of the given outer size.
+constexpr int innerOf(int outer) { return outer - 2 * CARD_PAD; }
+// Status-bar weather widget: right offset and width, so the alert banner
+// knows where it has to stop. WX_RIGHT_EDGE = distance from the bar's right
+// edge to the widget's left edge.
+constexpr int WX_RIGHT_OFS = LARGE ? 262 : 248, WX_W = LARGE ? 210 : 196;
+constexpr int WX_RIGHT_EDGE = WX_RIGHT_OFS + WX_W;
 
 // The nav rail only shows everyday pages; Level, Alerts and Settings live
 // behind "More" (Alerts is also one tap away via the bell / alert banner).

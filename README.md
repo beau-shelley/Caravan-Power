@@ -45,7 +45,7 @@ Remote dashboard (desktop and phone, dark and light):
 | Remote access over Starlink | Outbound MQTT over TLS, so it works behind Starlink CGNAT with no port forwarding |
 | Weather forecast | Current conditions in the touchscreen's status bar (on every page, including Home); tap for a 4-day forecast. Also on the dashboard. From [Open-Meteo](https://open-meteo.com) (free, no key). Location set with one tap when the phone level page says the van is level, a town search on the touchscreen, or the dashboard; no GPS module needed (one is supported but optional). Forecast gusts / rain chance can trigger alerts (default: "Strong wind forecast" > 50 km/h) |
 | Caravan levelling | MPU-6050 on the hub. Bubble level + "raise left wheel 30 mm / jockey down 45 mm" on the touchscreen and **on your phone over Bluetooth** (no Wi-Fi needed). Sensor can be mounted at any angle: *Set level* + *Learn front* calibration, saved permanently |
-| Modern UI on the 7" Waveshare | LVGL 8.3 dark UI, 800×480. The rail shows only everyday pages (Home, Power, Water, Climate); Level, Alerts & rules and Settings sit behind **More**. Tap the bell for alerts. Screen sleeps, wakes on alarm |
+| Modern UI on the 7" Waveshare | LVGL 8.3 dark UI, 1024×600 (Waveshare 7B). Layouts are computed from the panel resolution, so nothing is pinned to one screen size. The rail shows only everyday pages (Home, Power, Water, Climate); Level, Alerts & rules and Settings sit behind **More**. Tap the bell for alerts. Screen sleeps, wakes on alarm |
 
 ## Architecture
 
@@ -68,8 +68,8 @@ Remote dashboard (desktop and phone, dark and light):
  └──────────────────────────────┬─────────────────────────────────────────────────────────┘
                                 │ RS485 (4-core: 12 V, GND, A, B)
  ┌──────────────────────────────┴───────────────┐
- │ DISPLAY  Waveshare ESP32-S3-Touch-LCD-7      │      Trek 3: removed
- │  800×480 LVGL touchscreen (replaces Trek 3)  │      Odyssey phone app: still works
+ │ DISPLAY  Waveshare ESP32-S3-Touch-LCD-7B     │      Trek 3: removed
+ │ 1024×600 LVGL touchscreen (replaces Trek 3)  │      Odyssey phone app: still works
  └──────────────────────────────────────────────┘
 ```
 
@@ -84,7 +84,7 @@ firmware/
   lib/CaravanCommon/   shared: data model, JSON format, alert engine, VE.Direct parser,
                        SoC estimator, RS485 framing (portable C++, host-tested)
   hub/                 PlatformIO project - ESP32-S3 hub
-  display/             PlatformIO project - Waveshare ESP32-S3-Touch-LCD-7
+  display/             PlatformIO project - Waveshare ESP32-S3-Touch-LCD-7B
 web/index.html         dashboard (local + cloud), single file, no build step
 web/level.html         phone levelling page (Web Bluetooth straight to the hub, works offline)
 tests/                 host unit tests (make -C tests) + UI simulator (tests/sim)
@@ -106,9 +106,10 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 4. **Flash the display.**
    ```sh
    cd firmware/display
-   pio run -e display-demo -t upload --upload-port COM3  # standalone GUI demo (no hub needed)
+   pio run -e display-demo -t upload --upload-port COM7  # standalone GUI demo (no hub needed)
    # Later, use -e display instead to show live data from the hub over RS485.
    ```
+   The 7B has two USB-C ports. Flash through the **UART port** (CH343, "USB-Enhanced-SERIAL CH343" in Device Manager; COM7 on the development PC, yours may differ). The native-USB port shows no log output. See [HANDOFF.md](HANDOFF.md) section 8 for Windows gotchas.
 5. **Commission it** from the touchscreen, under **Settings**:
    - Add the two Victron Bluetooth keys: dashboard → *Setup* → *Victron solar controllers* (see [docs/WIRING.md](docs/WIRING.md#victron-smartsolar-10050-2---bluetooth)).
    - Connect to the OdysseyLink and decode its protocol: [docs/BMPRO_INTEGRATION.md](docs/BMPRO_INTEGRATION.md). Tanks are calibrated in the Odyssey app as before.
@@ -151,10 +152,11 @@ git clone --depth 1 -b v7.2.1  https://github.com/bblanchon/ArduinoJson ../Ardui
 git clone --depth 1 -b v8.3.11 https://github.com/lvgl/lvgl ../lvgl
 make -C tests                 # 182 unit checks under ASan/UBSan: weather + GPS parsing, levelling maths, Bluetooth thermometers, Victron
                               # BLE decrypt (incl. FIPS-197 AES vector), VE.Direct, alerts, JSON, SoC, RS485
-make -C tests/sim             # builds the real display UI against LVGL and renders every page to PNG
+make -C tests/sim             # builds the real display UI against LVGL and renders every page at 1024x600 (PPM)
+# make -C tests/sim OUT=out-800 RES="-DDISPLAY_HOR_RES=800 -DDISPLAY_VER_RES=480"   # same UI at another size
 ```
 
-Open [web/touchscreen-demo.html](web/touchscreen-demo.html) in a browser to explore a clickable touchscreen preview without the hub or display. It uses screenshots of the real 800×480 LVGL interface; navigation and selected controls are simulated rather than running the firmware. The preview loads its images from `docs/img`, so keep that folder alongside `web`.
+Open [web/touchscreen-demo.html](web/touchscreen-demo.html) in a browser to explore a clickable touchscreen preview without the hub or display. It uses 1024×600 screenshots of the real LVGL interface; navigation and selected controls are simulated rather than running the firmware. The preview loads its images from `docs/img`, so keep that folder alongside `web`.
 
 Open `web/index.html?demo` in a browser to try the separate remote dashboard with fake data.
 

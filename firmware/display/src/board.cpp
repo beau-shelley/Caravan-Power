@@ -7,7 +7,7 @@
 #include <lvgl.h>
 
 namespace {
-constexpr int W = 1024, H = 600;
+constexpr int W = board::SCREEN_W, H = board::SCREEN_H;
 constexpr int PIN_SDA = 8, PIN_SCL = 9;
 constexpr uint8_t IO_ADDR = 0x24;
 constexpr uint8_t REG_MODE = 0x02, REG_OUTPUT = 0x03, REG_PWM = 0x05;
@@ -153,7 +153,7 @@ void begin() {
     Serial.printf("[board] ERROR: RGB panel initialization failed: %d\n", err);
     while (true) delay(1000);
   }
-  Serial.println("[board] RGB panel initialized: 1024x600, 30MHz");
+  Serial.printf("[board] RGB panel initialized: %dx%d, 30MHz\n", W, H);
 
   lv_init();
   const size_t n = W * 60;
