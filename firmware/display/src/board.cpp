@@ -10,7 +10,16 @@ namespace {
 constexpr int W = board::SCREEN_W, H = board::SCREEN_H;
 constexpr int PIN_SDA = 8, PIN_SCL = 9;
 constexpr uint8_t IO_ADDR = 0x24;
-constexpr uint8_t REG_MODE = 0x02, REG_OUTPUT = 0x03;  // 0x05 = backlight PWM: don't write it at boot (see begin())
+constexpr uint8_t REG_MODE = 0x02, REG_OUTPUT = 0x03;
+// 0x05 = backlight PWM, INVERTED (0x00 brightest, 0xFF off). Never written at
+// boot (see begin()); only once the screen first dims.
+constexpr uint8_t REG_PWM = 0x05;
+// How far "dimmed" goes. DISPLAY_DIM_PWM=0 switches the backlight fully off
+// instead (no PWM writes at all), in case PWM brings back the stripe band.
+#ifndef DISPLAY_DIM_PWM
+#define DISPLAY_DIM_PWM 1
+#endif
+constexpr uint8_t PWM_DIM = 0xF0, PWM_FULL = 0x00;
 constexpr int IO_BACKLIGHT = 2;  // IO3 = LCD reset: left high, never pulsed
 
 esp_lcd_panel_handle_t gPanel = nullptr;
@@ -19,6 +28,8 @@ lv_disp_drv_t gDispDrv;
 lv_indev_drv_t gIndevDrv;
 uint8_t gExio = 0xff;
 bool gBacklight = false;
+bool gPwmUsed = false;      // PWM register written since boot
+bool gSwallowTouch = false; // current touch woke the screen: don't pass it to LVGL
 uint32_t gLastTouchMs = 0;
 uint8_t gTouchAddr = 0;
 
@@ -96,6 +107,10 @@ void touchCb(lv_indev_drv_t *, lv_indev_data_t *data) {
   }
   if (down && !gBacklight) {
     board::backlight(true);
+    gSwallowTouch = true;
+  }
+  if (gSwallowTouch) {
+    if (!down) gSwallowTouch = false;  // finger lifted: the next touch is a real one
     down = false;
   }
   data->point.x = lastX;
@@ -167,7 +182,6 @@ void begin() {
   gDispDrv.flush_cb = flushCb;
   gDispDrv.draw_buf = &gDrawBuf;
   lv_disp_drv_register(&gDispDrv);
-  backlight(true);
 
   for (uint8_t addr : {(uint8_t)0x5d, (uint8_t)0x14}) {
     Wire.beginTransmission(addr);
@@ -185,8 +199,18 @@ void begin() {
 }
 
 void backlight(bool on) {
+  if (on == gBacklight) return;
   gBacklight = on;
+#if DISPLAY_DIM_PWM
+  if (!on) {
+    exioWrite(REG_PWM, PWM_DIM);
+    gPwmUsed = true;
+  } else if (gPwmUsed) {
+    exioWrite(REG_PWM, PWM_FULL);
+  }
+#else
   exioPin(IO_BACKLIGHT, on);
+#endif
   if (on) gLastTouchMs = millis();
 }
 bool backlightOn() { return gBacklight; }

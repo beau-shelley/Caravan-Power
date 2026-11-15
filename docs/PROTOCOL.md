@@ -61,7 +61,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `ble_sensors` | | Bluetooth thermometers in range (temp, battery, signal, assigned role) |
 | `temp_set` | `role`, `src` (0 wired, 1 Bluetooth), `addr` | assign a Bluetooth thermometer to inside/outside/fridge |
 | `remote_control` | `on` | **not accepted from the cloud** |
-| `display_set` | `sleep` (minutes, 0 = never, max 240) | touchscreen backlight timeout; kept on the hub and sent to the display in `meta.ss` |
+| `display_set` | `sleep` (seconds, 0 = never, max 14400) | idle time before the touchscreen dims right down (the first touch only wakes it); kept on the hub and sent to the display in `meta.ss` |
 | `config_set` | `cfg:{…}` | partial config merge (see `HubConfig::toJson`) |
 | `victron_set` | `i`, `key` (32 hex), optional `addr`, `src` (0 Bluetooth, 1 VE.Direct, 2 off) | add/replace a SmartSolar's Instant Readout key |
 | `victron_seen` | | Victron devices in Bluetooth range and which are decoding |
@@ -83,7 +83,7 @@ All setup is done from the phone (the web dashboard's **Alerts & rules** and **S
 2. Send `{"c":"hello"}`. The reply has `meta` (names, `rc`, `ss`, `tcal`, weather location) and `rules`.
 3. Change things with the commands above: `rule_set` / `rule_del` / `rules_reset` reply with the whole new rule list (`{"t":"rules",…}`); `display_set` and `remote_control` reply with the new `meta`. Every change is saved on the hub and pushed to the display.
 
-`meta` keys: `sol`, `tmp`, `tank`, `pump` (names), `acp` (aircon preset names), `cap` battery Ah, `rc` remote control allowed, `tcal` tanks need calibrating here, `ls`/`ln` weather location source/name, `ss` screen sleep minutes, `fw`.
+`meta` keys: `sol`, `tmp`, `tank`, `pump` (names), `acp` (aircon preset names), `cap` battery Ah, `rc` remote control allowed, `tcal` tanks need calibrating here, `ls`/`ln` weather location source/name, `ss` screen dim timeout in seconds, `fw`.
 
 ## Hub config (`GET/POST /api/config`)
 

@@ -218,7 +218,7 @@ static const char *kPageIcons[PAGE_COUNT] = {LV_SYMBOL_HOME,  LV_SYMBOL_CHARGE, 
 static bool isSubPage(int p) { return p == PAGE_LEVEL || p == PAGE_ALERTS || p == PAGE_SETTINGS; }
 
 // Set from the phone (Setup tab); the hub keeps it so the display never writes flash.
-int sleepMinutes() { return app::meta.screenSleepMin; }
+int sleepSeconds() { return app::meta.screenSleepSec; }
 
 static void navCb(lv_event_t *e) { showPage((int)(intptr_t)lv_event_get_user_data(e)); }
 

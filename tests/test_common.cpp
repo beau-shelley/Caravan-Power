@@ -205,19 +205,19 @@ static void testJsonRoundTrip() {
   m.acPresetCount = 2;
   strcpy(m.acPresetName[0], "Cool 22");
   strcpy(m.acPresetName[1], "Heat 20");
-  m.screenSleepMin = 0;  // "never" must survive the round trip
+  m.screenSleepSec = 0;  // "never" must survive the round trip
   JsonDocument md;
   metaToJson(m, md.to<JsonObject>());
   Meta m2;
   metaFromJson(m2, md.as<JsonObjectConst>());
   CHECK(m2.acPresetCount == 2 && strcmp(m2.acPresetName[1], "Heat 20") == 0);
   CHECK(strcmp(m2.tankName[2], "Grey") == 0);
-  CHECK(m2.screenSleepMin == 0);
+  CHECK(m2.screenSleepSec == 0);
   Meta m3;  // an older hub that doesn't send "ss" keeps the default
   JsonDocument old;
   deserializeJson(old, R"({"t":"meta","rc":true})");
   metaFromJson(m3, old.as<JsonObjectConst>());
-  CHECK(m3.screenSleepMin == 5);
+  CHECK(m3.screenSleepSec == 300);
 }
 
 static void testSoc() {

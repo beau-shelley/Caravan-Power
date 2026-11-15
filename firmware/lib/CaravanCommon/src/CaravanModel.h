@@ -194,7 +194,7 @@ struct Meta {
   char locName[24] = "";   // weather location name
   bool remoteControl = true;
   bool tankCal = false;  // true when tanks are wired taps that need calibrating
-  uint8_t screenSleepMin = 5;  // touchscreen backlight timeout, 0 = never (set from the phone)
+  uint16_t screenSleepSec = 300;  // touchscreen dims after this many idle seconds, 0 = never (set from the phone)
   char fw[16] = "1.0.0";
 };
 void levelToJson(const Level &l, JsonObject o);

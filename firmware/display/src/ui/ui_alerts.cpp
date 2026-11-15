@@ -352,9 +352,10 @@ void updateSettings() {
     if (sPresetDd) lv_dropdown_set_options(sPresetDd, opts.length() ? opts.c_str() : "(none)");
     if (app::meta.remoteControl) lv_obj_add_state(sRemote, LV_STATE_CHECKED);
     else lv_obj_clear_state(sRemote, LV_STATE_CHECKED);
-    int sm = app::meta.screenSleepMin;
-    if (sm) setText(sSleep, "Screen sleeps after %d min  " LV_SYMBOL_RIGHT " change on phone", sm);
-    else setText(sSleep, "Screen never sleeps  " LV_SYMBOL_RIGHT " change on phone");
+    int ss = app::meta.screenSleepSec;
+    if (!ss) setText(sSleep, "Screen never dims  " LV_SYMBOL_RIGHT " change on phone");
+    else if (ss < 60) setText(sSleep, "Screen dims after %d s  " LV_SYMBOL_RIGHT " change on phone", ss);
+    else setText(sSleep, "Screen dims after %d min  " LV_SYMBOL_RIGHT " change on phone", ss / 60);
   }
   if (s.ip[0]) setText(sUrl, "http://caravan.local   or   http://%s", s.ip);
   else setText(sUrl, "http://caravan.local");

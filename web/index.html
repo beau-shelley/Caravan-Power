@@ -204,9 +204,11 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
     <div class="grid">
       <div class="card span6" style="--dot:var(--accent)">
         <div class="cap">Caravan display</div>
-        <div class="row between" style="padding:6px 0"><label for="dispSleep" style="font-size:15px; color:var(--text)">Screen sleeps after</label>
-          <select id="dispSleep" style="width:140px"><option value="0">Never</option><option value="1">1 min</option><option value="5">5 min</option>
-            <option value="15">15 min</option><option value="30">30 min</option><option value="60">1 hour</option></select></div>
+        <div class="row between" style="padding:6px 0"><label for="dispSleep" style="font-size:15px; color:var(--text)">Screen dims after</label>
+          <select id="dispSleep" style="width:140px"><option value="10">10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option>
+            <option value="60">1 min</option><option value="300">5 min</option><option value="900">15 min</option><option value="1800">30 min</option>
+            <option value="3600">1 hour</option><option value="0">Never</option></select></div>
+        <p class="muted small" style="margin:2px 0 6px">It dims right down when idle. The first touch only wakes it, so you can't press a button by accident.</p>
         <div class="row between" style="padding:6px 0"><span>Allow control from the cloud dashboard<br><span class="muted small">Only changeable on the caravan Wi-Fi or the display.</span></span>
           <label class="sw"><input type="checkbox" id="rcSw" aria-label="Allow remote control"><i></i></label></div>
       </div>
@@ -410,7 +412,7 @@ function renderMeta() {
   $("#calCard").classList.toggle("hidden", !META.tcal);  // BMPRO tanks are calibrated in the Odyssey app
   if (META.ss !== undefined) {
     const sel = $("#dispSleep");
-    if (![...sel.options].some((o) => +o.value === META.ss)) sel.add(new Option(`${META.ss} min`, META.ss));
+    if (![...sel.options].some((o) => +o.value === META.ss)) sel.add(new Option(META.ss < 60 ? `${META.ss} seconds` : `${Math.round(META.ss / 60)} min`, META.ss));
     sel.value = META.ss;
   }
   $("#rcSw").checked = !!META.rc;
@@ -533,7 +535,7 @@ function demoTransport() {
     wx:{ ok:true, up: Math.floor(Date.now() / 1000) - 720, src:2, pl:"Mudgee NSW", t:27.4, c:2, day:true, w:14.2, g:31,
       d:[[2,6,29.1,14.2,10,0,38.2],[61,0,24,15.1,80,6.2,45],[95,1,22.3,12.9,95,18.4,72.4],[0,2,26.8,10.4,0,0,25.9]] } };
   setTimeout(() => {
-    onMessage({ t:"hello", meta:{ ...META, ss:5, acp:["Cool 22 auto","Cool 24 low","Heat 21","Dry","Fan only"] },
+    onMessage({ t:"hello", meta:{ ...META, ss:300, acp:["Cool 22 auto","Cool 24 low","Heat 21","Dry","Fan only"] },
       rules:[{ id:1, en:true, name:"Battery low", m:"bat_v", cmp:"<", thr:12.4, hys:0.3, dly:60, sev:1, ntf:true, act:"none" },
              { id:2, en:true, name:"Battery critical", m:"bat_v", cmp:"<", thr:11.8, hys:0.6, dly:30, sev:2, ntf:true, act:"inverter_off" },
              { id:7, en:true, name:"Fridge warm", m:"temp_fridge", cmp:">", thr:6, hys:1, dly:1200, sev:2, ntf:true, act:"none" },

@@ -54,7 +54,7 @@ enum Page { PAGE_HOME, PAGE_POWER, PAGE_WATER, PAGE_CLIMATE, PAGE_MORE, PAGE_LEV
 void begin();   // build everything
 void loop();    // refresh widgets from app:: model (call often; cheap if nothing changed)
 void showPage(int p);
-int sleepMinutes();
+int sleepSeconds();
 
 // ---------------------------------------------------------------- palette
 namespace col {

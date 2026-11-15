@@ -16,8 +16,12 @@ namespace board {
 constexpr int SCREEN_W = DISPLAY_HOR_RES, SCREEN_H = DISPLAY_VER_RES;
 
 void begin();          // panel + touch + LVGL
+// Screen dimming. backlight(false) dims the panel right down (it stays
+// faintly lit); backlight(true) restores full brightness. While dimmed, a
+// touch only wakes the screen: that whole touch, until the finger lifts, is
+// kept from LVGL so nothing underneath gets pressed.
 void backlight(bool on);
-bool backlightOn();
+bool backlightOn();    // true = awake (full brightness)
 uint32_t lastTouchMs();
 }  // namespace board
 
