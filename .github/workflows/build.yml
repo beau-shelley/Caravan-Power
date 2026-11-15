@@ -39,4 +39,10 @@ jobs:
       - run: pip install platformio
       - name: Build ${{ matrix.project }}
         working-directory: firmware/${{ matrix.project }}
+        env:
+          # The pioarduino platform (display) installs the newest "pioarduino" core into
+          # ~/.platformio/penv for its nested build. 6.2.0.post1 reports itself as
+          # 6.2.0-post.1, which fails the platform's own ">=6.2.0" check
+          # (IncompatiblePlatform). Its installer uses uv, so pin it here.
+          UV_CONSTRAINT: ${{ github.workspace }}/.github/pio-constraints.txt
         run: pio run
