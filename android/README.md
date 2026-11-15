@@ -1,0 +1,59 @@
+# Caravan Android app
+
+Native Kotlin (Jetpack Compose) app for the caravan hub. It replaces the slow
+touchscreen for setup and sends alerts as phone notifications.
+
+## What it does
+
+- **Home:** battery, solar, water tanks, temperatures, pumps (tap to switch), weather.
+- **Alerts:** active alerts with *Acknowledge*, and the hub's alert rules: add, edit,
+  delete, switch on/off, restore defaults. Same rules as the touchscreen and web page.
+- **Setup:** hub login, background alerts, ntfy, touchscreen sleep time, remote control.
+- **Notifications:**
+  - On the caravan's Wi-Fi the app holds a connection to the hub and raises a
+    notification for each new alert, with an *Acknowledge* button. No internet needed.
+  - Away from the van it listens to the hub's ntfy topic (`NTFY_TOPIC`), which works
+    whenever the van has internet. If the van is offline, nothing can reach the phone.
+  - Rules with *Send a phone notification* off are skipped.
+
+## How it talks to the hub
+
+Exactly like the web page (see `docs/PROTOCOL.md`):
+
+1. `GET http://<hub>/api/token` with HTTP Basic auth (`WEB_USER` / `WEB_PASS`).
+2. WebSocket `ws://<hub>:81/`, send `{"c":"auth","tok":…}`, then `{"c":"hello"}`.
+3. The hub pushes `{"t":"state",…}` every second; commands are the usual `{"c":…}` JSON.
+
+The hub is found with Android's DNS-SD discovery (`_http._tcp`, name `caravan`),
+because many phones can't open `caravan.local`. Then `caravan.local` is tried, and
+the address that worked is remembered. You can also type an address in Setup.
+
+## Installing
+
+GitHub Actions builds the APK on every push that touches `android/`
+(workflow **android**, artifact **caravan-monitor-apk**).
+
+1. Download the artifact from the workflow run and unzip it.
+2. Copy the `.apk` to the phone and open it (allow "install unknown apps" for your file
+   manager), or with USB debugging on: `adb install -r caravan-monitor-xxxxxxx.apk`.
+3. Open the app, allow notifications, enter the hub password in Setup.
+
+Every build is signed with the same key (`app/debug.keystore`, committed on purpose),
+so a new APK installs over the old one and keeps your settings.
+
+## Building locally
+
+Android Studio (open the `android/` folder), or with an Android SDK installed:
+
+```
+cd android
+./gradlew testDebugUnitTest assembleDebug
+```
+
+## Not in this version yet
+
+- Victron keys, Bluetooth thermometers, tank calibration, BMPRO and weather location
+  setup (use *Open hub web page* in Setup for now).
+- Level page over Bluetooth (use `web/level.html` for now).
+- Remote dashboard over MQTT.
+- Inverter and aircon controls (hidden for now, like on the touchscreen).
