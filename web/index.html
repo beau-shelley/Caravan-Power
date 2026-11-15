@@ -65,7 +65,8 @@ main { padding:12px 16px 40px; max-width:1200px; margin:0 auto; }
 .tanks { display:flex; gap:18px; justify-content:space-around; }
 .tank { text-align:center; }
 .tank .tb { width:44px; height:110px; border-radius:10px; background:var(--tile); position:relative; overflow:hidden; margin:0 auto 6px; }
-#gas .tb { border-radius:18px 18px 12px 12px; }
+#gas { flex:0 0 46%; } #gas .tb { width:76px; height:96px; border-radius:22px 22px 14px 14px; }
+#gas .shroud { display:block; width:44px; height:18px; margin:0 auto -4px; border:5px solid var(--tile); border-bottom:0; border-radius:9px 9px 0 0; box-sizing:border-box; }
 .tank .tb i { position:absolute; left:0; right:0; bottom:0; background:var(--water); transition:height .6s; }
 .temps .t { display:flex; justify-content:space-between; align-items:baseline; padding:4px 0; }
 .ctrls { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
@@ -295,7 +296,7 @@ const SEV = ["Info","Warning","Alarm"], SEVC = ["var(--accent)","var(--warn)","v
 const FEATURES = { inverter:false, aircon:false };
 
 let S = null, META = { sol:["Roof","Portable"], tmp:["Inside","Outside","Fridge"], tank:["Tank 1","Tank 2","Grey"],
-  pump:["Main pump","Aux pump"], acp:[], rc:true }, RULES = [];
+  pump:["Internal","External"], acp:[], rc:true }, RULES = [];
 let transport = null, lastMsg = 0;
 
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200); }
@@ -370,7 +371,7 @@ function render() {
 
   // Gas bottle (BMPRO SmartSense via the OdysseyLink)
   const g = S.gas || { on:false, p:0 }, gc = !g.on ? "var(--dim)" : g.p < 10 ? "var(--alarm)" : g.p < 25 ? "var(--warn)" : "var(--gas)";
-  $("#gas").innerHTML = `<div class="tb"><i style="height:${g.on ? g.p : 0}%; background:${gc}"></i></div>
+  $("#gas").innerHTML = `<span class="shroud"></span><div class="tb"><i style="height:${g.on ? g.p : 0}%; background:${gc}"></i></div>
     <b>${g.on ? Math.round(g.p) + "%" : "--"}</b><div class="muted small">Gas</div>`;
   $("#gasRow").classList.toggle("wide", FEATURES.inverter || FEATURES.aircon);
   $("#ctrlCap").textContent = FEATURES.inverter || FEATURES.aircon ? "Gas & controls" : "Gas & pumps";

@@ -195,7 +195,7 @@ struct Meta {
   char solarName[NUM_SOLAR][16] = {"Roof", "Portable"};
   char tempName[NUM_TEMPS][16] = {"Inside", "Outside", "Fridge"};
   char tankName[NUM_TANKS][16] = {"Tank 1", "Tank 2", "Grey"};
-  char pumpName[NUM_PUMPS][16] = {"Main pump", "Aux pump"};
+  char pumpName[NUM_PUMPS][16] = {"Internal", "External"};
   uint8_t acPresetCount = 0;
   char acPresetName[MAX_AC_PRESETS][16] = {};
   float batCapacityAh = 300;

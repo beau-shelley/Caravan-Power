@@ -1,6 +1,6 @@
 // HOME - everything important on one screen.
 //  [ Battery ring  ] [ Energy flow: solar / charger / loads + per-MPPT  ]
-//  [ Temperatures  ] [ Water tanks      ] [ Gas bottle | Pump 1 / Pump 2 ]
+//  [ Temperatures  ] [ Water tanks      ] [ Gas bottle | Internal / External pumps ]
 #include "../app.h"
 #include "ui.h"
 
@@ -144,20 +144,24 @@ void buildHome(lv_obj_t *p) {
                      col::GAS);
   lv_obj_set_style_pad_all(q, 10, 0);
   constexpr int qw = bw - 20, qh = BOT_H - 20, tg = 8;
-  constexpr int gasW = (tCols == 1 ? qw * 36 / 100 : qw * 28 / 100);
-  constexpr int gasBarW = LARGE ? 54 : 44, gasBarH = qh - 20 - (LARGE ? 50 : 42);  // % and name below
-  // The bottle: a bar with a little valve collar on top.
-  lv_obj_t *collar = lv_obj_create(q);
-  lv_obj_remove_style_all(collar);
-  lv_obj_set_size(collar, gasBarW / 2, 8);
-  lv_obj_set_style_bg_opa(collar, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(collar, c(col::BORDER), 0);
-  lv_obj_set_style_radius(collar, 3, 0);
-  lv_obj_set_pos(collar, (gasW - gasBarW / 2) / 2, 20);
-  gasBar = vbar(q, gasBarW, gasBarH - 10, col::GAS);
-  lv_obj_set_style_radius(gasBar, gasBarW / 3, 0);
-  lv_obj_set_style_radius(gasBar, gasBarW / 3, LV_PART_INDICATOR);
-  lv_obj_set_pos(gasBar, (gasW - gasBarW) / 2, 30);
+  constexpr int gasW = (tCols == 1 ? qw * 50 / 100 : qw * 34 / 100);
+  // Shaped like a 9 kg LPG bottle: about two-thirds as wide as it is tall.
+  constexpr int gasBarH = qh - 20 - (LARGE ? 50 : 42);  // % and name below
+  constexpr int shroudH = 16, bodyH = gasBarH - shroudH + 4;
+  constexpr int gasBarW = bodyH * 66 / 100 < gasW - 8 ? bodyH * 66 / 100 : gasW - 8;
+  // The bottle: a wide rounded body with the carry-handle shroud on top.
+  lv_obj_t *shroud = lv_obj_create(q);
+  lv_obj_remove_style_all(shroud);
+  lv_obj_set_size(shroud, gasBarW * 58 / 100, shroudH + 8);
+  lv_obj_set_style_border_width(shroud, 5, 0);
+  lv_obj_set_style_border_color(shroud, c(col::TILE), 0);
+  lv_obj_set_style_border_opa(shroud, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(shroud, 8, 0);
+  lv_obj_set_pos(shroud, (gasW - gasBarW * 58 / 100) / 2, 20);
+  gasBar = vbar(q, gasBarW, bodyH, col::GAS);
+  lv_obj_set_style_radius(gasBar, gasBarW / 4, 0);
+  lv_obj_set_style_radius(gasBar, gasBarW / 4, LV_PART_INDICATOR);
+  lv_obj_set_pos(gasBar, (gasW - gasBarW) / 2, 20 + shroudH);
   lv_obj_clear_flag(gasBar, LV_OBJ_FLAG_CLICKABLE);
   gasPct = lbl(q, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::TEXT, "--");
   lv_obj_set_width(gasPct, gasW);
@@ -176,7 +180,7 @@ void buildHome(lv_obj_t *p) {
     n++;
   };
   for (int i = 0; i < cv::NUM_PUMPS; i++) {
-    tilePump[i] = tile(q, tw, th, LV_SYMBOL_LOOP, i == 0 ? "Pump 1" : "Pump 2", pumpCb, (void *)(intptr_t)i);
+    tilePump[i] = tile(q, tw, th, LV_SYMBOL_LOOP, app::meta.pumpName[i], pumpCb, (void *)(intptr_t)i);
     place(tilePump[i]);
   }
   if (HAS_INVERTER) {
@@ -198,6 +202,7 @@ void updateHome() {
     for (int i = 0; i < cv::NUM_SOLAR; i++) lv_label_set_text(mpName[i], app::meta.solarName[i]);
     for (int i = 0; i < cv::NUM_TEMPS; i++) lv_label_set_text(tName[i], app::meta.tempName[i]);
     for (int i = 0; i < cv::NUM_TANKS; i++) lv_label_set_text(tkName[i], app::meta.tankName[i]);
+    for (int i = 0; i < cv::NUM_PUMPS; i++) lv_label_set_text(lv_obj_get_child(tilePump[i], 1), app::meta.pumpName[i]);
   }
 
   // battery
