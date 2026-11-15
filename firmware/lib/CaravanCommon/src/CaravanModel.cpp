@@ -22,6 +22,7 @@ static const MetricInfo kMetrics[M_COUNT] = {
     {"tank3", "Tank 3", "%", 5.0f},
     {"wx_gust", "Forecast gusts", "km/h", 5.0f},
     {"wx_rain", "Forecast rain chance", "%", 10.0f},
+    {"gas", "Gas bottle", "%", 5.0f},
 };
 
 const MetricInfo &metricInfo(Metric m) { return kMetrics[m < M_COUNT ? m : 0]; }
@@ -57,6 +58,7 @@ bool metricValue(const State &s, Metric m, float &out) {
     // Forecast metrics: only while the forecast is reasonably fresh (6 h).
     case M_WX_GUST: out = s.wx.day[0].gustMax; return s.wx.valid && s.ts && s.ts - s.wx.updated < 6 * 3600;
     case M_WX_RAIN: out = s.wx.day[0].rainProb; return s.wx.valid && s.ts && s.ts - s.wx.updated < 6 * 3600;
+    case M_GAS: out = s.gas.pct; return s.gas.online;
     default: return false;
   }
 }
@@ -215,6 +217,10 @@ void stateToJson(const State &s, JsonObject o) {
     j["p"] = r1(x.pct);
   }
 
+  JsonObject gas = o["gas"].to<JsonObject>();
+  gas["on"] = s.gas.online;
+  gas["p"] = r1(s.gas.pct);
+
   JsonArray pm = o["pump"].to<JsonArray>();
   for (auto &x : s.pump) {
     JsonObject j = pm.add<JsonObject>();
@@ -301,6 +307,9 @@ void stateFromJson(State &s, JsonObjectConst o) {
     s.tank[i].online = tk[i]["on"] | false;
     s.tank[i].pct = tk[i]["p"] | 0.0f;
   }
+
+  s.gas.online = o["gas"]["on"] | false;
+  s.gas.pct = o["gas"]["p"] | 0.0f;
 
   JsonArrayConst pm = o["pump"];
   for (int i = 0; i < NUM_PUMPS; i++) {

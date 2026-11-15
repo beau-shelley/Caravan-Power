@@ -62,6 +62,13 @@ struct Tank {
   float pct = 0;
 };
 
+// LPG bottle level from a BMPRO SmartSense gas sensor (ultrasonic, under the
+// bottle), relayed by the OdysseyLink. Decoding is still a stub on the hub.
+struct Gas {
+  bool online = false;
+  float pct = 0;
+};
+
 struct Pump {
   bool on = false;       // commanded / believed state
   bool sensed = false;   // voltage seen on pump output (if sense input fitted)
@@ -107,6 +114,7 @@ struct State {
   Battery bat;
   Temp temp[NUM_TEMPS];
   Tank tank[NUM_TANKS];
+  Gas gas;
   Pump pump[NUM_PUMPS];
   Inverter inv;
   Aircon ac;
@@ -131,6 +139,7 @@ enum Metric : uint8_t {
   M_TEMP_IN, M_TEMP_OUT, M_TEMP_FRIDGE,
   M_TANK1, M_TANK2, M_TANK3,
   M_WX_GUST, M_WX_RAIN,   // today's forecast max wind gust (km/h), rain chance (%)
+  M_GAS,  // appended: rules refer to metrics by key, but keep the order stable
   M_COUNT
 };
 

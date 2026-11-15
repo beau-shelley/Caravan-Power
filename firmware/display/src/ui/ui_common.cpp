@@ -196,6 +196,8 @@ uint32_t tankColor(int i, float pct) {
   return pct < 15 ? col::ALARM : pct < 30 ? col::WARN : col::WATER;
 }
 
+uint32_t gasColor(float pct) { return pct < 10 ? col::ALARM : pct < 25 ? col::WARN : col::GAS; }
+
 void fmtDuration(char *buf, size_t n, int32_t m) {
   if (m < 0) snprintf(buf, n, "--");
   else if (m >= 60 * 99) snprintf(buf, n, "99h+");

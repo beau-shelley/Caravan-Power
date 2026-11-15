@@ -65,6 +65,8 @@ void begin() {
   s.tank[0].pct = 72;
   s.tank[1].pct = 18;
   s.tank[2].pct = 41;
+  s.gas.online = true;
+  s.gas.pct = 63;
   s.pump[0].on = true;
   s.pump[0].sensed = true;
   s.pump[0].runSec = 94;

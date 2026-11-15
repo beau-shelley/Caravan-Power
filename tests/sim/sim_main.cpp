@@ -88,6 +88,7 @@ static void demoData() {
   s.tank[0] = {true, 72};
   s.tank[1] = {true, 18};
   s.tank[2] = {true, 41};
+  s.gas = {true, 63};
   s.pump[0].on = true;
   s.pump[0].sensed = true;
   s.pump[0].runSec = 94;

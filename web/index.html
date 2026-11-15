@@ -17,7 +17,7 @@
 :root {
   --bg:#0b1220; --card:#131c2e; --tile:#1a2438; --border:#1e293b;
   --text:#e2e8f0; --muted:#94a3b8; --dim:#475569;
-  --solar:#fbbf24; --charge:#34d399; --load:#f87171; --water:#38bdf8;
+  --solar:#fbbf24; --charge:#34d399; --load:#f87171; --water:#38bdf8; --gas:#fb923c;
   --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444;
   --radius:16px;
 }
@@ -25,7 +25,7 @@
   :root:not([data-theme="dark"]) {
     --bg:#eef2f7; --card:#ffffff; --tile:#f1f5f9; --border:#dbe3ee;
     --text:#0f172a; --muted:#475569; --dim:#94a3b8;
-    --solar:#d97706; --charge:#059669; --load:#dc2626; --water:#0284c7;
+    --solar:#d97706; --charge:#059669; --load:#dc2626; --water:#0284c7; --gas:#ea580c;
     --climate:#7c3aed; --accent:#0891b2;
   }
 }
@@ -65,9 +65,12 @@ main { padding:12px 16px 40px; max-width:1200px; margin:0 auto; }
 .tanks { display:flex; gap:18px; justify-content:space-around; }
 .tank { text-align:center; }
 .tank .tb { width:44px; height:110px; border-radius:10px; background:var(--tile); position:relative; overflow:hidden; margin:0 auto 6px; }
+#gas .tb { border-radius:18px 18px 12px 12px; }
 .tank .tb i { position:absolute; left:0; right:0; bottom:0; background:var(--water); transition:height .6s; }
 .temps .t { display:flex; justify-content:space-between; align-items:baseline; padding:4px 0; }
 .ctrls { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.gasrow { display:flex; gap:14px; align-items:stretch; } .gasrow .ctrls { flex:1; grid-template-columns:1fr; }
+.gasrow.wide .ctrls { grid-template-columns:1fr 1fr; }
 .tog { border:1px solid var(--border); background:var(--tile); color:var(--text); border-radius:14px;
   padding:12px; text-align:left; font:inherit; cursor:pointer; min-height:70px; }
 .tog b { display:block; font-weight:600; } .tog span { font-size:12px; color:var(--muted); }
@@ -161,9 +164,12 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <div class="cap">Water</div>
         <div id="tanks" class="tanks"></div>
       </div>
-      <div class="card span4">
-        <div class="cap">Controls</div>
-        <div class="ctrls" id="ctrls"></div>
+      <div class="card span4" style="--dot:var(--gas)">
+        <div class="cap" id="ctrlCap">Gas &amp; pumps</div>
+        <div class="gasrow" id="gasRow">
+          <div class="tank" id="gas"></div>
+          <div class="ctrls" id="ctrls"></div>
+        </div>
         <div class="row hidden" id="acRow" style="margin-top:10px">
           <select id="acSel" aria-label="Aircon preset"></select>
           <button class="btn" id="acGo">Send</button>
@@ -280,7 +286,7 @@ const METRICS = [
   ["load_a","Load current","A"],["charge_a","Charge current","A"],["solar_w","Solar total","W"],
   ["solar1_w","Solar 1","W"],["solar2_w","Solar 2","W"],["temp_in","Inside temp","°C"],
   ["temp_out","Outside temp","°C"],["temp_fridge","Fridge temp","°C"],["tank1","Tank 1","%"],
-  ["tank2","Tank 2","%"],["tank3","Tank 3","%"]];
+  ["tank2","Tank 2","%"],["tank3","Tank 3","%"],["gas","Gas bottle","%"]];
 const CS = {0:"Off",2:"Fault",3:"Bulk",4:"Absorption",5:"Float",7:"Equalise",245:"Starting",247:"Auto EQ",252:"Ext control"};
 const SEV = ["Info","Warning","Alarm"], SEVC = ["var(--accent)","var(--warn)","var(--alarm)"];
 
@@ -361,6 +367,13 @@ function render() {
     const c = !t.on ? "var(--dim)" : bad ? "var(--alarm)" : warn ? "var(--warn)" : i === 2 ? "var(--muted)" : "var(--water)";
     return `<div class="tank"><div class="tb"><i style="height:${t.on ? t.p : 0}%; background:${c}"></i></div>
       <b>${t.on ? Math.round(t.p) + "%" : "--"}</b><div class="muted small">${esc(META.tank[i])}</div></div>`; }).join("");
+
+  // Gas bottle (BMPRO SmartSense via the OdysseyLink)
+  const g = S.gas || { on:false, p:0 }, gc = !g.on ? "var(--dim)" : g.p < 10 ? "var(--alarm)" : g.p < 25 ? "var(--warn)" : "var(--gas)";
+  $("#gas").innerHTML = `<div class="tb"><i style="height:${g.on ? g.p : 0}%; background:${gc}"></i></div>
+    <b>${g.on ? Math.round(g.p) + "%" : "--"}</b><div class="muted small">Gas</div>`;
+  $("#gasRow").classList.toggle("wide", FEATURES.inverter || FEATURES.aircon);
+  $("#ctrlCap").textContent = FEATURES.inverter || FEATURES.aircon ? "Gas & controls" : "Gas & pumps";
 
   const rc = transport?.kind !== "cloud" || META.rc;
   const acName = S.ac.on && S.ac.pre >= 0 ? (META.acp[S.ac.pre] || "On") : "Off";
@@ -493,7 +506,7 @@ function demoTransport() {
   const st = { t:"state", ts: Math.floor(Date.now() / 1000), bat:{ on:true, src:1, v:13.31, a:18.8, soc:78, ttg:52, sa:31.4, ca:0, chg:31.4, load:12.6 },
     sol:[{ on:true, pv:-1, w:312, bv:13.31, ba:22.6, cs:3, err:0, yt:1.42, mx:498 }, { on:true, pv:-1, w:118, bv:13.3, ba:8.8, cs:4, err:0, yt:0.61, mx:205 }],
     tmp:[{ on:true, c:24.6, lo:16.2, hi:27.9 }, { on:true, c:31.2, lo:14.8, hi:33.4 }, { on:true, c:7.4, lo:2.1, hi:7.4 }],
-    tank:[{ on:true, p:72 }, { on:true, p:18 }, { on:true, p:41 }],
+    tank:[{ on:true, p:72 }, { on:true, p:18 }, { on:true, p:41 }], gas:{ on:true, p:63 },
     pump:[{ on:true, sn:true, lk:false, rt:94 }, { on:false, sn:false, lk:false, rt:0 }],
     inv:{ on:false, ac:false }, ac:{ on:true, pre:0 },
     alerts:[{ id:7, sev:2, ack:false, since: Math.floor(Date.now() / 1000) - 1500, msg:"Fridge warm: 7.4°C (> 6.0)" }],

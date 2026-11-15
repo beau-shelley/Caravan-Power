@@ -29,6 +29,8 @@ struct BmproData {
   float chargerA = 0;
   bool tankValid[cv::NUM_TANKS] = {};
   float tankPct[cv::NUM_TANKS] = {};
+  bool gasValid = false;  // SmartSense LPG level (frame not decoded yet: stub)
+  float gasPct = 0;
   bool pumpValid[cv::NUM_PUMPS] = {};
   bool pumpOn[cv::NUM_PUMPS] = {};
 };

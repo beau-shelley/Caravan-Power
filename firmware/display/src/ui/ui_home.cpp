@@ -1,6 +1,6 @@
 // HOME - everything important on one screen.
 //  [ Battery ring  ] [ Energy flow: solar / charger / loads + per-MPPT  ]
-//  [ Temperatures  ] [ Water tanks      ] [ Pump1 Pump2 Inverter Aircon ]
+//  [ Temperatures  ] [ Water tanks      ] [ Gas bottle | Pump 1 / Pump 2 ]
 #include "../app.h"
 #include "ui.h"
 
@@ -12,6 +12,7 @@ static lv_obj_t *mpName[cv::NUM_SOLAR], *mpChip[cv::NUM_SOLAR], *mpBar[cv::NUM_S
 static lv_obj_t *tName[cv::NUM_TEMPS], *tVal[cv::NUM_TEMPS];
 static lv_obj_t *tkBar[cv::NUM_TANKS], *tkPct[cv::NUM_TANKS], *tkName[cv::NUM_TANKS];
 static lv_obj_t *tilePump[cv::NUM_PUMPS], *tileInv, *tileAc;
+static lv_obj_t *gasBar, *gasPct;
 static uint32_t seenMeta = UINT32_MAX;
 
 static void pumpCb(lv_event_t *e) { togglePump((int)(intptr_t)lv_event_get_user_data(e)); }
@@ -134,15 +135,44 @@ void buildHome(lv_obj_t *p) {
     lv_obj_set_pos(tkName[i], x + 1, 24 + tankBarH + (LARGE ? 28 : 22));
   }
 
-  // ---------------- quick controls: 2 tiles per row (pumps, then inverter /
-  // aircon when those features are switched on, see ui.h)
-  constexpr int nTiles = cv::NUM_PUMPS + HAS_INVERTER + HAS_AIRCON, rows = (nTiles + 1) / 2;
-  lv_obj_t *q = card(p, colX(2, 3), BOT_Y, bw, BOT_H, nTiles > cv::NUM_PUMPS ? "CONTROLS" : "PUMPS", col::ACCENT);
+  // ---------------- gas bottle + quick controls. Gas gauge (BMPRO SmartSense)
+  // on the left; the pump tiles stacked at half height on the right (plus
+  // inverter / aircon in a second column when those features are on, ui.h).
+  constexpr int nTiles = cv::NUM_PUMPS + HAS_INVERTER + HAS_AIRCON;
+  constexpr int tCols = nTiles > cv::NUM_PUMPS ? 2 : 1, tRows = (nTiles + tCols - 1) / tCols;
+  lv_obj_t *q = card(p, colX(2, 3), BOT_Y, bw, BOT_H, nTiles > cv::NUM_PUMPS ? "GAS & CONTROLS" : "GAS & PUMPS",
+                     col::GAS);
   lv_obj_set_style_pad_all(q, 10, 0);
-  constexpr int tg = 8, tw = (bw - 20 - tg) / 2, th = (BOT_H - 20 - 20 - (rows - 1) * tg) / rows;
+  constexpr int qw = bw - 20, qh = BOT_H - 20, tg = 8;
+  constexpr int gasW = (tCols == 1 ? qw * 36 / 100 : qw * 28 / 100);
+  constexpr int gasBarW = LARGE ? 54 : 44, gasBarH = qh - 20 - (LARGE ? 50 : 42);  // % and name below
+  // The bottle: a bar with a little valve collar on top.
+  lv_obj_t *collar = lv_obj_create(q);
+  lv_obj_remove_style_all(collar);
+  lv_obj_set_size(collar, gasBarW / 2, 8);
+  lv_obj_set_style_bg_opa(collar, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(collar, c(col::BORDER), 0);
+  lv_obj_set_style_radius(collar, 3, 0);
+  lv_obj_set_pos(collar, (gasW - gasBarW / 2) / 2, 20);
+  gasBar = vbar(q, gasBarW, gasBarH - 10, col::GAS);
+  lv_obj_set_style_radius(gasBar, gasBarW / 3, 0);
+  lv_obj_set_style_radius(gasBar, gasBarW / 3, LV_PART_INDICATOR);
+  lv_obj_set_pos(gasBar, (gasW - gasBarW) / 2, 30);
+  lv_obj_clear_flag(gasBar, LV_OBJ_FLAG_CLICKABLE);
+  gasPct = lbl(q, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::TEXT, "--");
+  lv_obj_set_width(gasPct, gasW);
+  lv_obj_set_style_text_align(gasPct, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_pos(gasPct, 0, 20 + gasBarH + 4);
+  lv_obj_t *gasName = lbl(q, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "Gas");
+  lv_obj_set_width(gasName, gasW);
+  lv_obj_set_style_text_align(gasName, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_pos(gasName, 0, 20 + gasBarH + (LARGE ? 28 : 22));
+
+  constexpr int tx0 = gasW + tg, tw = (qw - tx0 - (tCols - 1) * tg) / tCols;
+  constexpr int th = (qh - 20 - (tRows - 1) * tg) / tRows;
   int n = 0;
   auto place = [&](lv_obj_t *t) {
-    lv_obj_set_pos(t, (n % 2) * (tw + tg), 20 + (n / 2) * (th + tg));
+    lv_obj_set_pos(t, tx0 + (n / tRows) * (tw + tg), 20 + (n % tRows) * (th + tg));
     n++;
   };
   for (int i = 0; i < cv::NUM_PUMPS; i++) {
@@ -237,6 +267,18 @@ void updateHome() {
       lv_bar_set_value(tkBar[i], 0, LV_ANIM_OFF);
       setText(tkPct[i], "--");
     }
+  }
+
+  // gas bottle
+  if (s.gas.online) {
+    lv_bar_set_value(gasBar, (int)s.gas.pct, LV_ANIM_ON);
+    setBarColor(gasBar, gasColor(s.gas.pct));
+    setText(gasPct, "%d%%", (int)(s.gas.pct + 0.5f));
+    lv_obj_set_style_text_color(gasPct, c(col::TEXT), 0);
+  } else {
+    lv_bar_set_value(gasBar, 0, LV_ANIM_OFF);
+    setText(gasPct, "--");
+    lv_obj_set_style_text_color(gasPct, c(col::DIM), 0);
   }
 
   // controls
