@@ -301,6 +301,10 @@ static void buildShell() {
   lv_obj_set_style_border_width(rail, 1, 0);
   lv_obj_t *logo = lbl(rail, &lv_font_montserrat_20, col::ACCENT, LV_SYMBOL_CHARGE);
   lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 12);
+#ifdef DISPLAY_DEMO_MODE
+  lv_obj_t *demoTag = lbl(rail, &lv_font_montserrat_12, col::WARN, "DEMO");
+  lv_obj_align(demoTag, LV_ALIGN_TOP_MID, 0, 34);
+#endif
   for (int i = 0; i < NAV_COUNT; i++) {
     int pg = kRail[i];
     lv_obj_t *b = lv_btn_create(rail);

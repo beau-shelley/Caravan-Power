@@ -1,216 +1,168 @@
 #include "board.h"
 
-#include <LovyanGFX.hpp>
-#include <esp_heap_caps.h>
 #include <Wire.h>
-#include <lgfx/v1/platforms/esp32s3/Bus_RGB.hpp>
-#include <lgfx/v1/platforms/esp32s3/Panel_RGB.hpp>
+#include <esp_heap_caps.h>
+#include <esp_lcd_panel_ops.h>
+#include <esp_lcd_panel_rgb.h>
 #include <lvgl.h>
 
 namespace {
+constexpr int W = 1024, H = 600;
+constexpr int PIN_SDA = 8, PIN_SCL = 9;
+constexpr uint8_t IO_ADDR = 0x24;
+constexpr uint8_t REG_MODE = 0x02, REG_OUTPUT = 0x03, REG_PWM = 0x05;
+constexpr int IO_BACKLIGHT = 2, IO_LCD_RESET = 3;
 
-constexpr int W = 800, H = 480;
-constexpr int PIN_SDA = 8, PIN_SCL = 9, PIN_TP_INT = 4;
-
-// ---------------------------------------------------------------- panel
-class LGFX : public lgfx::LGFX_Device {
- public:
-  lgfx::Bus_RGB bus;
-  lgfx::Panel_RGB panel;
-  LGFX() {
-    {
-      auto cfg = panel.config();
-      cfg.memory_width = cfg.panel_width = W;
-      cfg.memory_height = cfg.panel_height = H;
-      cfg.offset_x = cfg.offset_y = 0;
-      panel.config(cfg);
-    }
-    {
-      auto cfg = panel.config_detail();
-      cfg.use_psram = 1;
-      panel.config_detail(cfg);
-    }
-    {
-      auto cfg = bus.config();
-      cfg.panel = &panel;
-      // RGB565: d0-d4 = B3..B7, d5-d10 = G2..G7, d11-d15 = R3..R7
-      cfg.pin_d0 = GPIO_NUM_14;
-      cfg.pin_d1 = GPIO_NUM_38;
-      cfg.pin_d2 = GPIO_NUM_18;
-      cfg.pin_d3 = GPIO_NUM_17;
-      cfg.pin_d4 = GPIO_NUM_10;
-      cfg.pin_d5 = GPIO_NUM_39;
-      cfg.pin_d6 = GPIO_NUM_0;
-      cfg.pin_d7 = GPIO_NUM_45;
-      cfg.pin_d8 = GPIO_NUM_48;
-      cfg.pin_d9 = GPIO_NUM_47;
-      cfg.pin_d10 = GPIO_NUM_21;
-      cfg.pin_d11 = GPIO_NUM_1;
-      cfg.pin_d12 = GPIO_NUM_2;
-      cfg.pin_d13 = GPIO_NUM_42;
-      cfg.pin_d14 = GPIO_NUM_41;
-      cfg.pin_d15 = GPIO_NUM_40;
-      cfg.pin_henable = GPIO_NUM_5;
-      cfg.pin_vsync = GPIO_NUM_3;
-      cfg.pin_hsync = GPIO_NUM_46;
-      cfg.pin_pclk = GPIO_NUM_7;
-      cfg.freq_write = 16000000;
-      cfg.hsync_polarity = 0;
-      cfg.hsync_front_porch = 8;
-      cfg.hsync_pulse_width = 4;
-      cfg.hsync_back_porch = 8;
-      cfg.vsync_polarity = 0;
-      cfg.vsync_front_porch = 8;
-      cfg.vsync_pulse_width = 4;
-      cfg.vsync_back_porch = 8;
-      cfg.pclk_active_neg = 1;
-      cfg.de_idle_high = 0;
-      cfg.pclk_idle_high = 0;
-      bus.config(cfg);
-    }
-    panel.setBus(&bus);
-    setPanel(&panel);
-  }
-};
-LGFX gfx;
-
-// ---------------------------------------------------------------- CH422G
-// I2C "registers" are separate 7-bit addresses. EXIO1 = touch reset,
-// EXIO2 = backlight, EXIO3 = LCD reset, EXIO4 = SD CS, EXIO5 = USB/CAN select.
-constexpr uint8_t CH422G_SET = 0x24, CH422G_IO = 0x38;
-uint8_t gExio = 0;
-bool gBacklight = false;
-
-void exioWrite() {
-  Wire.beginTransmission(CH422G_IO);
-  Wire.write(gExio);
-  Wire.endTransmission();
-}
-void exioPin(int n, bool v) {
-  if (v) gExio |= (1 << n);
-  else gExio &= ~(1 << n);
-  exioWrite();
-}
-
-// ---------------------------------------------------------------- GT911
-uint8_t gTouchAddr = 0x5D;
-uint32_t gLastTouchMs = 0;
-
-bool gtRead(uint16_t reg, uint8_t *buf, uint8_t n) {
-  Wire.beginTransmission(gTouchAddr);
-  Wire.write(reg >> 8);
-  Wire.write(reg & 0xFF);
-  if (Wire.endTransmission() != 0) return false;
-  if (Wire.requestFrom((int)gTouchAddr, (int)n) != n) return false;
-  for (int i = 0; i < n; i++) buf[i] = Wire.read();
-  return true;
-}
-void gtWrite(uint16_t reg, uint8_t v) {
-  Wire.beginTransmission(gTouchAddr);
-  Wire.write(reg >> 8);
-  Wire.write(reg & 0xFF);
-  Wire.write(v);
-  Wire.endTransmission();
-}
-
-void touchReset() {
-  // INT held low during reset selects address 0x5D.
-  pinMode(PIN_TP_INT, OUTPUT);
-  digitalWrite(PIN_TP_INT, LOW);
-  exioPin(1, false);
-  delay(10);
-  exioPin(1, true);
-  delay(60);
-  pinMode(PIN_TP_INT, INPUT);
-  for (uint8_t a : {(uint8_t)0x5D, (uint8_t)0x14}) {
-    Wire.beginTransmission(a);
-    if (Wire.endTransmission() == 0) {
-      gTouchAddr = a;
-      break;
-    }
-  }
-  uint8_t id[4] = {0};
-  gtRead(0x8140, id, 4);
-  Serial.printf("[touch] GT%c%c%c%c at 0x%02X\n", id[0], id[1], id[2], id[3], gTouchAddr);
-}
-
-bool touchPoint(int16_t &x, int16_t &y) {
-  uint8_t st;
-  if (!gtRead(0x814E, &st, 1)) return false;
-  if (!(st & 0x80)) return false;  // buffer not ready
-  bool pressed = false;
-  if ((st & 0x0F) > 0) {
-    uint8_t d[7];
-    if (gtRead(0x814F, d, 7)) {
-      x = d[1] | (d[2] << 8);
-      y = d[3] | (d[4] << 8);
-      pressed = true;
-    }
-  }
-  gtWrite(0x814E, 0);  // release the buffer
-  return pressed;
-}
-
-// ---------------------------------------------------------------- LVGL glue
+esp_lcd_panel_handle_t gPanel = nullptr;
 lv_disp_draw_buf_t gDrawBuf;
 lv_disp_drv_t gDispDrv;
 lv_indev_drv_t gIndevDrv;
+uint8_t gExio = 0xff;
+bool gBacklight = false;
+uint32_t gLastTouchMs = 0;
+uint8_t gTouchAddr = 0;
 
-void flushCb(lv_disp_drv_t *drv, const lv_area_t *a, lv_color_t *px) {
-  gfx.pushImage(a->x1, a->y1, a->x2 - a->x1 + 1, a->y2 - a->y1 + 1, (lgfx::rgb565_t *)&px->full);
+bool exioWrite(uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(IO_ADDR);
+  Wire.write(reg);
+  Wire.write(value);
+  uint8_t err = Wire.endTransmission();
+  if (err) Serial.printf("[board] IO extension write 0x%02X failed: %u\n", reg, err);
+  return err == 0;
+}
+
+void exioPin(int pin, bool on) {
+  if (on) gExio |= 1U << pin;
+  else gExio &= ~(1U << pin);
+  exioWrite(REG_OUTPUT, gExio);
+}
+
+bool gtRead(uint16_t reg, uint8_t *buf, uint8_t len) {
+  if (!gTouchAddr) return false;
+  Wire.beginTransmission(gTouchAddr);
+  Wire.write(reg >> 8);
+  Wire.write(reg & 0xff);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(gTouchAddr, len) != len) return false;
+  for (uint8_t i = 0; i < len; ++i) buf[i] = Wire.read();
+  return true;
+}
+
+void gtWrite(uint16_t reg, uint8_t value) {
+  Wire.beginTransmission(gTouchAddr);
+  Wire.write(reg >> 8);
+  Wire.write(reg & 0xff);
+  Wire.write(value);
+  Wire.endTransmission();
+}
+
+bool touchPoint(int16_t &x, int16_t &y) {
+  uint8_t status = 0;
+  if (!gtRead(0x814e, &status, 1) || !(status & 0x80)) return false;
+  bool pressed = (status & 0x0f) > 0;
+  if (pressed) {
+    uint8_t point[7];
+    if (gtRead(0x8150, point, sizeof(point))) {
+      x = point[0] | (point[1] << 8);
+      y = point[2] | (point[3] << 8);
+      if (x >= W || y >= H) pressed = false;
+    } else {
+      pressed = false;
+    }
+  }
+  gtWrite(0x814e, 0);
+  return pressed;
+}
+
+void flushCb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *pixels) {
+  static bool first = true;
+  esp_err_t err = esp_lcd_panel_draw_bitmap(gPanel, area->x1, area->y1,
+                                           area->x2 + 1, area->y2 + 1, pixels);
+  if (first || err != ESP_OK) {
+    Serial.printf("[board] LVGL flush: %s (%d)\n", err == ESP_OK ? "OK" : "FAILED", err);
+    first = false;
+  }
   lv_disp_flush_ready(drv);
 }
 
 void touchCb(lv_indev_drv_t *, lv_indev_data_t *data) {
-  static int16_t lx = 0, ly = 0;
-  static bool down = false;
-  static uint32_t lastPoll = 0;
-  // GT911 updates ~100 Hz; polling faster just loads the I2C bus.
-  if (millis() - lastPoll >= 15) {
-    lastPoll = millis();
-    int16_t x, y;
-    down = touchPoint(x, y);
-    if (down) {
-      lx = constrain(x, 0, W - 1);
-      ly = constrain(y, 0, H - 1);
-      gLastTouchMs = millis();
-    }
+  static int16_t lastX = 0, lastY = 0;
+  int16_t x = 0, y = 0;
+  bool down = touchPoint(x, y);
+  if (down) {
+    lastX = x;
+    lastY = y;
+    gLastTouchMs = millis();
   }
-  // While the screen is asleep the first touch only wakes it.
   if (down && !gBacklight) {
     board::backlight(true);
-    data->state = LV_INDEV_STATE_REL;
-    return;
+    down = false;
   }
-  data->point.x = lx;
-  data->point.y = ly;
+  data->point.x = lastX;
+  data->point.y = lastY;
   data->state = down ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
 }
-
 }  // namespace
 
 namespace board {
-
 void begin() {
+  Serial.printf("[board] PSRAM: %u bytes, free internal heap: %u bytes\n", ESP.getPsramSize(), ESP.getFreeHeap());
   Wire.begin(PIN_SDA, PIN_SCL, 400000);
-  Wire.beginTransmission(CH422G_SET);
-  Wire.write(0x01);  // IO0-7 as outputs
-  Wire.endTransmission();
-  gExio = 0;
-  exioWrite();
-  delay(10);
-  exioPin(3, true);  // LCD out of reset
-  touchReset();
 
-  gfx.init();
-  gfx.fillScreen(TFT_BLACK);
-  backlight(true);
+  // Verified 7B boot order: CH32 direction and outputs, pulse LCD reset,
+  // then set inverted PWM to full brightness before starting the RGB panel.
+  bool ioOk = exioWrite(REG_MODE, 0xff);
+  exioWrite(REG_OUTPUT, gExio);
+  exioPin(IO_LCD_RESET, false);
+  delay(10);
+  exioPin(IO_LCD_RESET, true);
+  delay(120);
+  exioWrite(REG_PWM, 0x00);
+  gBacklight = true;
+  Serial.printf("[board] CH32 IO extension: %s\n", ioOk ? "OK" : "FAILED");
+
+  esp_lcd_rgb_panel_config_t cfg = {};
+  cfg.clk_src = LCD_CLK_SRC_DEFAULT;
+  cfg.timings.pclk_hz = 30 * 1000 * 1000;
+  cfg.timings.h_res = W;
+  cfg.timings.v_res = H;
+  cfg.timings.hsync_pulse_width = 162;
+  cfg.timings.hsync_back_porch = 152;
+  cfg.timings.hsync_front_porch = 48;
+  cfg.timings.vsync_pulse_width = 45;
+  cfg.timings.vsync_back_porch = 13;
+  cfg.timings.vsync_front_porch = 3;
+  cfg.timings.flags.pclk_active_neg = 1;
+  cfg.data_width = 16;
+  cfg.bits_per_pixel = 16;
+  cfg.num_fbs = 2;
+  cfg.bounce_buffer_size_px = W * 10;
+  cfg.sram_trans_align = 4;
+  cfg.psram_trans_align = 64;
+  cfg.hsync_gpio_num = 46;
+  cfg.vsync_gpio_num = 3;
+  cfg.de_gpio_num = 5;
+  cfg.pclk_gpio_num = 7;
+  cfg.disp_gpio_num = -1;
+  const int dataPins[16] = {14, 38, 18, 17, 10, 39, 0, 45, 48, 47, 21, 1, 2, 42, 41, 40};
+  for (int i = 0; i < 16; ++i) cfg.data_gpio_nums[i] = dataPins[i];
+  cfg.flags.fb_in_psram = 1;
+  esp_err_t err = esp_lcd_new_rgb_panel(&cfg, &gPanel);
+  if (err == ESP_OK) err = esp_lcd_panel_init(gPanel);
+  if (err != ESP_OK) {
+    Serial.printf("[board] ERROR: RGB panel initialization failed: %d\n", err);
+    while (true) delay(1000);
+  }
+  Serial.println("[board] RGB panel initialized: 1024x600, 30MHz");
 
   lv_init();
-  // Two partial buffers in internal RAM (fast) - 800 x 40 lines each.
-  const size_t n = W * 40;
-  auto *b1 = (lv_color_t *)heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
-  auto *b2 = (lv_color_t *)heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA);
+  const size_t n = W * 60;
+  auto *b1 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+  auto *b2 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+  if (!b1 || !b2) {
+    Serial.println("[board] ERROR: PSRAM draw buffer allocation failed");
+    while (true) delay(1000);
+  }
   lv_disp_draw_buf_init(&gDrawBuf, b1, b2, n);
   lv_disp_drv_init(&gDispDrv);
   gDispDrv.hor_res = W;
@@ -218,7 +170,16 @@ void begin() {
   gDispDrv.flush_cb = flushCb;
   gDispDrv.draw_buf = &gDrawBuf;
   lv_disp_drv_register(&gDispDrv);
+  backlight(true);
 
+  for (uint8_t addr : {(uint8_t)0x5d, (uint8_t)0x14}) {
+    Wire.beginTransmission(addr);
+    if (Wire.endTransmission() == 0) {
+      gTouchAddr = addr;
+      break;
+    }
+  }
+  Serial.printf("[touch] GT911 %s at 0x%02X\n", gTouchAddr ? "found" : "not found", gTouchAddr);
   lv_indev_drv_init(&gIndevDrv);
   gIndevDrv.type = LV_INDEV_TYPE_POINTER;
   gIndevDrv.read_cb = touchCb;
@@ -228,11 +189,9 @@ void begin() {
 
 void backlight(bool on) {
   gBacklight = on;
-  exioPin(2, on);
+  exioPin(IO_BACKLIGHT, on);
   if (on) gLastTouchMs = millis();
 }
-
 bool backlightOn() { return gBacklight; }
 uint32_t lastTouchMs() { return gLastTouchMs; }
-
 }  // namespace board

@@ -7,3 +7,7 @@ tests/bin/
 tests/sim/out/
 tests/sim/obj/
 firmware/hub/data/
+firmware/display/.dummy/
+firmware/display/managed_components/
+firmware/display/sdkconfig.defaults
+firmware/display/sdkconfig.display-demo

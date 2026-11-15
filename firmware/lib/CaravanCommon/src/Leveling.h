@@ -16,6 +16,7 @@ namespace cv {
 
 struct Vec3 {
   float x = 0, y = 0, z = 0;
+  constexpr Vec3(float x_ = 0, float y_ = 0, float z_ = 0) : x(x_), y(y_), z(z_) {}
 };
 
 struct LevelCal {

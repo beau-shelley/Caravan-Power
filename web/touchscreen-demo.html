@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caravan Power · Touchscreen demo</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; background: #080f1c; color: #e2e8f0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at 50% 0, #172b3b, #080f1c 55%); }
+  main { width: min(100% - 32px, 1050px); margin: auto; padding: 38px 0 42px; }
+  header { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+  .eyebrow { color: #22d3ee; font-size: 11px; letter-spacing: .16em; font-weight: 750; text-transform: uppercase; }
+  h1 { font-size: clamp(24px, 4vw, 36px); letter-spacing: -.04em; margin: 7px 0 5px; }
+  header p { color: #94a3b8; margin: 0; font-size: 14px; }
+  .badge { color: #67e8f9; background: #123143; border: 1px solid #205568; border-radius: 100px; padding: 8px 13px; font-size: 12px; white-space: nowrap; }
+  .device { border: 1px solid #354354; background: #151d28; border-radius: 26px; padding: clamp(8px, 2vw, 17px); box-shadow: 0 30px 80px #0009, inset 0 1px #ffffff18; }
+  .screen { position: relative; aspect-ratio: 800 / 480; overflow: hidden; background: #0b1220; border-radius: 7px; }
+  .screen img { width: 100%; height: 100%; display: block; }
+  #hotspots { position: absolute; inset: 0; }
+  .hotspot { position: absolute; border: 0; background: transparent; padding: 0; color: inherit; cursor: pointer; border-radius: 10px; }
+  .hotspot:hover { outline: 2px solid #67e8f9bb; background: #22d3ee18; }
+  .hotspot:focus-visible { outline: 3px solid #67e8f9; background: #22d3ee30; }
+  .replacement { position: absolute; display: flex; justify-content: center; align-items: center; border-radius: 12px; font-size: clamp(8px, 1.65vw, 16px); pointer-events: none; }
+  .water-state { background: #101d2a; color: #94a3b8; justify-content: flex-start; }
+  .power-button { background: #1a283f; color: #94a3b8; font-size: clamp(20px, 4vw, 38px); font-weight: 700; }
+  .power-button.on { background: #38bdf8; color: #10233b; }
+  .home-tile { background: #1a283f; color: #94a3b8; border: 1px solid #1e293b; flex-direction: column; align-items: flex-start; padding-left: 1%; font-size: clamp(8px, 1.45vw, 15px); line-height: 1.2; }
+  .home-tile.on { color: #e2e8f0; border-color: #38bdf8; background: #214766; }
+  .home-tile small { color: #94a3b8; font-size: .8em; }
+  .climate-status { background: #101d2a; color: #e2e8f0; justify-content: flex-start; }
+  .preset { background: #1a283f; color: #e2e8f0; text-align: center; padding: 2px; font-size: clamp(7px, 1.35vw, 14px); }
+  .preset.on { background: #a78bfa; color: #111827; }
+  .inverter-button { border-radius: 50%; background: #1a283f; color: #94a3b8; font-size: clamp(32px, 7vw, 64px); font-weight: 700; }
+  .inverter-button.on { color: #34d399; }
+  .inverter-status { background: #101d2a; color: #e2e8f0; }
+  .below { display: flex; justify-content: space-between; gap: 15px; flex-wrap: wrap; margin-top: 21px; }
+  .below p { color: #94a3b8; font-size: 13px; line-height: 1.5; margin: 0; max-width: 700px; }
+  .below a { color: #67e8f9; font-size: 13px; text-decoration: none; }
+  .below a:hover { text-decoration: underline; }
+  #message { min-height: 1.5em; color: #67e8f9; margin: 12px 0 0; font-size: 13px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  @media (max-width: 600px) { main { padding-top: 24px; } header { align-items: start; } .badge { font-size: 10px; padding: 6px 9px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><div class="eyebrow">Caravan Power / design preview</div><h1>Touchscreen demo</h1><p>Explore the interface before the hardware is connected.</p></div>
+    <div class="badge">● &nbsp;SIMULATED DATA</div>
+  </header>
+  <div class="device"><div class="screen" role="region" aria-label="Interactive touchscreen preview">
+    <img id="screenImage" src="../docs/img/01-home.png" alt="Touchscreen home page showing sample battery, solar, temperature and water data">
+    <div id="hotspots"></div>
+  </div></div>
+  <div id="message" role="status" aria-live="polite">Tap the screen or use the keyboard to explore.</div>
+  <div class="below">
+    <p>Preview based on screenshots from the actual 800 × 480 LVGL interface. Navigation and selected controls are simulated; values and screenshots do not represent live equipment. This is not a running copy of the firmware or a 1024 × 600 layout.</p>
+    <a href="index.html?demo">Open the separate web dashboard demo →</a>
+  </div>
+</main>
+<script>
+(() => {
+  const images = {
+    home: '01-home', power: '02-power', water: '03-water', climate: '04-climate',
+    more: '11-more', level: '08-level', alerts: '05-alerts', settings: '07-settings', forecast: '09-forecast'
+  };
+  const image = document.getElementById('screenImage');
+  const layer = document.getElementById('hotspots');
+  const message = document.getElementById('message');
+  const state = { page: 'home', previous: 'home', pump: [true, false], inverter: false, ac: 0 };
+  const presets = ['Cool 22 auto', 'Cool 24 low', 'Heat 21', 'Dry', 'Fan only'];
+  function rect(el, x, y, w, h) {
+    Object.assign(el.style, { left: `${x / 8}%`, top: `${y / 4.8}%`, width: `${w / 8}%`, height: `${h / 4.8}%` });
+  }
+  function graphic(x, y, w, h, text, classes) {
+    const el = document.createElement('div'); el.className = `replacement ${classes}`; el.textContent = text;
+    rect(el, x, y, w, h); layer.append(el); return el;
+  }
+  function action(label, x, y, w, h, callback) {
+    const el = document.createElement('button'); el.className = 'hotspot'; el.type = 'button';
+    el.setAttribute('aria-label', label); el.title = label; rect(el, x, y, w, h);
+    el.addEventListener('click', callback); layer.append(el);
+  }
+  function notice(text) { message.textContent = text; }
+  function show(page) { state.page = page; render(); notice(`${page[0].toUpperCase() + page.slice(1)} preview. Data is simulated.`); }
+  function togglePump(i) { state.pump[i] = !state.pump[i]; render(); notice(`Pump ${i + 1} simulated ${state.pump[i] ? 'on' : 'off'}. No equipment was controlled.`); }
+  function toggleInverter() { state.inverter = !state.inverter; render(); notice(`Inverter simulated ${state.inverter ? 'on' : 'off'}. No equipment was controlled.`); }
+  function setAc(i) { state.ac = i; render(); notice(i < 0 ? 'Air conditioner simulated off.' : `Air conditioner simulated: ${presets[i]}.`); }
+  function render() {
+    const page = state.page;
+    image.src = `../docs/img/${images[page]}.png`;
+    image.alt = `${page} touchscreen preview with example data`;
+    layer.replaceChildren();
+    if (page === 'forecast') {
+      action('Close forecast', 0, 0, 800, 480, () => show(state.previous));
+      return;
+    }
+    if (page === 'home') {
+      const tiles = [[599,327,'Pump 1',state.pump[0]], [691,327,'Pump 2',state.pump[1]], [599,397,'Inverter',state.inverter], [691,397,'Aircon',state.ac >= 0]];
+      tiles.forEach(([x,y,label,on]) => {
+        const el = graphic(x,y,84,64,'',`home-tile${on ? ' on' : ''}`);
+        el.append(document.createTextNode(label)); const small = document.createElement('small'); small.textContent = on ? 'On' : 'Off'; el.append(small);
+      });
+      action('Battery details', 100,55,264,228, () => show('power'));
+      action('Solar details', 375,55,412,228, () => show('power'));
+      action('Temperature details', 100,296,228,172, () => show('climate'));
+      action('Water details', 340,296,236,172, () => show('water'));
+      action('Toggle pump 1',599,327,84,64,() => togglePump(0));
+      action('Toggle pump 2',691,327,84,64,() => togglePump(1));
+      action('Toggle inverter',599,397,84,64,toggleInverter);
+      action('Toggle air conditioner',691,397,84,64,() => setAc(state.ac < 0 ? 0 : -1));
+    }
+    if (page === 'water') {
+      [0,1].forEach(i => {
+        const x = i ? 450 : 100;
+        graphic(x+15,388,175,25,state.pump[i] ? 'Running (simulated)' : 'Off','water-state');
+        graphic(x+203,362,120,84,'⏻',`power-button${state.pump[i] ? ' on' : ''}`);
+        action(`Toggle pump ${i+1}`,x+203,362,120,84,() => togglePump(i));
+      });
+    }
+    if (page === 'climate') {
+      graphic(115,243,310,25,state.ac < 0 ? 'Off' : `On - ${presets[state.ac]}`,'climate-status');
+      presets.forEach((name, i) => {
+        const x = 115 + (i % 4) * 104, y = 285 + Math.floor(i / 4) * 60;
+        graphic(x,y,96,52,name,`preset${state.ac === i ? ' on' : ''}`);
+        action(`Select ${name}`,x,y,96,52,() => setAc(i));
+      });
+      action('Turn air conditioner off',437,237,96,36,() => setAc(-1));
+      graphic(614,249,120,120,'⏻',`inverter-button${state.inverter ? ' on' : ''}`);
+      graphic(620,407,108,24,state.inverter ? 'On' : 'Off','inverter-status');
+      graphic(611,435,130,20,state.inverter ? 'Simulated output' : 'No 240 V output','inverter-status');
+      action('Toggle inverter',614,249,120,120,toggleInverter);
+    }
+    if (page === 'more') {
+      action('Caravan level',100,140,216,220,() => show('level'));
+      action('Alerts and rules',336,140,216,220,() => show('alerts'));
+      action('Settings',572,140,216,220,() => show('settings'));
+    }
+    if (['level','alerts','settings'].includes(page)) action('Back to More',95,0,160,44,() => show('more'));
+    if (page === 'level') {
+      action('Simulate setting level', 440,410,115,45, () => notice('Set level is a simulated action; no sensor is connected.'));
+      action('Simulate learning front', 565,410,115,45, () => notice('Learn front is a simulated action; no sensor is connected.'));
+    }
+    if (page === 'alerts') action('Acknowledge alerts',293,65,92,32,() => notice('Acknowledgement is simulated; the example screenshot remains unchanged.'));
+    [['home',53],['power',137],['water',221],['climate',305],['more',389]].forEach(([name,y]) => action(`Go to ${name}`, 8,y,72,72,() => show(name)));
+    action('Open forecast', 350,0,205,44,() => { state.previous = page; show('forecast'); });
+    action('Open alerts', 750,0,45,44,() => show('alerts'));
+  }
+  render();
+})();
+</script>
+</body>
+</html>

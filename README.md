@@ -106,7 +106,8 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 4. **Flash the display.**
    ```sh
    cd firmware/display
-   pio run -t upload
+   pio run -e display-demo -t upload --upload-port COM3  # standalone GUI demo (no hub needed)
+   # Later, use -e display instead to show live data from the hub over RS485.
    ```
 5. **Commission it** from the touchscreen, under **Settings**:
    - Add the two Victron Bluetooth keys: dashboard → *Setup* → *Victron solar controllers* (see [docs/WIRING.md](docs/WIRING.md#victron-smartsolar-10050-2---bluetooth)).
@@ -153,7 +154,9 @@ make -C tests                 # 182 unit checks under ASan/UBSan: weather + GPS 
 make -C tests/sim             # builds the real display UI against LVGL and renders every page to PNG
 ```
 
-Open `web/index.html?demo` in a browser to try the dashboard with fake data.
+Open [web/touchscreen-demo.html](web/touchscreen-demo.html) in a browser to explore a clickable touchscreen preview without the hub or display. It uses screenshots of the real 800×480 LVGL interface; navigation and selected controls are simulated rather than running the firmware. The preview loads its images from `docs/img`, so keep that folder alongside `web`.
+
+Open `web/index.html?demo` in a browser to try the separate remote dashboard with fake data.
 
 ## Safety
 
