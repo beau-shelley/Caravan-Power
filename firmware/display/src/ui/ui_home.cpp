@@ -134,18 +134,29 @@ void buildHome(lv_obj_t *p) {
     lv_obj_set_pos(tkName[i], x + 1, 24 + tankBarH + (LARGE ? 28 : 22));
   }
 
-  // ---------------- quick controls (2 x 2 tiles)
-  lv_obj_t *q = card(p, colX(2, 3), BOT_Y, bw, BOT_H, "CONTROLS", col::ACCENT);
+  // ---------------- quick controls: 2 tiles per row (pumps, then inverter /
+  // aircon when those features are switched on, see ui.h)
+  constexpr int nTiles = cv::NUM_PUMPS + HAS_INVERTER + HAS_AIRCON, rows = (nTiles + 1) / 2;
+  lv_obj_t *q = card(p, colX(2, 3), BOT_Y, bw, BOT_H, nTiles > cv::NUM_PUMPS ? "CONTROLS" : "PUMPS", col::ACCENT);
   lv_obj_set_style_pad_all(q, 10, 0);
-  constexpr int tg = 8, tw = (bw - 20 - tg) / 2, th = (BOT_H - 20 - 20 - tg) / 2;
+  constexpr int tg = 8, tw = (bw - 20 - tg) / 2, th = (BOT_H - 20 - 20 - (rows - 1) * tg) / rows;
+  int n = 0;
+  auto place = [&](lv_obj_t *t) {
+    lv_obj_set_pos(t, (n % 2) * (tw + tg), 20 + (n / 2) * (th + tg));
+    n++;
+  };
   for (int i = 0; i < cv::NUM_PUMPS; i++) {
     tilePump[i] = tile(q, tw, th, LV_SYMBOL_LOOP, i == 0 ? "Pump 1" : "Pump 2", pumpCb, (void *)(intptr_t)i);
-    lv_obj_set_pos(tilePump[i], i * (tw + tg), 20);
+    place(tilePump[i]);
   }
-  tileInv = tile(q, tw, th, LV_SYMBOL_POWER, "Inverter", invCb);
-  lv_obj_set_pos(tileInv, 0, 20 + th + tg);
-  tileAc = tile(q, tw, th, LV_SYMBOL_SHUFFLE, "Aircon", acCb);
-  lv_obj_set_pos(tileAc, tw + tg, 20 + th + tg);
+  if (HAS_INVERTER) {
+    tileInv = tile(q, tw, th, LV_SYMBOL_POWER, "Inverter", invCb);
+    place(tileInv);
+  }
+  if (HAS_AIRCON) {
+    tileAc = tile(q, tw, th, LV_SYMBOL_SHUFFLE, "Aircon", acCb);
+    place(tileAc);
+  }
 }
 
 void updateHome() {
@@ -234,11 +245,13 @@ void updateHome() {
     const char *sub = pm.lockout ? "Locked" : pm.on ? "Running" : "Off";
     setTile(tilePump[i], pm.on, pm.lockout ? col::WARN : col::WATER, sub);
   }
-  setTile(tileInv, s.inv.on, col::SOLAR, s.inv.on ? (s.inv.acPresent ? "240V on" : "On") : "Off");
-  const char *acSub = "Off";
-  if (s.ac.on && s.ac.preset >= 0 && s.ac.preset < app::meta.acPresetCount)
-    acSub = app::meta.acPresetName[s.ac.preset];
-  setTile(tileAc, s.ac.on, col::CLIMATE, acSub);
+  if (tileInv) setTile(tileInv, s.inv.on, col::SOLAR, s.inv.on ? (s.inv.acPresent ? "240V on" : "On") : "Off");
+  if (tileAc) {
+    const char *acSub = "Off";
+    if (s.ac.on && s.ac.preset >= 0 && s.ac.preset < app::meta.acPresetCount)
+      acSub = app::meta.acPresetName[s.ac.preset];
+    setTile(tileAc, s.ac.on, col::CLIMATE, acSub);
+  }
 }
 
 }  // namespace ui

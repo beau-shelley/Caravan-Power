@@ -279,7 +279,8 @@ static lv_obj_t *moreTile(lv_obj_t *p, int i, int page, const char *sym, const c
 static void buildMore(lv_obj_t *p) {
   moreTile(p, 0, PAGE_LEVEL, LV_SYMBOL_GPS, "Caravan level", "Bubble level and wheel / jockey heights", col::ACCENT);
   gMoreAlerts = moreTile(p, 1, PAGE_ALERTS, LV_SYMBOL_BELL, "Alerts & rules", "", col::WARN);
-  moreTile(p, 2, PAGE_SETTINGS, LV_SYMBOL_SETTINGS, "Settings", "Aircon, weather location, display", col::MUTED);
+  moreTile(p, 2, PAGE_SETTINGS, LV_SYMBOL_SETTINGS, "Settings",
+           HAS_AIRCON ? "Aircon, weather location, display" : "Weather location, display", col::MUTED);
 }
 
 static void updateMore() {

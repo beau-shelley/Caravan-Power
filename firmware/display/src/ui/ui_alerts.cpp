@@ -463,7 +463,8 @@ void buildSettings(lv_obj_t *p) {
   sInfo = lbl(a, &lv_font_montserrat_12, col::MUTED, "");
   lv_obj_set_pos(sInfo, 0, 78);
 
-  // ---- aircon learning
+  // ---- aircon learning (only when aircon control is switched on, see ui.h)
+  if (HAS_AIRCON) {
   lv_obj_t *b = settingsCard(col, "AIRCON  -  learn codes from your remote", 120, col::CLIMATE);
   lv_obj_t *bn = button(b, 170, 40, LV_SYMBOL_PLUS " Learn preset", col::TILE, learnNewCb);
   lv_obj_set_pos(bn, 0, 26);
@@ -477,6 +478,7 @@ void buildSettings(lv_obj_t *p) {
   lv_obj_t *hint = lbl(b, &lv_font_montserrat_12, col::MUTED,
                        "Set the remote to the mode/temp/fan you want, then press its button when asked.");
   lv_obj_set_pos(hint, 0, 76);
+  }
 
   // ---- weather location
   lv_obj_t *w = settingsCard(col, "WEATHER LOCATION", 96, col::WATER);
@@ -521,7 +523,7 @@ void updateSettings() {
       if (i) opts += "\n";
       opts += app::meta.acPresetName[i];
     }
-    lv_dropdown_set_options(sPresetDd, opts.length() ? opts.c_str() : "(none)");
+    if (sPresetDd) lv_dropdown_set_options(sPresetDd, opts.length() ? opts.c_str() : "(none)");
     static const char *srcName[] = {"", "GPS", "phone", "town search"};
     if (app::meta.locSrc) setText(sLocLbl, "%s  (%s)", app::meta.locName[0] ? app::meta.locName : "Unnamed spot",
                                   srcName[app::meta.locSrc & 3]);

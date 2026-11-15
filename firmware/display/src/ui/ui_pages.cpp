@@ -235,6 +235,13 @@ static lv_obj_t *cName[cv::NUM_TEMPS], *cVal[cv::NUM_TEMPS], *cMinMax[cv::NUM_TE
 static lv_obj_t *acGrid, *acStatus, *acOff;
 static lv_obj_t *acBtns[cv::MAX_AC_PRESETS];
 static int acGridW, acGridH;
+static lv_obj_t *wxBox, *wxCaption;  // forecast card (when aircon + inverter are off)
+static int wxBoxW, wxBoxH;
+static uint32_t wxSeen = UINT32_MAX;
+static void buildAircon(lv_obj_t *p, int x, int y, int w, int h);
+static void buildInverter(lv_obj_t *p, int x, int y, int w, int h);
+static void updateAircon();
+static void updateInverter();
 static lv_obj_t *invBtn, *invLbl, *invAc;
 static uint32_t seenMetaClimate = UINT32_MAX;
 
@@ -267,9 +274,12 @@ static void rebuildPresets() {
 }
 
 void buildClimate(lv_obj_t *p) {
-  // Top: one card per temperature. Bottom: aircon presets | inverter.
+  // Top: one card per temperature. Bottom: aircon presets | inverter, or the
+  // weather forecast while those controls are switched off (see ui.h).
   constexpr int tempH = LARGE ? 168 : 140, botY = GAP + tempH + GAP, botH = INNER_H - GAP - tempH;
-  constexpr int acW = splitW(66), invW = INNER_W - GAP - acW;
+  constexpr int acW = !HAS_AIRCON ? 0 : HAS_INVERTER ? splitW(66) : INNER_W;
+  constexpr int invW = !HAS_INVERTER ? 0 : HAS_AIRCON ? INNER_W - GAP - acW : INNER_W;
+  constexpr int invX = HAS_AIRCON ? GAP + acW + GAP : GAP;
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
     lv_obj_t *cd = card(p, colX(i, cv::NUM_TEMPS), GAP, colW(cv::NUM_TEMPS), tempH, "TEMPERATURE", col::CLIMATE);
     cName[i] = lbl(cd, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED, app::meta.tempName[i]);
@@ -280,7 +290,19 @@ void buildClimate(lv_obj_t *p) {
     lv_obj_align(cMinMax[i], LV_ALIGN_BOTTOM_LEFT, 0, 0);
   }
 
-  lv_obj_t *ac = card(p, GAP, botY, acW, botH, "AIR CONDITIONER", col::CLIMATE);
+  if (!HAS_AIRCON && !HAS_INVERTER) {
+    lv_obj_t *fc = card(p, GAP, botY, INNER_W, botH, "FORECAST", col::WATER);
+    wxCaption = lv_obj_get_child(fc, 1);  // card(): child 0 = dot, 1 = caption
+    wxBox = panel(fc, 0, 0, innerOf(INNER_W), innerOf(botH));
+    wxBoxW = innerOf(INNER_W);
+    wxBoxH = innerOf(botH);
+  }
+  if (HAS_AIRCON) buildAircon(p, GAP, botY, acW, botH);
+  if (HAS_INVERTER) buildInverter(p, invX, botY, invW, botH);
+}
+
+static void buildAircon(lv_obj_t *p, int x, int y, int acW, int botH) {
+  lv_obj_t *ac = card(p, x, y, acW, botH, "AIR CONDITIONER", col::CLIMATE);
   acStatus = lbl(ac, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "Off");
   lv_obj_set_pos(acStatus, 0, 20);
   acOff = button(ac, LARGE ? 110 : 96, LARGE ? 42 : 36, LV_SYMBOL_POWER " Off", col::TILE, acOffCb);
@@ -289,8 +311,10 @@ void buildClimate(lv_obj_t *p) {
   acGridH = innerOf(botH) - (LARGE ? 70 : 62);
   acGrid = panel(ac, 0, LARGE ? 70 : 62, acGridW, acGridH);
   rebuildPresets();
+}
 
-  lv_obj_t *iv = card(p, GAP + acW + GAP, botY, invW, botH, "INVERTER 3000W", col::SOLAR);
+static void buildInverter(lv_obj_t *p, int x, int y, int invW, int botH) {
+  lv_obj_t *iv = card(p, x, y, invW, botH, "INVERTER 3000W", col::SOLAR);
   constexpr int invD = LARGE ? 160 : 120;
   invBtn = lv_btn_create(iv);
   lv_obj_set_size(invBtn, invD, invD);
@@ -311,7 +335,7 @@ void updateClimate() {
   if (seenMetaClimate != app::metaVer) {
     seenMetaClimate = app::metaVer;
     for (int i = 0; i < cv::NUM_TEMPS; i++) lv_label_set_text(cName[i], app::meta.tempName[i]);
-    rebuildPresets();
+    if (HAS_AIRCON) rebuildPresets();
   }
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
     const cv::Temp &t = s.temp[i];
@@ -329,6 +353,22 @@ void updateClimate() {
       setText(cMinMax[i], "sensor offline");
     }
   }
+  if (wxBox) {  // forecast card: rebuild on a new forecast, or once a minute for "updated N min ago"
+    const cv::Weather &w = s.wx;
+    uint32_t sig = w.valid ? (w.updated ^ (s.ts / 60)) + 1 : 0;
+    if (sig != wxSeen) {
+      wxSeen = sig;
+      if (w.place[0]) setText(wxCaption, "FORECAST  -  %s", w.place);
+      else setText(wxCaption, "FORECAST");
+      buildForecast(wxBox, wxBoxW, wxBoxH);
+    }
+  }
+  if (HAS_AIRCON) updateAircon();
+  if (HAS_INVERTER) updateInverter();
+}
+
+static void updateAircon() {
+  const cv::State &s = app::state;
   for (int i = 0; i < app::meta.acPresetCount; i++) {
     if (!acBtns[i]) continue;
     bool on = s.ac.on && s.ac.preset == i;
@@ -339,7 +379,10 @@ void updateClimate() {
     setText(acStatus, "On - %s", app::meta.acPresetName[s.ac.preset]);
   else
     setText(acStatus, "Off");
+}
 
+static void updateInverter() {
+  const cv::State &s = app::state;
   lv_obj_set_style_bg_color(invBtn, c(s.inv.on ? col::SOLAR : col::TILE), 0);
   lv_obj_set_style_text_color(lv_obj_get_child(invBtn, 0), c(s.inv.on ? col::BG : col::MUTED), 0);
   setText(invLbl, "%s", s.inv.on ? "On" : "Off");

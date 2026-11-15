@@ -28,12 +28,6 @@
   .home-tile { background: #1a283f; color: #94a3b8; border: 1px solid #1e293b; flex-direction: column; align-items: flex-start; padding-left: 1%; font-size: clamp(8px, 1.45vw, 15px); line-height: 1.2; }
   .home-tile.on { color: #e2e8f0; border-color: #38bdf8; background: #214766; }
   .home-tile small { color: #94a3b8; font-size: .8em; }
-  .climate-status { background: #101d2a; color: #e2e8f0; justify-content: flex-start; }
-  .preset { background: #1a283f; color: #e2e8f0; text-align: center; padding: 2px; font-size: clamp(7px, 1.35vw, 14px); }
-  .preset.on { background: #a78bfa; color: #111827; }
-  .inverter-button { border-radius: 50%; background: #1a283f; color: #94a3b8; font-size: clamp(32px, 7vw, 64px); font-weight: 700; }
-  .inverter-button.on { color: #34d399; }
-  .inverter-status { background: #101d2a; color: #e2e8f0; }
   .below { display: flex; justify-content: space-between; gap: 15px; flex-wrap: wrap; margin-top: 21px; }
   .below p { color: #94a3b8; font-size: 13px; line-height: 1.5; margin: 0; max-width: 700px; }
   .below a { color: #67e8f9; font-size: 13px; text-decoration: none; }
@@ -68,8 +62,7 @@
   const image = document.getElementById('screenImage');
   const layer = document.getElementById('hotspots');
   const message = document.getElementById('message');
-  const state = { page: 'home', previous: 'home', pump: [true, false], inverter: false, ac: 0 };
-  const presets = ['Cool 22 auto', 'Cool 24 low', 'Heat 21', 'Dry', 'Fan only'];
+  const state = { page: 'home', previous: 'home', pump: [true, false] };
   // Coordinates are panel pixels on the 1024 x 600 screenshots (see firmware/display/src/ui).
   const W = 1024, H = 600;
   function rect(el, x, y, w, h) {
@@ -87,8 +80,6 @@
   function notice(text) { message.textContent = text; }
   function show(page) { state.page = page; render(); notice(`${page[0].toUpperCase() + page.slice(1)} preview. Data is simulated.`); }
   function togglePump(i) { state.pump[i] = !state.pump[i]; render(); notice(`Pump ${i + 1} simulated ${state.pump[i] ? 'on' : 'off'}. No equipment was controlled.`); }
-  function toggleInverter() { state.inverter = !state.inverter; render(); notice(`Inverter simulated ${state.inverter ? 'on' : 'off'}. No equipment was controlled.`); }
-  function setAc(i) { state.ac = i; render(); notice(i < 0 ? 'Air conditioner simulated off.' : `Air conditioner simulated: ${presets[i]}.`); }
   function render() {
     const page = state.page;
     image.src = `../docs/img/${images[page]}.png`;
@@ -99,19 +90,19 @@
       return;
     }
     if (page === 'home') {
-      const tiles = [[731,383,'Pump 1',state.pump[0]], [871,383,'Pump 2',state.pump[1]], [731,485,'Inverter',state.inverter], [871,485,'Aircon',state.ac >= 0]];
+      // Inverter and aircon control are switched off in the firmware for now,
+      // so Home only has the two pump tiles.
+      const tiles = [[731,383,'Pump 1',state.pump[0]], [871,383,'Pump 2',state.pump[1]]];
       tiles.forEach(([x,y,label,on]) => {
-        const el = graphic(x,y,132,94,'',`home-tile${on ? ' on' : ''}`);
+        const el = graphic(x,y,132,196,'',`home-tile${on ? ' on' : ''}`);
         el.append(document.createTextNode(label)); const small = document.createElement('small'); small.textContent = on ? 'On' : 'Off'; el.append(small);
       });
       action('Battery details', 112,64,328,276, () => show('power'));
       action('Solar details', 452,64,560,276, () => show('power'));
       action('Temperature details', 112,352,292,236, () => show('climate'));
       action('Water details', 416,352,292,236, () => show('water'));
-      action('Toggle pump 1',731,383,132,94,() => togglePump(0));
-      action('Toggle pump 2',871,383,132,94,() => togglePump(1));
-      action('Toggle inverter',731,485,132,94,toggleInverter);
-      action('Toggle air conditioner',871,485,132,94,() => setAc(state.ac < 0 ? 0 : -1));
+      action('Toggle pump 1',731,383,132,196,() => togglePump(0));
+      action('Toggle pump 2',871,383,132,196,() => togglePump(1));
     }
     if (page === 'water') {
       [0,1].forEach(i => {
@@ -120,19 +111,6 @@
         graphic(x+279,435,150,110,'⏻',`power-button${state.pump[i] ? ' on' : ''}`);
         action(`Toggle pump ${i+1}`,x+279,435,150,110,() => togglePump(i));
       });
-    }
-    if (page === 'climate') {
-      graphic(127,276,420,32,state.ac < 0 ? 'Off' : `On - ${presets[state.ac]}`,'climate-status');
-      presets.forEach((name, i) => {
-        const x = 127 + (i % 4) * 141, y = 329 + Math.floor(i / 4) * 72;
-        graphic(x,y,133,64,name,`preset${state.ac === i ? ' on' : ''}`);
-        action(`Select ${name}`,x,y,133,64,() => setAc(i));
-      });
-      action('Turn air conditioner off',573,273,110,42,() => setAc(-1));
-      graphic(781,291,160,160,'⏻',`inverter-button${state.inverter ? ' on' : ''}`);
-      graphic(725,518,272,32,state.inverter ? 'On' : 'Off','inverter-status');
-      graphic(725,553,272,22,state.inverter ? 'Simulated output' : 'No 240 V output','inverter-status');
-      action('Toggle inverter',781,291,160,160,toggleInverter);
     }
     if (page === 'more') {
       action('Caravan level',112,186,292,280,() => show('level'));

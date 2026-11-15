@@ -12,6 +12,18 @@
 
 namespace ui {
 
+// ---------------------------------------------------------------- features
+// Inverter and aircon control are switched off for now (they'll come back
+// later). Build with -D FEATURE_INVERTER_CONTROL=1 / -D FEATURE_AIRCON_CONTROL=1
+// to show them again. The code stays compiled either way so it doesn't rot.
+#ifndef FEATURE_INVERTER_CONTROL
+#define FEATURE_INVERTER_CONTROL 0
+#endif
+#ifndef FEATURE_AIRCON_CONTROL
+#define FEATURE_AIRCON_CONTROL 0
+#endif
+constexpr bool HAS_INVERTER = FEATURE_INVERTER_CONTROL, HAS_AIRCON = FEATURE_AIRCON_CONTROL;
+
 // ---------------------------------------------------------------- layout
 // Every page is laid out from these, never from literal screen sizes.
 constexpr int SCR_W = board::SCREEN_W, SCR_H = board::SCREEN_H;
@@ -93,6 +105,7 @@ void flushRuleEdits();
 void openTownSearch();  // ui_alerts.cpp - weather location keyboard + picker  // ui_alerts.cpp - debounced rule threshold edits
 
 void buildWeatherWidget(lv_obj_t *statusBar);  // ui_weather.cpp
+void buildForecast(lv_obj_t *box, int w, int h, const char *note = nullptr, bool bubble = false);
 void updateWeather();
 void openWeatherForTest();
 

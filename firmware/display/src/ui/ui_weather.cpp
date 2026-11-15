@@ -36,6 +36,74 @@ static void closeOverlay(lv_event_t *) {
   wxOverlay = nullptr;
 }
 
+// Current conditions + one column per day, built into `box` (w x h content
+// area). Used by the tap-for-forecast overlay and the Climate page card.
+// `bubble` lets taps on the children reach the overlay (tap anywhere closes).
+void buildForecast(lv_obj_t *box, int w, int h, const char *note, bool bubble) {
+  const cv::Weather &wx = app::state.wx;
+  lv_obj_clean(box);
+  if (!wx.valid) {
+    lv_obj_t *m = lbl(box, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, col::MUTED,
+                      "No forecast yet.\nSet the location: More > Settings > Weather location,\n"
+                      "or from the phone level page once the van is level.");
+    lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(m);
+    return;
+  }
+  constexpr int top = 26;  // below the card caption
+  lv_obj_t *ic = lbl(box, &wx_icons_48, iconColor(wx.code, wx.isDay), glyph(cv::wxIcon(wx.code, wx.isDay)));
+  lv_obj_set_pos(ic, 0, top);
+  lv_obj_t *t = lbl(box, &lv_font_montserrat_48, col::TEXT, "");
+  setText(t, "%.0f\xC2\xB0", wx.temp);
+  lv_obj_set_pos(t, 80, top - 4);
+  lv_obj_t *d = lbl(box, &lv_font_montserrat_20, col::TEXT, cv::wxText(wx.code));
+  lv_obj_set_pos(d, 200, top + 4);
+  lv_obj_t *wd = lbl(box, &lv_font_montserrat_14, col::MUTED, "");
+  setText(wd, "Wind %.0f km/h, gusts %.0f km/h", wx.wind, wx.gust);
+  lv_obj_set_pos(wd, 200, top + 34);
+  lv_obj_t *up = lbl(box, &lv_font_montserrat_12, col::DIM, "");
+  if (wx.updated && app::state.ts)
+    setText(up, "updated %u min ago%s", (unsigned)((app::state.ts - wx.updated) / 60), note ? note : "");
+  lv_obj_align(up, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+  const int dayTop = top + 80, dayGap = 10;
+  const int dayW = (w - (cv::WX_DAYS - 1) * dayGap) / cv::WX_DAYS, dayH = h - dayTop;
+  // Full block is 194 px tall; on short boxes (e.g. the Climate card on an
+  // 800x480 panel) tighten the spacing and drop the lines that don't fit.
+  const int avail = dayH - 20;
+  const bool tight = avail < 194;
+  const int yIcon = tight ? 16 : 26, yHl = tight ? 84 : 96, yRn = tight ? 112 : 132, yGs = tight ? 134 : 158;
+  const int blockH = tight ? (avail >= 154 ? 154 : avail >= 132 ? 132 : 106) : 194;
+  const int y0 = (avail - blockH) / 2 > 0 ? (avail - blockH) / 2 : 0;  // centre the block
+  for (int i = 0; i < cv::WX_DAYS; i++) {
+    const cv::DailyWx &dy = wx.day[i];
+    lv_obj_t *col_ = lv_obj_create(box);
+    lv_obj_set_size(col_, dayW, dayH);
+    lv_obj_set_pos(col_, i * (dayW + dayGap), dayTop);
+    lv_obj_set_style_bg_color(col_, c(col::TILE), 0);
+    lv_obj_set_style_border_width(col_, 0, 0);
+    lv_obj_set_style_radius(col_, 14, 0);
+    lv_obj_set_style_pad_all(col_, 10, 0);
+    lv_obj_clear_flag(col_, LV_OBJ_FLAG_SCROLLABLE);
+    if (bubble) lv_obj_add_flag(col_, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_t *n = lbl(col_, &lv_font_montserrat_16, col::TEXT, i == 0 ? "Today" : (dy.wday >= 0 ? kDays[dy.wday] : "--"));
+    lv_obj_align(n, LV_ALIGN_TOP_MID, 0, y0);
+    lv_obj_t *di = lbl(col_, &wx_icons_48, iconColor(dy.code, true), glyph(cv::wxIcon(dy.code, true)));
+    lv_obj_align(di, LV_ALIGN_TOP_MID, 0, y0 + yIcon);
+    lv_obj_t *hl = lbl(col_, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "");
+    setText(hl, "%.0f\xC2\xB0 / %.0f\xC2\xB0", dy.tMax, dy.tMin);
+    lv_obj_align(hl, LV_ALIGN_TOP_MID, 0, y0 + yHl);
+    if (blockH < 132) continue;
+    lv_obj_t *rn = lbl(col_, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, dy.rainProb >= 50 ? col::WATER : col::MUTED, "");
+    setText(rn, "Rain %u%%  %.0f mm", dy.rainProb, dy.rainMm);
+    lv_obj_align(rn, LV_ALIGN_TOP_MID, 0, y0 + yRn);
+    if (blockH < 154) continue;
+    lv_obj_t *gs = lbl(col_, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, dy.gustMax >= 50 ? col::WARN : col::MUTED, "");
+    setText(gs, "Gusts %.0f km/h", dy.gustMax);
+    lv_obj_align(gs, LV_ALIGN_TOP_MID, 0, y0 + yGs);
+  }
+}
+
 static void openOverlay(lv_event_t *) {
   const cv::Weather &w = app::state.wx;
   if (!w.valid) {
@@ -54,54 +122,11 @@ static void openOverlay(lv_event_t *) {
   char title[48];
   snprintf(title, sizeof(title), "FORECAST%s%s", w.place[0] ? "  -  " : "", w.place);
   constexpr int cw = SCR_W - (LARGE ? 120 : 100), ch = LARGE ? 400 : 360;
-  constexpr int dayGap = 10, dayW = (innerOf(cw) - (cv::WX_DAYS - 1) * dayGap) / cv::WX_DAYS;
-  constexpr int dayH = innerOf(ch) - 106 + 4;
   lv_obj_t *cd = card(wxOverlay, (SCR_W - cw) / 2, (SCR_H - ch) / 2, cw, ch, title, col::WATER);
   lv_obj_add_flag(cd, LV_OBJ_FLAG_EVENT_BUBBLE);  // tap anywhere closes
-
-  // Current conditions
-  lv_obj_t *ic = lbl(cd, &wx_icons_48, iconColor(w.code, w.isDay), glyph(cv::wxIcon(w.code, w.isDay)));
-  lv_obj_set_pos(ic, 0, 26);
-  lv_obj_t *t = lbl(cd, &lv_font_montserrat_48, col::TEXT, "");
-  setText(t, "%.0f\xC2\xB0", w.temp);
-  lv_obj_set_pos(t, 80, 22);
-  lv_obj_t *d = lbl(cd, &lv_font_montserrat_20, col::TEXT, cv::wxText(w.code));
-  lv_obj_set_pos(d, 200, 30);
-  lv_obj_t *wd = lbl(cd, &lv_font_montserrat_14, col::MUTED, "");
-  setText(wd, "Wind %.0f km/h, gusts %.0f km/h", w.wind, w.gust);
-  lv_obj_set_pos(wd, 200, 60);
-  lv_obj_t *up = lbl(cd, &lv_font_montserrat_12, col::DIM, "");
-  if (w.updated && app::state.ts) setText(up, "updated %u min ago  -  tap to close", (unsigned)((app::state.ts - w.updated) / 60));
-  lv_obj_align(up, LV_ALIGN_TOP_RIGHT, 0, 0);
-
-  // 4 days
-  for (int i = 0; i < cv::WX_DAYS; i++) {
-    const cv::DailyWx &dy = w.day[i];
-    int x = i * (dayW + dayGap);
-    lv_obj_t *col_ = lv_obj_create(cd);
-    lv_obj_set_size(col_, dayW, dayH);
-    lv_obj_set_pos(col_, x, 106);
-    lv_obj_set_style_bg_color(col_, c(col::TILE), 0);
-    lv_obj_set_style_border_width(col_, 0, 0);
-    lv_obj_set_style_radius(col_, 14, 0);
-    lv_obj_set_style_pad_all(col_, 10, 0);
-    lv_obj_clear_flag(col_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(col_, LV_OBJ_FLAG_EVENT_BUBBLE);
-    lv_obj_t *n = lbl(col_, &lv_font_montserrat_16, col::TEXT, i == 0 ? "Today" : (dy.wday >= 0 ? kDays[dy.wday] : "--"));
-    constexpr int y0 = (dayH - 20 - 194) / 2;  // centre the 194 px block in the column
-    lv_obj_align(n, LV_ALIGN_TOP_MID, 0, y0);
-    lv_obj_t *di = lbl(col_, &wx_icons_48, iconColor(dy.code, true), glyph(cv::wxIcon(dy.code, true)));
-    lv_obj_align(di, LV_ALIGN_TOP_MID, 0, y0 + 26);
-    lv_obj_t *hl = lbl(col_, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "");
-    setText(hl, "%.0f\xC2\xB0 / %.0f\xC2\xB0", dy.tMax, dy.tMin);
-    lv_obj_align(hl, LV_ALIGN_TOP_MID, 0, y0 + 96);
-    lv_obj_t *rn = lbl(col_, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, dy.rainProb >= 50 ? col::WATER : col::MUTED, "");
-    setText(rn, "Rain %u%%  %.0f mm", dy.rainProb, dy.rainMm);
-    lv_obj_align(rn, LV_ALIGN_TOP_MID, 0, y0 + 132);
-    lv_obj_t *gs = lbl(col_, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, dy.gustMax >= 50 ? col::WARN : col::MUTED, "");
-    setText(gs, "Gusts %.0f km/h", dy.gustMax);
-    lv_obj_align(gs, LV_ALIGN_TOP_MID, 0, y0 + 158);
-  }
+  lv_obj_t *box = panel(cd, 0, 0, innerOf(cw), innerOf(ch) + 4);
+  lv_obj_add_flag(box, LV_OBJ_FLAG_EVENT_BUBBLE);
+  buildForecast(box, innerOf(cw), innerOf(ch) + 4, "  -  tap to close", true);
   wxShownUpdated = w.updated;
 }
 

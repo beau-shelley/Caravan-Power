@@ -11,7 +11,7 @@ It talks to the BMPRO system **wirelessly through the OdysseyLink** (the same Bl
 | ![home](docs/img/01-home.png) | ![alarm](docs/img/06-home-alarm.png) |
 | **Power** (per-MPPT tracking + 30 min history) | **Water** (tanks + pump control) |
 | ![power](docs/img/02-power.png) | ![water](docs/img/03-water.png) |
-| **Climate** (temps, aircon presets, inverter) | **More** (Level, Alerts & rules, Settings: out of the way) |
+| **Climate** (temps + weather forecast) | **More** (Level, Alerts & rules, Settings: out of the way) |
 | ![climate](docs/img/04-climate.png) | ![more](docs/img/11-more.png) |
 | **Alerts** (active alerts + editable rules) | |
 | ![alerts](docs/img/05-alerts.png) | |
@@ -40,12 +40,14 @@ Remote dashboard (desktop and phone, dark and light):
 | 2 water pumps on the touchscreen | Switched **by the BMPRO**, commanded over Bluetooth, so the Odyssey app stays in sync. Dry-run lockout and a max run time. Fallback: relays |
 | Water tank gauges | Your tank sensors already report to the OdysseyLink; the hub reads the levels from it over Bluetooth (no wiring). Fallback: ADS1115 taps |
 | Remove the Trek 3 | The touchscreen covers everything the Trek showed. Follow the test-before-removing steps in the BMPRO doc |
-| Inverter control | Relay on the Powertech remote port (pulse or latch), with a 240 V output sense |
-| Air-con control | Learns IR codes from the Houghton remote and replays them (up to 8 presets plus OFF) |
+| Inverter control *(switched off for now)* | Relay on the Powertech remote port (pulse or latch), with a 240 V output sense |
+| Air-con control *(switched off for now)* | Learns IR codes from the Houghton remote and replays them (up to 8 presets plus OFF) |
 | Remote access over Starlink | Outbound MQTT over TLS, so it works behind Starlink CGNAT with no port forwarding |
-| Weather forecast | Current conditions in the touchscreen's status bar (on every page, including Home); tap for a 4-day forecast. Also on the dashboard. From [Open-Meteo](https://open-meteo.com) (free, no key). Location set with one tap when the phone level page says the van is level, a town search on the touchscreen, or the dashboard; no GPS module needed (one is supported but optional). Forecast gusts / rain chance can trigger alerts (default: "Strong wind forecast" > 50 km/h) |
+| Weather forecast | Current conditions in the touchscreen's status bar (on every page, including Home); tap for a 4-day forecast. The full forecast also fills the Climate page. Also on the dashboard. From [Open-Meteo](https://open-meteo.com) (free, no key). Location set with one tap when the phone level page says the van is level, a town search on the touchscreen, or the dashboard; no GPS module needed (one is supported but optional). Forecast gusts / rain chance can trigger alerts (default: "Strong wind forecast" > 50 km/h) |
 | Caravan levelling | MPU-6050 on the hub. Bubble level + "raise left wheel 30 mm / jockey down 45 mm" on the touchscreen and **on your phone over Bluetooth** (no Wi-Fi needed). Sensor can be mounted at any angle: *Set level* + *Learn front* calibration, saved permanently |
 | Modern UI on the 7" Waveshare | LVGL 8.3 dark UI, 1024×600 (Waveshare 7B). Layouts are computed from the panel resolution, so nothing is pinned to one screen size. The rail shows only everyday pages (Home, Power, Water, Climate); Level, Alerts & rules and Settings sit behind **More**. Tap the bell for alerts. Screen sleeps, wakes on alarm |
+
+> **Inverter and aircon control are switched off for now.** They'll be added to the project later. The code is still there behind two flags in [`firmware/display/src/ui/ui.h`](firmware/display/src/ui/ui.h): build with `-DFEATURE_INVERTER_CONTROL=1` and/or `-DFEATURE_AIRCON_CONTROL=1` (in `build_flags` in the display's `platformio.ini`) to bring back the Home tiles, the Climate cards and the aircon section in Settings. While they're off, the Climate page shows the weather forecast instead.
 
 ## Architecture
 
@@ -113,7 +115,7 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 5. **Commission it** from the touchscreen, under **Settings**:
    - Add the two Victron Bluetooth keys: dashboard → *Setup* → *Victron solar controllers* (see [docs/WIRING.md](docs/WIRING.md#victron-smartsolar-10050-2---bluetooth)).
    - Connect to the OdysseyLink and decode its protocol: [docs/BMPRO_INTEGRATION.md](docs/BMPRO_INTEGRATION.md). Tanks are calibrated in the Odyssey app as before.
-   - Learn the aircon presets: set the Houghton remote to e.g. *Cool 22 auto*, tap *Learn preset* and press the remote's button. Repeat for each mode you use, then do *Learn OFF*.
+   - *(Only when aircon control is switched on, see the note under the feature table)* Learn the aircon presets: set the Houghton remote to e.g. *Cool 22 auto*, tap *Learn preset* and press the remote's button. Repeat for each mode you use, then do *Learn OFF*.
    - Calibrate the level sensor: More → *Caravan level* → *Set level* (and *Learn front*), see [docs/WIRING.md](docs/WIRING.md#level-sensor-mpu-6050).
    - Assign the temperature sensors: dashboard → *Setup* → *Find Bluetooth thermometers*, then pick Inside / Outside / Fridge for each.
 6. **Tune the alert rules** on the Alerts page (+/− thresholds) or in the dashboard (full editor). The defaults suit 12 V lithium: see `loadDefaultRules()` in [`CaravanModel.cpp`](firmware/lib/CaravanCommon/src/CaravanModel.cpp).
