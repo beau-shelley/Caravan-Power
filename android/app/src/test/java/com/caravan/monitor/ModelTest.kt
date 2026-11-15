@@ -56,11 +56,11 @@ class ModelTest {
     }
 
     @Test fun parsesMetaWithScreenSleep() {
-        val m = Meta.parse(JSONObject("""{"t":"meta","tank":["A","B","C"],"rc":false,"ss":10}"""))
+        val m = Meta.parse(JSONObject("""{"t":"meta","tank":["A","B","C"],"rc":false,"ss":30}"""))
         assertEquals(listOf("A", "B", "C"), m.tankNames)
         assertFalse(m.remoteControl)
-        assertEquals(10, m.screenSleepMin)
-        assertEquals(-1, Meta.parse(JSONObject("{}")).screenSleepMin)
+        assertEquals(30, m.screenSleepSec)
+        assertEquals(-1, Meta.parse(JSONObject("{}")).screenSleepSec)
     }
 
     @Test fun formatsNumbers() {

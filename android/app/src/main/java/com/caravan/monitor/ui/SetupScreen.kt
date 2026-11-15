@@ -38,7 +38,8 @@ import com.caravan.monitor.CaravanApp
 import com.caravan.monitor.HubClient
 import com.caravan.monitor.MonitorService
 
-private val SLEEP_OPTIONS = listOf(0, 1, 2, 5, 10, 15, 30, 60, 120, 240)
+// Seconds, same choices as the hub web page. 0 = never.
+private val SLEEP_OPTIONS = listOf(10, 20, 30, 60, 300, 900, 1800, 3600, 0)
 
 @Composable
 fun SetupScreen() {
@@ -121,9 +122,9 @@ fun SetupScreen() {
             if (!connected) {
                 Text("Connect to the hub to change these.", color = Accent.muted)
             } else {
-                if (meta.screenSleepMin >= 0) {
-                    Text("Screen sleeps after", style = MaterialTheme.typography.labelMedium, color = Accent.muted)
-                    Picker(sleepLabel(meta.screenSleepMin), (SLEEP_OPTIONS + meta.screenSleepMin).distinct().sorted().map { it to sleepLabel(it) }) {
+                if (meta.screenSleepSec >= 0) {
+                    Text("Screen dims after", style = MaterialTheme.typography.labelMedium, color = Accent.muted)
+                    Picker(sleepLabel(meta.screenSleepSec), (SLEEP_OPTIONS + meta.screenSleepSec).distinct().sortedBy { if (it == 0) Int.MAX_VALUE else it }.map { it to sleepLabel(it) }) {
                         app.hub.send("display_set", "sleep" to it)
                         app.hub.send("hello")
                     }
@@ -155,10 +156,11 @@ fun SetupScreen() {
     }
 }
 
-private fun sleepLabel(min: Int) = when {
-    min == 0 -> "Never"
-    min >= 60 && min % 60 == 0 -> "${min / 60} h"
-    else -> "$min min"
+private fun sleepLabel(sec: Int) = when {
+    sec == 0 -> "Never"
+    sec >= 3600 && sec % 3600 == 0 -> "${sec / 3600} h"
+    sec >= 60 && sec % 60 == 0 -> "${sec / 60} min"
+    else -> "$sec s"
 }
 
 private fun ignoringBatteryOptimisation(ctx: Context): Boolean {

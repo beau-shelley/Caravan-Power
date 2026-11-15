@@ -69,8 +69,8 @@ data class Meta(
     val pumpNames: List<String> = listOf("Pump 1", "Pump 2"),
     val remoteControl: Boolean = true,
     val fw: String = "",
-    /** Touchscreen sleep in minutes (0 = never), or -1 if the hub firmware doesn't support it yet. */
-    val screenSleepMin: Int = -1,
+    /** Touchscreen dim timeout in seconds (0 = never), or -1 if the hub firmware doesn't support it yet. */
+    val screenSleepSec: Int = -1,
 ) {
     companion object {
         fun parse(o: JSONObject): Meta {
@@ -82,7 +82,7 @@ data class Meta(
                 pumpNames = o.optJSONArray("pump").strings().ifEmpty { d.pumpNames },
                 remoteControl = o.optBoolean("rc", true),
                 fw = o.optString("fw"),
-                screenSleepMin = o.optInt("ss", -1),
+                screenSleepSec = o.optInt("ss", -1),
             )
         }
     }
