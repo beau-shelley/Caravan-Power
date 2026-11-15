@@ -1,4 +1,3 @@
-#include <Preferences.h>
 #include <cstdarg>
 
 #include "../app.h"
@@ -212,14 +211,14 @@ static lv_obj_t *gMoreAlerts;
 static lv_obj_t *gTitle, *gClock, *gIcoLink, *gIcoWifi, *gIcoCloud, *gBell, *gBellCount;
 static lv_obj_t *gBanner, *gBannerText, *gBannerBtn;
 static int gPage = -1;
-static int gSleepMin = 5;
 
 static const char *kPageNames[PAGE_COUNT] = {"Home", "Power", "Water", "Climate", "More", "Level", "Alerts", "Settings"};
 static const char *kPageIcons[PAGE_COUNT] = {LV_SYMBOL_HOME,  LV_SYMBOL_CHARGE, LV_SYMBOL_LOOP, LV_SYMBOL_SHUFFLE,
                                              LV_SYMBOL_BARS,  LV_SYMBOL_GPS,    LV_SYMBOL_BELL, LV_SYMBOL_SETTINGS};
 static bool isSubPage(int p) { return p == PAGE_LEVEL || p == PAGE_ALERTS || p == PAGE_SETTINGS; }
 
-int sleepMinutes() { return gSleepMin; }
+// Set from the phone (Setup tab); the hub keeps it so the display never writes flash.
+int sleepMinutes() { return app::meta.screenSleepMin; }
 
 static void navCb(lv_event_t *e) { showPage((int)(intptr_t)lv_event_get_user_data(e)); }
 
@@ -444,11 +443,6 @@ static void updateShell() {
 static void replyHandler(JsonObjectConst m);
 
 void begin() {
-  Preferences p;
-  p.begin("disp", true);
-  gSleepMin = p.getInt("sleep", 5);
-  p.end();
-
   buildShell();
   buildHome(gPages[PAGE_HOME]);
   buildPower(gPages[PAGE_POWER]);
@@ -462,16 +456,7 @@ void begin() {
   app::onReply(replyHandler);
 }
 
-void setSleepMinutes(int m) {
-  gSleepMin = m;
-  Preferences p;
-  p.begin("disp", false);
-  p.putInt("sleep", m);
-  p.end();
-}
-
 void handleLearnReply(JsonObjectConst m);  // ui_alerts.cpp
-void handleLocResults(JsonObjectConst m);  // ui_alerts.cpp
 
 static void replyHandler(JsonObjectConst m) {
   const char *t = m["t"] | "";
@@ -479,14 +464,12 @@ static void replyHandler(JsonObjectConst m) {
   else if (!strcmp(t, "ac_learn")) handleLearnReply(m);
   else if (!strcmp(t, "tank_cal")) toast("Tank calibration saved", col::CHARGE);
   else if (!strcmp(t, "level")) toast(m["msg"] | "", col::ACCENT);
-  else if (!strcmp(t, "loc_results")) handleLocResults(m);
 }
 
 void loop() {
   static uint32_t last = 0;
   if (millis() - last < 200) return;  // 5 Hz UI refresh is plenty
   last = millis();
-  flushRuleEdits();
   if (!app::stateDirty) return;
   updateShell();
   // Only the visible page is refreshed (Home always, it's the default view).

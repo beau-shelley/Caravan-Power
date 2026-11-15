@@ -71,12 +71,6 @@ void cmdAircon(int preset) {
   else d["preset"] = preset;
   send(d);
 }
-void cmdRule(const cv::Rule &r) {
-  JsonDocument d;
-  d["c"] = "rule_set";
-  cv::ruleToJson(r, d["rule"].to<JsonObject>());
-  send(d);
-}
 
 static void transmitOne() {
   if (gHelloPending) {

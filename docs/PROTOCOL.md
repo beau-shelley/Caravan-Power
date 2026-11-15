@@ -61,6 +61,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `ble_sensors` | | Bluetooth thermometers in range (temp, battery, signal, assigned role) |
 | `temp_set` | `role`, `src` (0 wired, 1 Bluetooth), `addr` | assign a Bluetooth thermometer to inside/outside/fridge |
 | `remote_control` | `on` | **not accepted from the cloud** |
+| `display_set` | `sleep` (minutes, 0 = never, max 240) | touchscreen backlight timeout; kept on the hub and sent to the display in `meta.ss` |
 | `config_set` | `cfg:{…}` | partial config merge (see `HubConfig::toJson`) |
 | `victron_set` | `i`, `key` (32 hex), optional `addr`, `src` (0 Bluetooth, 1 VE.Direct, 2 off) | add/replace a SmartSolar's Instant Readout key |
 | `victron_seen` | | Victron devices in Bluetooth range and which are decoding |
@@ -73,6 +74,16 @@ When remote control is off, every command except the read-only ones is refused f
 
 Rule metric keys: `bat_v bat_soc bat_a load_a charge_a solar_w solar1_w solar2_w temp_in temp_out temp_fridge tank1 tank2 tank3 wx_gust wx_rain` (the last two are today's forecast max gust and rain chance).
 Actions: `none aircon_off inverter_off pumps_off`.
+
+## Setting up from a phone or app
+
+All setup is done from the phone (the web dashboard's **Alerts & rules** and **Setup** tabs, or an app); the touchscreen only shows the rules and points to the phone. An app talks to the hub exactly like the web page:
+
+1. `GET /api/token` (HTTP Basic auth) → `{tok, wsPort}`, then open `ws://<hub>:<wsPort>/` and send `{"c":"auth","tok":…}`. Without a WebSocket, `POST /api/cmd` with one command per request works too, and the reply is the response body.
+2. Send `{"c":"hello"}`. The reply has `meta` (names, `rc`, `ss`, `tcal`, weather location) and `rules`.
+3. Change things with the commands above: `rule_set` / `rule_del` / `rules_reset` reply with the whole new rule list (`{"t":"rules",…}`); `display_set` and `remote_control` reply with the new `meta`. Every change is saved on the hub and pushed to the display.
+
+`meta` keys: `sol`, `tmp`, `tank`, `pump` (names), `acp` (aircon preset names), `cap` battery Ah, `rc` remote control allowed, `tcal` tanks need calibrating here, `ls`/`ln` weather location source/name, `ss` screen sleep minutes, `fw`.
 
 ## Hub config (`GET/POST /api/config`)
 

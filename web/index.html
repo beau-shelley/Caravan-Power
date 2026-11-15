@@ -81,6 +81,21 @@ main { padding:12px 16px 40px; max-width:1200px; margin:0 auto; }
 table { width:100%; border-collapse:collapse; }
 td, th { text-align:left; padding:8px 6px; border-bottom:1px solid var(--border); font-size:14px; }
 th { color:var(--muted); font-weight:500; font-size:12px; }
+.rules { display:flex; flex-direction:column; gap:8px; }
+.rule { display:flex; align-items:center; gap:12px; background:var(--tile); border-radius:12px; padding:10px 12px; }
+.rule .what { flex:1; min-width:0; }
+.rule .what b { display:block; }
+.rule .muted { overflow-wrap:anywhere; }
+.rule.off .what b, .rule.off .what .muted { color:var(--dim); }
+.rule .acts { display:flex; gap:6px; flex:none; }
+.rule .btn { background:var(--card); }
+.sw { position:relative; width:46px; height:28px; flex:none; }
+.sw input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; z-index:1; }
+.sw i { position:absolute; inset:0; border-radius:14px; background:var(--border); transition:background .2s; pointer-events:none; }
+.sw i::after { content:""; position:absolute; left:3px; top:3px; width:22px; height:22px; border-radius:50%; background:#fff; transition:transform .2s; }
+.sw input:checked + i { background:var(--charge); }
+.sw input:checked + i::after { transform:translateX(18px); }
+.sw input:focus-visible + i { outline:2px solid var(--accent); outline-offset:2px; }
 input, select { background:var(--tile); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:7px 9px; font:inherit; width:100%; }
 label { font-size:12px; color:var(--muted); display:block; }
 .form { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); }
@@ -176,18 +191,25 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
   <!-- ======================= RULES ======================= -->
   <section id="tab-rules" class="hidden">
     <div class="card" style="--dot:var(--warn)">
-      <div class="row between"><div class="cap">Alert rules</div>
+      <div class="row between" style="flex-wrap:wrap"><div class="cap">Alert rules</div>
         <div class="row"><button class="btn" id="ackAll">Acknowledge alerts</button><button class="btn primary" id="newRule">+ New rule</button></div></div>
-      <p class="muted small">Alerts are pushed to your phone via ntfy (if enabled per rule). An optional action can shed load automatically.</p>
-      <div style="overflow-x:auto"><table id="rulesTbl"><thead><tr>
-        <th>On</th><th>Name</th><th>Condition</th><th>Delay</th><th>Severity</th><th>Push</th><th>Action</th><th></th>
-      </tr></thead><tbody></tbody></table></div>
+      <p class="muted small">Rules are set up here; the caravan display only shows them. Alerts are pushed to your phone via ntfy (if enabled per rule). An optional action can shed load automatically.</p>
+      <div id="rulesList" class="rules"></div>
+      <div class="row" style="margin-top:14px; justify-content:flex-end"><button class="btn danger" id="rulesReset">Reset to default rules</button></div>
     </div>
   </section>
 
   <!-- ======================= SETUP ======================= -->
   <section id="tab-setup" class="hidden">
     <div class="grid">
+      <div class="card span6" style="--dot:var(--accent)">
+        <div class="cap">Caravan display</div>
+        <div class="row between" style="padding:6px 0"><label for="dispSleep" style="font-size:15px; color:var(--text)">Screen sleeps after</label>
+          <select id="dispSleep" style="width:140px"><option value="0">Never</option><option value="1">1 min</option><option value="5">5 min</option>
+            <option value="15">15 min</option><option value="30">30 min</option><option value="60">1 hour</option></select></div>
+        <div class="row between" style="padding:6px 0"><span>Allow control from the cloud dashboard<br><span class="muted small">Only changeable on the caravan Wi-Fi or the display.</span></span>
+          <label class="sw"><input type="checkbox" id="rcSw" aria-label="Allow remote control"><i></i></label></div>
+      </div>
       <div class="card span6">
         <div class="cap">Cloud connection (this browser)</div>
         <div class="form">
@@ -213,7 +235,7 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
       </div>
       <div class="card span6" style="--dot:var(--water)">
         <div class="cap">Weather location</div>
-        <p class="muted small" id="locInfo">Use your phone's location or search for a town. (Also on the touchscreen: Settings → Weather location, and the phone level page.)</p>
+        <p class="muted small" id="locInfo">Use your phone's location or search for a town. (The phone level page also offers this once the van is level.)</p>
         <div class="row"><button class="btn" id="locPhone">Use this phone's location</button></div>
         <div class="row" style="margin-top:8px"><input id="locQuery" placeholder="Town, e.g. Mudgee"><button class="btn" id="locSearch">Search</button></div>
         <div id="locResults" style="margin-top:6px"></div>
@@ -386,6 +408,13 @@ function renderMeta() {
   // Hidden options still show if an existing rule already uses that action.
   document.querySelectorAll("option[data-feat]").forEach((o) => { o.hidden = !FEATURES[o.dataset.feat]; });
   $("#calCard").classList.toggle("hidden", !META.tcal);  // BMPRO tanks are calibrated in the Odyssey app
+  if (META.ss !== undefined) {
+    const sel = $("#dispSleep");
+    if (![...sel.options].some((o) => +o.value === META.ss)) sel.add(new Option(`${META.ss} min`, META.ss));
+    sel.value = META.ss;
+  }
+  $("#rcSw").checked = !!META.rc;
+  $("#rcSw").disabled = transport?.kind === "cloud";
   $("#acSel").innerHTML = META.acp.length ? META.acp.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("") : `<option value="">No presets learned</option>`;
   $("#vicRows").innerHTML = META.sol.map((n, i) => `
     <div class="form" style="margin-bottom:8px; align-items:end">
@@ -400,17 +429,20 @@ function renderMeta() {
   render();
 }
 
+function ruleText(r) {
+  const m = METRICS.find((x) => x[0] === r.m) || [r.m, r.m, ""];
+  const dly = r.dly >= 60 ? ` for ${Math.round(r.dly / 60)} min` : r.dly ? ` for ${r.dly} s` : "";
+  const extra = [SEV[r.sev], r.ntf ? "push" : "no push", r.act === "none" ? "" : r.act.replace("_", " ")].filter(Boolean).join(" · ");
+  return `${esc(m[1])} ${r.cmp === ">" ? "above" : "below"} ${r.thr} ${esc(m[2])}${dly}<br><span class="small">${esc(extra)}</span>`;
+}
 function renderRules() {
-  $("#rulesTbl tbody").innerHTML = RULES.map((r) => {
-    const m = METRICS.find((x) => x[0] === r.m) || [r.m, r.m, ""];
-    return `<tr>
-      <td><input type="checkbox" data-rule-en="${r.id}" ${r.en ? "checked" : ""} style="width:auto"></td>
-      <td><b style="color:${SEVC[r.sev]}">${esc(r.name)}</b></td>
-      <td>${esc(m[1])} ${r.cmp === ">" ? "above" : "below"} ${r.thr} ${esc(m[2])}</td>
-      <td>${r.dly >= 60 ? Math.round(r.dly / 60) + " min" : r.dly + " s"}</td>
-      <td>${SEV[r.sev]}</td><td>${r.ntf ? "Yes" : "No"}</td><td>${r.act === "none" ? "" : esc(r.act.replace("_", " "))}</td>
-      <td style="white-space:nowrap"><button class="btn" data-rule-edit="${r.id}">Edit</button>
-        <button class="btn danger" data-rule-del="${r.id}">✕</button></td></tr>`; }).join("");
+  $("#rulesList").innerHTML = RULES.length ? RULES.map((r) => `
+    <div class="rule ${r.en ? "" : "off"}">
+      <label class="sw"><input type="checkbox" data-rule-en="${r.id}" ${r.en ? "checked" : ""} aria-label="${esc(r.name)} on/off"><i></i></label>
+      <div class="what"><b style="color:${r.en ? SEVC[r.sev] : ""}">${esc(r.name)}</b><span class="muted">${ruleText(r)}</span></div>
+      <div class="acts"><button class="btn" data-rule-edit="${r.id}">Edit</button>
+        <button class="btn danger" data-rule-del="${r.id}" aria-label="Delete ${esc(r.name)}">✕</button></div>
+    </div>`).join("") : `<span class="muted">No rules yet - add one or reset to the defaults.</span>`;
 }
 
 // ---------------------------------------------------------------- messages
@@ -501,16 +533,28 @@ function demoTransport() {
     wx:{ ok:true, up: Math.floor(Date.now() / 1000) - 720, src:2, pl:"Mudgee NSW", t:27.4, c:2, day:true, w:14.2, g:31,
       d:[[2,6,29.1,14.2,10,0,38.2],[61,0,24,15.1,80,6.2,45],[95,1,22.3,12.9,95,18.4,72.4],[0,2,26.8,10.4,0,0,25.9]] } };
   setTimeout(() => {
-    onMessage({ t:"hello", meta:{ ...META, acp:["Cool 22 auto","Cool 24 low","Heat 21","Dry","Fan only"] },
+    onMessage({ t:"hello", meta:{ ...META, ss:5, acp:["Cool 22 auto","Cool 24 low","Heat 21","Dry","Fan only"] },
       rules:[{ id:1, en:true, name:"Battery low", m:"bat_v", cmp:"<", thr:12.4, hys:0.3, dly:60, sev:1, ntf:true, act:"none" },
              { id:2, en:true, name:"Battery critical", m:"bat_v", cmp:"<", thr:11.8, hys:0.6, dly:30, sev:2, ntf:true, act:"inverter_off" },
              { id:7, en:true, name:"Fridge warm", m:"temp_fridge", cmp:">", thr:6, hys:1, dly:1200, sev:2, ntf:true, act:"none" },
              { id:11, en:true, name:"Tank 1 low", m:"tank1", cmp:"<", thr:15, hys:5, dly:30, sev:0, ntf:true, act:"none" }] });
     onMessage(st);
   }, 50);
+  // Setup commands are applied locally so the phone setup screens can be tried out.
+  let defaults = null, nextId = 100;
   return { kind:"demo", ready: () => true, send: (c) => {
+    defaults ??= RULES.slice();
     if (c.c === "ack") { st.alerts.forEach((a) => a.ack = true); onMessage(st); toast("Demo: alerts acknowledged"); return; }
-    toast("Demo: " + JSON.stringify(c)); } };
+    if (c.c === "rule_set") {
+      const r = { ...c.rule, id: c.rule.id || nextId++ }, i = RULES.findIndex((x) => x.id === r.id);
+      onMessage({ t:"rules", rules: i >= 0 ? RULES.map((x) => x.id === r.id ? r : x) : [...RULES, r] });
+    } else if (c.c === "rule_del") onMessage({ t:"rules", rules: RULES.filter((x) => x.id !== c.id) });
+    else if (c.c === "rules_reset") onMessage({ t:"rules", rules: defaults });
+    else if (c.c === "display_set") onMessage({ t:"meta", ss: c.sleep });
+    else if (c.c === "remote_control") onMessage({ t:"meta", rc: c.on });
+    else { toast("Demo: " + JSON.stringify(c)); return; }
+    toast("Saved (demo)");
+  } };
 }
 
 // ---------------------------------------------------------------- UI wiring
@@ -575,6 +619,10 @@ $("#sensorRows").addEventListener("change", (e) => { const s = e.target; if (s.d
 $("#bmRefresh").onclick = async () => { try { $("#bmLog").textContent = await (await fetch("/api/bmpro/log")).text(); } catch (e) { $("#bmLog").textContent = "Only available on the caravan Wi-Fi"; } };
 $("#bmConnect").onclick = () => send({ c:"bmpro_connect", addr: $("#bmAddr").value.trim() });
 
+// caravan display settings (kept on the hub, so the display never has to be touched)
+$("#dispSleep").onchange = (e) => send({ c:"display_set", sleep:+e.target.value });
+$("#rcSw").onchange = (e) => send({ c:"remote_control", on:e.target.checked });
+
 // rules editor
 const dlg = $("#ruleDlg"), form = $("#ruleForm");
 form.m.innerHTML = METRICS.map(([k, l, u]) => `<option value="${k}">${l} (${u})</option>`).join("");
@@ -586,18 +634,19 @@ function openRule(r) {
   dlg.showModal();
 }
 $("#newRule").onclick = () => openRule(null);
+$("#rulesReset").onclick = () => { if (confirm("Replace all alert rules with the defaults?")) send({ c:"rules_reset" }); };
 dlg.addEventListener("close", () => {
   if (dlg.returnValue !== "save") return;
   const r = { id: editing.id, name: form.name.value, m: form.m.value, cmp: form.cmp.value, thr: +form.thr.value, hys: +form.hys.value,
     dly: +form.dly.value, sev: +form.sev.value, ntf: form.ntf.value === "1", act: form.act.value, en: form.en.value === "1" };
   send({ c:"rule_set", rule:r });
 });
-$("#rulesTbl").addEventListener("click", (e) => {
+$("#rulesList").addEventListener("click", (e) => {
   const ed = e.target.closest("[data-rule-edit]"), del = e.target.closest("[data-rule-del]");
   if (ed) openRule(RULES.find((r) => r.id == ed.dataset.ruleEdit));
   if (del && confirm("Delete this rule?")) send({ c:"rule_del", id:+del.dataset.ruleDel });
 });
-$("#rulesTbl").addEventListener("change", (e) => { const id = e.target.dataset.ruleEn; if (!id) return;
+$("#rulesList").addEventListener("change", (e) => { const id = e.target.dataset.ruleEn; if (!id) return;
   const r = RULES.find((x) => x.id == id); if (r) send({ c:"rule_set", rule:{ ...r, en: e.target.checked } }); });
 
 // cloud settings

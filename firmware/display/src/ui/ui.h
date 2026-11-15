@@ -101,8 +101,6 @@ void updateAlerts();
 void buildSettings(lv_obj_t *p);
 void updateSettings();
 
-void flushRuleEdits();
-void openTownSearch();  // ui_alerts.cpp - weather location keyboard + picker  // ui_alerts.cpp - debounced rule threshold edits
 
 void buildWeatherWidget(lv_obj_t *statusBar);  // ui_weather.cpp
 void buildForecast(lv_obj_t *box, int w, int h, const char *note = nullptr, bool bubble = false);
