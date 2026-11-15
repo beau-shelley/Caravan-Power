@@ -146,8 +146,11 @@ void updateAlerts() {
   if (sig != seenAlertSig) {
     seenAlertSig = sig;
     lv_obj_clean(alList);
+    int shown = 0;
     for (int i = 0; i < s.alertCount; i++) {
       const cv::ActiveAlert &al = s.alerts[i];
+      if (al.acked) continue;  // acknowledged alerts drop off the list
+      shown++;
       uint32_t cc = al.sev == cv::SEV_ALARM ? col::ALARM : al.sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
       lv_obj_t *it = lv_obj_create(alList);
       lv_obj_set_size(it, lv_pct(100), LV_SIZE_CONTENT);
@@ -165,15 +168,13 @@ void updateAlerts() {
         time_t t = al.since + s.tzOff;
         struct tm lt;
         gmtime_r(&t, &lt);
-        snprintf(when, sizeof(when), "since %02d:%02d%s", lt.tm_hour, lt.tm_min, al.acked ? " - acknowledged" : "");
-      } else if (al.acked) {
-        strcpy(when, "acknowledged");
+        snprintf(when, sizeof(when), "since %02d:%02d", lt.tm_hour, lt.tm_min);
       }
       lv_obj_t *w = lbl(it, &lv_font_montserrat_12, col::MUTED, when);
       lv_obj_set_flex_flow(it, LV_FLEX_FLOW_COLUMN);
       (void)w;
     }
-    if (s.alertCount) lv_obj_add_flag(alEmpty, LV_OBJ_FLAG_HIDDEN);
+    if (shown) lv_obj_add_flag(alEmpty, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_clear_flag(alEmpty, LV_OBJ_FLAG_HIDDEN);
   }
 

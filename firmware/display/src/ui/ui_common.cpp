@@ -284,7 +284,8 @@ static void buildMore(lv_obj_t *p) {
 }
 
 static void updateMore() {
-  int n = app::state.alertCount;
+  int n = 0;  // acknowledged alerts don't count (they're hidden everywhere)
+  for (int i = 0; i < app::state.alertCount; i++) n += !app::state.alerts[i].acked;
   if (n) setText(gMoreAlerts, "%d active alert%s", n, n == 1 ? "" : "s");
   else setText(gMoreAlerts, "All clear. Edit alert thresholds here");
 }
@@ -413,13 +414,14 @@ static void updateShell() {
       }
     }
   }
-  if (s.alertCount) {
+  // The bell only counts alerts nobody has acknowledged yet.
+  if (unacked) {
     lv_obj_clear_flag(gBellCount, LV_OBJ_FLAG_HIDDEN);
-    setText(gBellCount, "%d", s.alertCount);
+    setText(gBellCount, "%d", unacked);
   } else {
     lv_obj_add_flag(gBellCount, LV_OBJ_FLAG_HIDDEN);
   }
-  lv_obj_set_style_text_color(gBell, c(s.alertCount ? col::TEXT : col::DIM), 0);
+  lv_obj_set_style_text_color(gBell, c(unacked ? col::TEXT : col::DIM), 0);
 
   // Banner: hub offline beats everything, then the worst un-acked alert.
   if (!app::linkUp) {

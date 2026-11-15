@@ -372,9 +372,10 @@ function render() {
   ].join("");
   $("#rcNote").textContent = rc ? "" : "Remote control is switched off on the caravan display.";
 
-  $("#alertBox").innerHTML = (S.alerts || []).map((a) => `
+  // Acknowledged alerts are hidden, same as on the touchscreen.
+  $("#alertBox").innerHTML = (S.alerts || []).filter((a) => !a.ack).map((a) => `
     <div class="alert" style="--c:${SEVC[a.sev]}"><b>${esc(a.msg)}</b>
-      <span class="muted small">&nbsp; ${SEV[a.sev]}${a.since ? " since " + localTime(a.since) : ""}${a.ack ? " · acknowledged" : ""}</span></div>`).join("");
+      <span class="muted small">&nbsp; ${SEV[a.sev]}${a.since ? " since " + localTime(a.since) : ""}</span></div>`).join("");
 
   const age = Math.round((Date.now() - lastMsg) / 1000);
   $("#updated").textContent = S.ts ? `Updated ${localTime(S.ts)}` : `Updated ${age}s ago`;
@@ -507,7 +508,9 @@ function demoTransport() {
              { id:11, en:true, name:"Tank 1 low", m:"tank1", cmp:"<", thr:15, hys:5, dly:30, sev:0, ntf:true, act:"none" }] });
     onMessage(st);
   }, 50);
-  return { kind:"demo", ready: () => true, send: (c) => toast("Demo: " + JSON.stringify(c)) };
+  return { kind:"demo", ready: () => true, send: (c) => {
+    if (c.c === "ack") { st.alerts.forEach((a) => a.ack = true); onMessage(st); toast("Demo: alerts acknowledged"); return; }
+    toast("Demo: " + JSON.stringify(c)); } };
 }
 
 // ---------------------------------------------------------------- UI wiring
