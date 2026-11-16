@@ -31,14 +31,17 @@ void begin(uint32_t nowMs) {
 
 void feed(const cv::Vec3 &a, const cv::Vec3 &g, uint32_t nowMs) { gGuard.sample(a, g, nowMs); }
 
-bool arm(bool on, bool sensorOk, uint32_t nowMs, const char **why) {
+bool arm(bool on, bool sensorOk, uint32_t nowMs, const char **why, bool instant) {
   SecureCfg &c = gConfig.secure;
   if (on) {
     if (!sensorOk) {
       if (why) *why = "Secure mode needs the level sensor (MPU-6050), and it isn't answering";
       return false;
     }
-    if (gGuard.mode() == cv::SEC_OFF) gGuard.arm(nowMs);  // pressing Arm again doesn't restart the delay
+    if (gGuard.mode() == cv::SEC_OFF) {  // pressing Arm again doesn't restart the delay
+      if (instant) gGuard.armNow(nowMs);
+      else gGuard.arm(nowMs);
+    }
     cv::ensureTheftRule(gConfig.rules);
     c.armed = true;
     c.haveBase = false;
@@ -50,7 +53,7 @@ bool arm(bool on, bool sensorOk, uint32_t nowMs, const char **why) {
     c.haveBase = false;
   }
   gConfig.save();
-  Serial.printf("[secure] %s\n", on ? "arming (60 s exit delay)" : "disarmed");
+  Serial.printf("[secure] %s\n", !on ? "disarmed" : instant ? "armed (instant, from the phone)" : "arming (60 s exit delay)");
   return true;
 }
 

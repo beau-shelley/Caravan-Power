@@ -16,7 +16,8 @@ void feed(const cv::Vec3 &accelG, const cv::Vec3 &gyroDps, uint32_t nowMs);
 // that every screen should see straight away.
 bool loop(cv::State &s, bool sensorOk, uint32_t nowMs);
 // false + *why when it can't (e.g. no level sensor).
-bool arm(bool on, bool sensorOk, uint32_t nowMs, const char **why);
+// instant: no exit delay (arming from the phone or web page; the display gets 60 s to leave).
+bool arm(bool on, bool sensorOk, uint32_t nowMs, const char **why, bool instant = false);
 void setSensitivity(uint8_t sens);
 
 // Fake-data build: after arming, pretend wind gusts rock the van for a while

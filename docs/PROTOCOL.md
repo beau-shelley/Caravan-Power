@@ -60,7 +60,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `location_set` | `lat`, `lon`, `name`, `src` (2 phone, 3 manual) | weather location (refused while a GPS has a fix) |
 | `location_search` | `q` | town search via the hub (used by the touchscreen); reply `{"t":"loc_results","list":[{name,area,lat,lon}]}` |
 | `weather_refresh` | | fetch the forecast now |
-| `secure` | `arm` true/false, and/or `sens` 0 low / 1 medium / 2 high | Secure mode (anti-theft). Arming starts a 60 s exit delay. Arming is allowed from the cloud even with remote control off; disarming follows that setting. Fails without the level sensor |
+| `secure` | `arm` true/false, and/or `sens` 0 low / 1 medium / 2 high | Secure mode (anti-theft). Arming from the display starts a 60 s exit delay; from the phone or web page it arms at once (the first 5 s also measure the gyro bias). Arming is allowed from the cloud even with remote control off; disarming follows that setting. Fails without the level sensor |
 | `level_zero` | | "Set level": averages 2 s and saves the mounting angle |
 | `level_front` | | "Learn front": with the front lifted 2-3 cm |
 | `level_reset`, `level_status` | | forget calibration / last calibration result |

@@ -131,6 +131,17 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
 @media (max-width: 520px) { .sec .ctl { width:100%; } .sec .ctl select { flex:1; min-width:0; } }
 .sec .armBtn { min-width:120px; min-height:48px; font-size:16px; font-weight:600; }
 .sec.on { border-color:var(--c); }
+.sec .slide { position:relative; flex-basis:100%; height:56px; border-radius:28px; background:var(--tile);
+  touch-action:none; user-select:none; -webkit-user-select:none; overflow:hidden; --x:0px; }
+.sec .slide .fill { position:absolute; left:0; top:0; bottom:0; width:calc(var(--x) + 56px); border-radius:28px;
+  background:color-mix(in srgb, var(--secure) 30%, transparent); }
+.sec .slide .lbl { position:absolute; inset:0 0 0 56px; display:grid; place-items:center; color:var(--muted); font-weight:600; pointer-events:none; }
+.sec .slide .thumb { position:absolute; left:0; top:0; width:56px; height:56px; border-radius:50%; background:var(--secure);
+  display:grid; place-items:center; color:#fff; transform:translateX(var(--x)); cursor:grab; }
+.sec .slide .thumb .ico { width:24px; height:24px; }
+.sec .slide.back .thumb, .sec .slide.back .fill { transition:transform .25s, width .25s; }
+.sec .slide.off { opacity:.5; }
+.sec .slide.off .thumb { background:var(--muted); cursor:default; }
 .sec.alarm { animation:secFlash 1s steps(2) infinite; }
 @keyframes secFlash { 50% { border-color:var(--alarm); } }
 /* Diesel heater card */
@@ -190,7 +201,10 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
       <div class="what"><b id="secTitle">Secure mode off</b><div class="muted small" id="secSub">Arm it when you leave the van.</div></div>
       <div class="ctl"><select id="secSens" aria-label="Sensitivity">
         <option value="0">Low (windy sites)</option><option value="1">Medium</option><option value="2">High</option></select>
-      <button class="btn primary armBtn" id="secBtn">Arm</button></div>
+      <button class="btn primary armBtn hidden" id="secBtn">Disarm</button></div>
+      <!-- Slide to arm: the thumb has to be dragged the whole width, so a stray tap can't arm it -->
+      <div class="slide" id="secSlide"><div class="fill"></div><span class="lbl">Slide to arm &rsaquo;&rsaquo;</span>
+        <div class="thumb"><svg class="ico"><use href="#i-lock"/></svg></div></div>
     </div>
     <div class="grid">
       <div class="card span12 hidden" id="wxCard" style="--dot:var(--water)">
@@ -555,11 +569,15 @@ function renderSecure() {
     : x.m === 1 ? "Time to leave: it arms when the countdown ends. Wind rocking the van is ignored."
     : x.ok ? "Arm it when you leave the van. Wind rocking the van is ignored." : "Needs the level sensor on the hub, and it isn't answering.";
   const btn = $("#secBtn");
-  btn.textContent = x.m ? "Disarm" : "Arm";
-  btn.style.background = x.m ? "var(--tile)" : "";
-  btn.style.color = x.m ? "var(--text)" : "";
-  btn.disabled = !x.m && !x.ok;
+  btn.classList.toggle("hidden", !x.m);
+  btn.style.background = "var(--tile)";
+  btn.style.color = "var(--text)";
+  const slide = $("#secSlide");
+  slide.classList.toggle("hidden", !!x.m);
+  slide.classList.toggle("off", !x.ok);
+  slide.querySelector(".lbl").innerHTML = x.ok ? "Slide to arm &rsaquo;&rsaquo;" : "Level sensor not answering";
   const sel = $("#secSens");
+  sel.classList.toggle("hidden", !!x.m);
   if (document.activeElement !== sel) sel.value = x.sn ?? 1;
   sel.disabled = transport?.kind === "cloud" && !META.rc;
 }
@@ -761,7 +779,7 @@ function demoTransport() {
     h.cab = near(h.cab, h.ph === 2 ? Math.max(amb, h.md === 1 ? amb + 4 + 1.6 * h.lv : h.st + 0.4) : amb, h.ph === 2 ? 0.02 : 0.008);
     st.tmp[0].c = h.cab;
   };
-  // Secure mode, sped up: 10 s exit delay, 20 s of wind, then a "thief" tows it.
+  // Secure mode, sped up: armed at once (like the phone), 20 s of wind, then a "thief" tows it.
   let secT = 0;
   const secTick = () => {
     const x = st.sec; if (!x.m) return;
@@ -813,7 +831,7 @@ function demoTransport() {
     else if (c.c === "secure") {
       const x = st.sec;
       if (c.sens !== undefined) x.sn = c.sens;
-      if (c.arm === true && !x.m) { x.m = 1; x.al = 10; secT = 0; }
+      if (c.arm === true && !x.m) { x.m = 2; x.al = 0; secT = 0; }  // the phone and web page arm at once
       if (c.arm === false) { x.m = 0; x.c = 0; x.ti = x.tu = x.sh = 0; st.alerts = st.alerts.filter((a) => a.id !== 14); }
       onMessage(st); return;
     }
@@ -867,10 +885,28 @@ async function loadHeaterCfg() {
 document.querySelector('nav button[data-tab="setup"]').addEventListener("click", loadHeaterCfg);
 $("#secBtn").onclick = () => {
   const x = S?.sec || { m:0 };
-  if (x.m) { if (confirm(x.m >= 3 ? "Turn the theft alarm off?" : "Turn secure mode off?")) send({ c:"secure", arm:false }); }
-  else if (confirm("Arm secure mode?\n\nThe van has 60 seconds to settle. Then if it's jacked up, hitched or towed you get a warning and 5 minutes to disarm before the Critical alarm. Wind rocking the van is ignored."))
-    send({ c:"secure", arm:true });
+  if (x.m && confirm(x.m >= 3 ? "Turn the theft alarm off?" : "Turn secure mode off?")) send({ c:"secure", arm:false });
 };
+// Slide to arm: drag the lock thumb all the way to the right end; let go short of it and it springs back.
+(() => {
+  const el = $("#secSlide"), th = el.querySelector(".thumb"), lbl = el.querySelector(".lbl");
+  let start = null, x = 0;
+  const max = () => el.clientWidth - th.offsetWidth;
+  const set = (v) => { x = v; el.style.setProperty("--x", v + "px"); lbl.style.opacity = 1 - v / Math.max(1, max()); };
+  th.addEventListener("pointerdown", (e) => {
+    if (el.classList.contains("off")) return;
+    start = e.clientX - x; el.classList.remove("back"); th.setPointerCapture(e.pointerId);
+  });
+  th.addEventListener("pointermove", (e) => { if (start !== null) set(Math.min(max(), Math.max(0, e.clientX - start))); });
+  const end = () => {
+    if (start === null) return;
+    start = null;
+    if (x >= max() - 3) send({ c:"secure", arm:true });
+    el.classList.add("back"); set(0);
+  };
+  th.addEventListener("pointerup", end);
+  th.addEventListener("pointercancel", end);
+})();
 $("#secCodeSave").onclick = () => {
   const v = $("#secCode").value.trim();
   if (!/^\d{4,8}$/.test(v)) { toast("The code must be 4 to 8 digits"); return; }

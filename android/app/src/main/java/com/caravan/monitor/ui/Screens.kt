@@ -11,13 +11,7 @@ import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,7 +33,6 @@ import com.caravan.monitor.Secure
 import com.caravan.monitor.UpdState
 import org.json.JSONObject
 
-@OptIn(ExperimentalMaterial3Api::class) // FilterChip is still experimental in older Material 3
 @Composable
 fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
     val hub = CaravanApp.instance.hub
@@ -59,32 +52,19 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
         update = update,
         onUpdate = { updater.startOrInstall() },
         onSecure = { askSecure = it },
+        onArm = { sens ->
+            if (sens != state?.sec?.sens) hub.send("secure", "sens" to sens)
+            hub.send("secure", "arm" to true)
+        },
     )
-    askSecure?.let { arm ->
+    // Arming is the slide on the Secure card; only disarming asks first.
+    if (askSecure == false) {
         val sec = state?.sec ?: Secure()
-        var sens by remember { mutableStateOf(sec.sens.coerceIn(0, 2)) }
         AlertDialog(
             onDismissRequest = { askSecure = null },
-            title = { Text(if (arm) "Arm secure mode?" else if (sec.mode == Secure.ALARM || sec.mode == Secure.ENTRY) "Turn the theft alarm off?" else "Turn secure mode off?") },
-            text = {
-                if (arm) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("The van has 60 seconds to settle. Then if it's jacked up, hitched or towed you get a warning and 5 minutes to disarm before the Critical alarm. Wind rocking the van is ignored.")
-                    Text("Sensitivity", style = MaterialTheme.typography.labelMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Secure.SENS.forEachIndexed { i, n ->
-                            FilterChip(selected = sens == i, onClick = { sens = i }, label = { Text(n) })
-                        }
-                    }
-                    Text("Low suits very windy or exposed sites.", style = MaterialTheme.typography.bodySmall)
-                } else Text("The hub stops watching for movement.")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (arm && sens != sec.sens) hub.send("secure", "sens" to sens)
-                    hub.send("secure", "arm" to arm)
-                    askSecure = null
-                }) { Text(if (arm) "Arm" else "Disarm") }
-            },
+            title = { Text(if (sec.mode == Secure.ALARM || sec.mode == Secure.ENTRY) "Turn the theft alarm off?" else "Turn secure mode off?") },
+            text = { Text("The hub stops watching for movement.") },
+            confirmButton = { TextButton(onClick = { hub.send("secure", "arm" to false); askSecure = null }) { Text("Disarm") } },
             dismissButton = { TextButton(onClick = { askSecure = null }) { Text("Cancel") } },
         )
     }

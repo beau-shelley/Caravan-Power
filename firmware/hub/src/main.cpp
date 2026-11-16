@@ -493,7 +493,9 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
       if (!arm && src == SRC_DISPLAY && code[0] && strcmp(cmd["code"] | "", code) != 0)
         return replyErr(reply, "Wrong code");
       const char *why = nullptr;
-      if (!secure::arm(cmd["arm"] | false, secureSensorOk(), millis(), &why)) return replyErr(reply, why);
+      // The exit delay is for leaving the van after arming at the touchscreen; the phone
+      // and web page arm straight away (you're already outside).
+      if (!secure::arm(arm, secureSensorOk(), millis(), &why, src != SRC_DISPLAY)) return replyErr(reply, why);
       configChanged();  // the theft rule may have been put back
     }
     secure::loop(gState, secureSensorOk(), millis());

@@ -742,14 +742,15 @@ static Vec3 mount(const Vec3 &v) {
 // Arms at t=0, runs `calmSec` of calm (exit delay), then `motion` for
 // `sec` seconds. Returns seconds into the motion when it went off, or -1.
 static float runGuard(uint8_t sens, uint8_t motion, float sec, bool rotated = false, uint8_t *cause = nullptr,
-                      float calmSec = 70) {
+                      float calmSec = 70, bool instant = false) {
   TheftGuard g;
   MotionSim sim;
   g.setSensitivity(sens);
   uint32_t ms = 1000;
   Vec3 a, w;
-  g.sample(Vec3{0, 0, 1}, Vec3{}, ms);
-  g.arm(ms);
+  g.sample(rotated ? mount(Vec3{0, 0, 1}) : Vec3{0, 0, 1}, Vec3{}, ms);
+  if (instant) g.armNow(ms);
+  else g.arm(ms);
   for (float t = 0; t < calmSec; t += 0.01f) {
     ms += 10;
     sim.at(SIM_CALM, t, a, w);
@@ -811,6 +812,28 @@ static void testTheftGuard() {
     CHECK(g.mode() == SEC_TRIGGERED);
     g.disarm();
     CHECK(g.mode() == SEC_OFF);
+  }
+  // Armed from the phone: no exit delay.
+  {
+    TheftGuard g;
+    g.sample(Vec3{0, 0, 1}, Vec3{}, 100);
+    g.armNow(100);
+    CHECK(g.mode() == SEC_ARMED);
+    Secure s;
+    g.fill(s, 100);
+    CHECK(s.armLeft == 0);
+  }
+  for (uint8_t sens = SENS_LOW; sens <= SENS_HIGH; sens++) {
+    CHECK(runGuard(sens, SIM_WIND, 600, false, nullptr, 0, true) == -1);
+    CHECK(runGuard(sens, SIM_WIND, 600, true, nullptr, 0, true) == -1);
+    CHECK(runGuard(sens, SIM_CALM, 600, true, nullptr, 0, true) == -1);
+  }
+  {
+    uint8_t c = 0;
+    float tj = runGuard(SENS_MEDIUM, SIM_JACK, 120, true, &c, 0, true);
+    CHECK(tj > 5 && tj < 35 && c == SEC_TILT);
+    float tt = runGuard(SENS_MEDIUM, SIM_TOW, 120, true, &c, 0, true);
+    CHECK(tt > 0 && tt < 40);
   }
   // Ten minutes of gusty wind never sets it off, at any sensitivity.
   for (uint8_t sens = SENS_LOW; sens <= SENS_HIGH; sens++) {

@@ -73,6 +73,10 @@ class TheftGuard {
   uint8_t sensitivity() const { return sens_; }
   // Start the exit delay; the resting tilt is captured when it ends.
   void arm(uint32_t nowMs);
+  // Arm with no exit delay (from the phone, when nobody is in the van): armed
+  // straight away against the current resting tilt. The first few seconds also
+  // measure the gyro's bias, so turning is only watched once that's done.
+  void armNow(uint32_t nowMs);
   // Armed before a restart: re-arm quickly against the saved resting tilt.
   void resume(const Vec3 &baseline, uint32_t nowMs);
   void disarm();
@@ -95,6 +99,7 @@ class TheftGuard {
   GuardLimits lim_ = guardLimits(SENS_MEDIUM);
   uint8_t mode_ = SEC_OFF, cause_ = SEC_NONE;
   uint32_t modeSinceMs_ = 0, armAtMs_ = 0, alarmAtMs_ = 0;
+  uint32_t calUntilMs_ = 0;  // armNow(): gyro bias still being measured until then (0 = done)
   bool keepBase_ = false;  // resume(): keep the saved baseline
 
   // Filters (run whenever samples arrive, armed or not, so arming is instant).

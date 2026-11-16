@@ -89,6 +89,12 @@ void TheftGuard::arm(uint32_t nowMs) {
   setMode(SEC_ARMING, nowMs);
 }
 
+void TheftGuard::armNow(uint32_t nowMs) {
+  arm(nowMs);
+  startWatching(nowMs);
+  calUntilMs_ = (nowMs + RESUME_DELAY_MS) | 1;
+}
+
 void TheftGuard::resume(const Vec3 &baseline, uint32_t nowMs) {
   arm(nowMs);
   armAtMs_ = nowMs + RESUME_DELAY_MS;
@@ -98,6 +104,7 @@ void TheftGuard::resume(const Vec3 &baseline, uint32_t nowMs) {
 
 void TheftGuard::disarm() {
   mode_ = SEC_OFF;
+  calUntilMs_ = 0;
   cause_ = SEC_NONE;
   keepBase_ = haveBase_ = false;
   tilt_ = yaw_ = 0;
@@ -162,6 +169,18 @@ void TheftGuard::sample(const Vec3 &a, const Vec3 &g, uint32_t nowMs) {
   if (tiltOverMs_ >= lim_.tiltHoldSec * 1000) trigger(SEC_TILT, nowMs);
 
   // ---- turning about the van's vertical (wind can't do this)
+  if (calUntilMs_) {  // armed instantly: measure the bias first, then watch turning
+    bx_ += g.x;
+    by_ += g.y;
+    bz_ += g.z;
+    biasN_++;
+    if ((int32_t)(nowMs - calUntilMs_) < 0) return;
+    bias_ = {(float)(bx_ / biasN_), (float)(by_ / biasN_), (float)(bz_ / biasN_)};
+    haveBias_ = true;
+    calUntilMs_ = 0;
+    yaw_ = 0;
+    return;
+  }
   Vec3 r = haveBias_ ? Vec3{g.x - bias_.x, g.y - bias_.y, g.z - bias_.z} : g;
   if (haveBias_ && len(r) < kStillDps) lp(bias_, g, dt / kBiasTauSec);
   yaw_ += dot(r, base_) * dt;

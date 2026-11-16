@@ -1,6 +1,19 @@
 package com.caravan.monitor.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.material3.Card
@@ -64,6 +77,7 @@ fun HomeContent(
     onUpdate: () -> Unit = {},
     /** Arm (true) or disarm (false) secure mode; the Android wrapper asks first. */
     onSecure: (Boolean) -> Unit = {},
+    onArm: (sens: Int) -> Unit = {},
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
@@ -94,7 +108,7 @@ fun HomeContent(
             }
         }
 
-        SecureCard(s.sec, onSecure)
+        SecureCard(s.sec, onSecure, onArm)
         BatteryCard(s)
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SolarCard(s, meta, Modifier.weight(1f).fillMaxHeight())
@@ -105,9 +119,11 @@ fun HomeContent(
     }
 }
 
-/** Secure mode (anti-theft): one compact row, state on the left, Arm / Disarm on the right. */
+/** Secure mode (anti-theft): state row; while off, sensitivity chips and a slide-to-arm bar
+ *  (the thumb has to be dragged the whole width, so it can't be armed by a stray tap). */
 @Composable
-private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit) {
+private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit, onArm: (Int) -> Unit) {
+    var sens by remember(x.sens) { mutableStateOf(x.sens.coerceIn(0, 2)) }
     val color = when (x.mode) {
         Secure.ARMING, Secure.ENTRY -> Accent.warn; Secure.ARMED -> Accent.secure; Secure.ALARM -> Accent.critical; else -> Accent.muted
     }
@@ -121,7 +137,7 @@ private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit) {
         Secure.ARMED -> "Tilt ${fmt1(x.tilt)}° of ${fmtNum(x.tiltLim)}°, turned ${x.turn}° of ${x.turnLim}°"
         Secure.ALARM -> Secure.causeText(x.cause).replaceFirstChar { it.uppercase() }
         Secure.ENTRY -> "${Secure.causeText(x.cause).replaceFirstChar { it.uppercase() }} · disarm if it's you"
-        else -> if (x.sensorOk) "${Secure.SENS[x.sens.coerceIn(0, 2)]} sensitivity · wind is ignored" else "Level sensor not answering"
+        else -> if (x.sensorOk) "Wind rocking the van is ignored" else "Level sensor not answering"
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -141,16 +157,80 @@ private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit) {
                 Text(sub, style = MaterialTheme.typography.bodySmall, color = Accent.muted, maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
             }
-            Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = { onSecure(!x.active) },
-                enabled = x.active || x.sensorOk,
-                modifier = Modifier.height(40.dp),
-                contentPadding = PaddingValues(horizontal = 18.dp),
-                colors = if (x.active) ButtonDefaults.buttonColors(containerColor = Surfaces.track, contentColor = Surfaces.text)
-                else ButtonDefaults.buttonColors(),
-            ) { Text(if (x.active) "Disarm" else "Arm", fontWeight = FontWeight.SemiBold) }
+            if (x.active) {
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = { onSecure(false) },
+                    modifier = Modifier.height(40.dp),
+                    contentPadding = PaddingValues(horizontal = 18.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Surfaces.track, contentColor = Surfaces.text),
+                ) { Text("Disarm", fontWeight = FontWeight.SemiBold) }
+            }
         }
+        if (!x.active) {
+            Row(Modifier.padding(start = 10.dp, end = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Sensitivity", style = MaterialTheme.typography.labelMedium, color = Accent.muted)
+                Secure.SENS.forEachIndexed { i, n ->
+                    val on = sens == i
+                    Text(n, Modifier
+                        .background(if (on) Accent.secure.copy(alpha = 0.22f) else Surfaces.track, RoundedCornerShape(50))
+                        .clickable { sens = i }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (on) Accent.secure else Surfaces.text, fontWeight = if (on) FontWeight.SemiBold else null)
+                }
+            }
+            SlideToArm(enabled = x.sensorOk, onArm = { onArm(sens) },
+                modifier = Modifier.fillMaxWidth().padding(10.dp))
+        }
+    }
+}
+
+/** A track with a lock thumb. Dragging the thumb all the way to the right end arms;
+ *  letting go anywhere short of the end springs it back. */
+@Composable
+fun SlideToArm(enabled: Boolean, onArm: () -> Unit, modifier: Modifier = Modifier) {
+    val thumb = 48.dp
+    val density = LocalDensity.current
+    val thumbPx = with(density) { thumb.toPx() }
+    var widthPx by remember { mutableStateOf(0f) }
+    var drag by remember { mutableStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    val maxPx = (widthPx - thumbPx).coerceAtLeast(1f)
+    val shown by animateFloatAsState(if (dragging) drag else 0f, label = "slide")
+    val frac = (shown / maxPx).coerceIn(0f, 1f)
+    Box(
+        modifier
+            .height(thumb)
+            .onSizeChanged { widthPx = it.width.toFloat() }
+            .background(Surfaces.track, RoundedCornerShape(50))
+            .pointerInput(enabled, maxPx) {
+                if (!enabled) return@pointerInput
+                detectHorizontalDragGestures(
+                    onDragStart = { dragging = true; drag = 0f },
+                    onDragEnd = {
+                        if (drag >= maxPx * 0.97f) onArm()
+                        dragging = false; drag = 0f
+                    },
+                    onDragCancel = { dragging = false; drag = 0f },
+                    onHorizontalDrag = { change, dx -> change.consume(); drag = (drag + dx).coerceIn(0f, maxPx) },
+                )
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        // Green fill that follows the thumb.
+        Box(Modifier.width(with(density) { (shown + thumbPx).toDp() }).fillMaxHeight()
+            .background(Accent.secure.copy(alpha = 0.25f + 0.35f * frac), RoundedCornerShape(50)))
+        Text(if (enabled) "Slide to arm  \u203A\u203A" else "Level sensor not answering",
+            Modifier.fillMaxWidth().padding(start = thumb), textAlign = TextAlign.Center,
+            color = Accent.muted.copy(alpha = 1f - frac), fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelLarge)
+        Box(
+            Modifier.offset { IntOffset(shown.roundToInt(), 0) }.size(thumb)
+                .background(if (enabled) Accent.secure else Accent.muted, RoundedCornerShape(50)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(CaravanIcons.Lock, null, Modifier.size(22.dp), tint = Surfaces.card) }
     }
 }
 
@@ -215,7 +295,15 @@ private fun TanksCard(s: HubState, meta: Meta, modifier: Modifier) {
 
 @Composable
 private fun TempsCard(s: HubState, meta: Meta) {
-    SectionCard("Temperatures", Accent.climate, compact = true) {
+    // Called Weather: the temperatures plus today's wind, with the forecast's place by the heading.
+    SectionCard("Weather", Accent.climate, compact = true, trailing = if (s.wx.ok && s.wx.place.isNotBlank()) ({
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(CaravanIcons.LocationArrow, null, Modifier.size(12.dp), tint = Accent.muted)
+            Spacer(Modifier.width(4.dp))
+            Text(s.wx.place, style = MaterialTheme.typography.labelMedium, color = Accent.muted, maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+        }
+    }) else null) {
         Row(Modifier.fillMaxWidth()) {
             s.tmp.forEachIndexed { i, t ->
                 Column(Modifier.weight(1f)) {
@@ -230,8 +318,7 @@ private fun TempsCard(s: HubState, meta: Meta) {
             }
         }
         // Today's forecast, folded in to save a card.
-        if (s.wx.ok) Hint("Wind ${s.wx.windKmh.toInt()} km/h, gusts ${s.wx.gustKmh.toInt()} km/h" +
-            if (s.wx.place.isNotBlank()) " · ${s.wx.place}" else "")
+        if (s.wx.ok) Hint("Wind ${s.wx.windKmh.toInt()} km/h, gusts ${s.wx.gustKmh.toInt()} km/h")
     }
 }
 
