@@ -123,6 +123,15 @@ void Net::loop(cv::State &s) {
     nextHeapLog = millis() + 30000;
     Serial.printf("[sys] heap %u free, min %u, largest %u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
                   (unsigned)ESP.getMaxAllocHeap());
+    // Unused stack per task (bytes never touched): what each could give back.
+    static const char *kTasks[] = {"net", "push", "heater", "bmpro", "nimble_host", "loopTask", "ble_scan"};
+    char line[160];
+    int n = snprintf(line, sizeof(line), "[sys] stack unused:");
+    for (const char *t : kTasks) {
+      TaskHandle_t h = xTaskGetHandle(t);
+      if (h && n < (int)sizeof(line)) n += snprintf(line + n, sizeof(line) - n, " %s %u", t, (unsigned)uxTaskGetStackHighWaterMark(h));
+    }
+    Serial.println(line);
   }
   static bool was = false;
   static uint32_t lastTry = 0;
