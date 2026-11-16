@@ -3,20 +3,26 @@
 // inverter / aircon, and serves the data to the 7" display (RS485), the local
 // web dashboard (Wi-Fi) and the cloud (MQTT over TLS) with phone push alerts.
 #include <Arduino.h>
+#include <esp_task_wdt.h>
 #include <cctype>
 #include <LittleFS.h>
 #include <Wire.h>
 
+#include "AcCharge.h"
 #include "AlertEngine.h"
 #include "Bmpro.h"
 #include "CaravanModel.h"
 #include "Comms.h"
+#include "Demo.h"
+#include "Heater.h"
 #include "HubConfig.h"
 #include "Inputs.h"
 #include "Outputs.h"
 #include "VictronBle.h"
 #include "BleTempRx.h"
+#include "BleSurvey.h"
 #include "LevelSensor.h"
+#include "Secure.h"
 #include "WeatherClient.h"
 #include "VictronBleRx.h"
 #include "pins.h"
@@ -25,6 +31,7 @@ using namespace hub;
 
 static cv::State gState;
 static cv::AlertEngine gAlerts;
+static cv::AcChargeDetector gAcCharge;  // mains chargers, inferred by elimination
 static VictronPort gVictron[cv::NUM_SOLAR];
 static TempSensors gTemps;
 static TankInputs gTanks;
@@ -66,8 +73,8 @@ static bool applyLocation(float lat, float lon, const char *name, uint8_t src, c
 // the last known spot survives a reboot without wearing out the flash).
 static void gpsLoop(uint32_t now) {
   if (!gGpsOn) return;
-  while (Serial2.available()) {
-    if (!gGps.feed((uint8_t)Serial2.read())) continue;
+  while (GPS_SERIAL.available()) {
+    if (!gGps.feed((uint8_t)GPS_SERIAL.read())) continue;
     gGpsFixMs = now;
     LocationCfg &loc = gConfig.location;
     float lat = (float)gGps.lat(), lon = (float)gGps.lon();
@@ -90,12 +97,18 @@ static bool gVeDirectOn[cv::NUM_SOLAR] = {};
 static void startSolar(int i) {
   const VictronCfg &v = gConfig.victron[i];
   if (v.src == SOLAR_VEDIRECT && !gVeDirectOn[i]) {
-    if (i == 0) gVictron[0].begin(Serial1, PIN_VE1_RX, PIN_VE1_TX);
-    else {
-      gGpsOn = false;  // UART2 is shared with the optional GPS
+    if (i == GPS_SHARES_SOLAR) gGpsOn = false;  // this UART is shared with the optional GPS
+    if (i == 0) {
+      gVictron[0].begin(Serial1, PIN_VE1_RX, PIN_VE1_TX);
+      gVeDirectOn[i] = true;
+    } else {
+#if HUB_HAS_VE2
       gVictron[1].begin(Serial2, PIN_VE2_RX, PIN_VE2_TX);
+      gVeDirectOn[i] = true;
+#else
+      Serial.println("[victron] solar 2: no spare UART for a VE.Direct cable on this board - use Bluetooth");
+#endif
     }
-    gVeDirectOn[i] = true;
   }
   if (v.src == SOLAR_BLE) {
     if (!gVictronBleOn) {
@@ -119,6 +132,40 @@ static bool switchPump(int i, bool on, const char **why) {
     return gBmpro.setPump(i, on, why);
   }
   return gPump[i].set(on, why);
+}
+
+// Diesel heater: whichever driver the config picks (the simulated one in the
+// fake-data build). nullptr = none set up, or Bluetooth in the listen-only
+// survey build (which must never connect to anything).
+static HeaterDriver *heaterDriver() {
+  if (demo::kOn) return &demo::heater();
+  switch (gConfig.heater.link) {
+    case cv::HTR_LINK_BLE: return survey::kOn ? nullptr : &gHeaterBle;
+    case cv::HTR_LINK_RF: return &gHeater433;
+    default: return nullptr;
+  }
+}
+
+static void startHeater() {
+  if (demo::kOn || survey::kOn) return;
+  if (gConfig.heater.link == cv::HTR_LINK_BLE) gHeaterBle.setTarget(gConfig.heater.addr, gConfig.heater.passkey);
+  else gHeaterBle.release();  // switched away from Bluetooth: let go of the heater
+}
+
+static void heaterLoop() {
+  static uint8_t lastErr = 0;
+  HeaterDriver *d = heaterDriver();
+  if (!d) {
+    gState.htr = cv::Heater();
+    gState.htr.link = demo::kOn ? cv::HTR_LINK_BLE : gConfig.heater.link;
+    return;
+  }
+  gState.htr.link = demo::kOn ? cv::HTR_LINK_BLE : gConfig.heater.link;
+  d->loop(gState);
+  // A heater fault (out of fuel, didn't light...) goes to the phone once.
+  uint8_t err = gState.htr.hasStatus() ? gState.htr.err : 0;
+  if (err && err != lastErr) gNotify.push("Diesel heater", cv::heaterErrorText(err), cv::SEV_ALARM);
+  lastErr = err;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -189,12 +236,20 @@ static void onAlert(const cv::AlertEngine::Event &ev, void *) {
   stateChanged();
 }
 
+// Secure mode needs real movement data: the MPU-6050, or in the fake-data
+// build the simulated sensor (used whenever no real one is plugged in).
+static bool secureSensorOk() { return demo::kOn || gLevel.online(); }
+
+// "Restart system" from the touchscreen (or phone): reply first, restart 1 s
+// later so the reply has time to reach the display over RS485.
+static uint32_t gRestartAtMs = 0;
+
 // ---------------------------------------------------------------- commands
 // One handler for every client (touchscreen, local web, cloud). Messages look
 // like {"c":"pump","i":0,"on":true}. See docs/PROTOCOL.md for the full list.
 static bool isMutating(const char *c) {
   static const char *readOnly[] = {"state", "hello", "rules_get", "sensors", "bmpro_log", "victron_seen", "ble_sensors", "level_status",
-                                   "bmpro_devices", "ac_learn_status", "ping"};
+                                   "bmpro_devices", "ac_learn_status", "ping", "heater_seen", "heater_log"};
   for (auto r : readOnly)
     if (strcmp(c, r) == 0) return false;
   return true;
@@ -204,12 +259,19 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   StateLock lock;
   const char *c = cmd["c"] | "";
 
-  if (src == SRC_CLOUD && isMutating(c) && !gConfig.meta.remoteControl) {
+  // Arming secure mode from away is always allowed (forgot to arm it);
+  // disarming from the cloud follows the remote-control setting.
+  bool armOnly = !strcmp(c, "secure") && (cmd["arm"] | false) && cmd["sens"].isNull();
+  if (src == SRC_CLOUD && isMutating(c) && !gConfig.meta.remoteControl && !armOnly) {
     replyErr(reply, "Remote control is disabled on the caravan display");
     return;
   }
 
-  if (!strcmp(c, "ping")) {
+  if (!strcmp(c, "restart")) {
+    Serial.println("[sys] restart requested - restarting in 1 s");
+    reply["t"] = "restarting";
+    gRestartAtMs = millis() | 1;
+  } else if (!strcmp(c, "ping")) {
     reply["t"] = "pong";
   } else if (!strcmp(c, "state")) {
     cv::stateToJson(gState, reply.to<JsonObject>());
@@ -263,6 +325,44 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     if (!gAircon.hasCode(p)) return replyErr(reply, "IR code not learned yet");
     setAircon(p);
     stateChanged();
+
+  // ---------------- diesel heater
+  } else if (!strcmp(c, "heater")) {
+    // {"c":"heater","on":true} {"mode":"temp"|"level"} {"temp":22} {"level":6}
+    cv::HeaterCmd hc;
+    const char *why = nullptr;
+    if (!cv::heaterCmdFromJson(cmd, hc, &why)) return replyErr(reply, why);
+    HeaterDriver *d = heaterDriver();
+    if (!d)
+      return replyErr(reply, survey::kOn && gConfig.heater.link == cv::HTR_LINK_BLE
+                                 ? "Bluetooth survey build: listen-only, nothing is sent to the heater"
+                                 : "No diesel heater set up - add it in Setup on the phone");
+    if (!d->send(hc, gState.htr, &why)) return replyErr(reply, why);
+    stateChanged();
+  } else if (!strcmp(c, "heater_set")) {
+    // {"c":"heater_set","link":1,"addr":"aa:bb:..","pass":1234}  link 0 none, 1 Bluetooth, 2 433 MHz
+    int link = cmd["link"] | (int)gConfig.heater.link;
+    const char *addr = cmd["addr"] | (const char *)gConfig.heater.addr;
+    long pass = cmd["pass"] | (long)gConfig.heater.passkey;
+    if (link < cv::HTR_LINK_NONE || link > cv::HTR_LINK_RF) return replyErr(reply, "bad heater link");
+    if (addr[0] && strlen(addr) != 17) return replyErr(reply, "address must look like aa:bb:cc:dd:ee:ff");
+    if (pass < 0 || pass > 9999) return replyErr(reply, "passkey is 4 digits");
+    gConfig.heater.link = (uint8_t)link;
+    snprintf(gConfig.heater.addr, sizeof(gConfig.heater.addr), "%s", addr);
+    gConfig.heater.passkey = (uint16_t)pass;
+    configChanged();
+    startHeater();
+    stateChanged();
+    reply["t"] = "ok";
+  } else if (!strcmp(c, "heater_seen")) {
+    // Heaters in Bluetooth range (starts listening if needed; passive in the survey build).
+    if (!survey::kOn) gHeaterBle.listen();
+    reply["t"] = "heater_seen";
+    reply["list"] = serialized(survey::kOn ? String("[]") : gHeaterBle.seen());
+  } else if (!strcmp(c, "heater_log")) {
+    reply["t"] = "heater_log";
+    reply["log"] = demo::kOn ? String("Fake-data build: the heater is simulated") : gHeaterBle.log();
+
   } else if (!strcmp(c, "ac_learn")) {
     // slot: -1 = OFF code, 0..n-1 = re-learn existing, n = new preset
     int slot = cmd["slot"] | gConfig.meta.acPresetCount;
@@ -324,11 +424,20 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gConfig.meta.remoteControl = cmd["on"] | false;
     configChanged();
     cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
+  } else if (!strcmp(c, "display_set")) {
+    // Touchscreen preferences live on the hub so they can be set from the phone.
+    // sleep: idle seconds before the screen dims right down, 0 = never.
+    long sleep = cmd["sleep"] | -1L;
+    if (sleep < 0 || sleep > 14400) return replyErr(reply, "sleep must be 0-14400 seconds");
+    gConfig.meta.screenSleepSec = (uint16_t)sleep;
+    configChanged();
+    cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
   } else if (!strcmp(c, "config_set")) {
     bool rc = gConfig.meta.remoteControl;
     gConfig.fromJson(cmd["cfg"]);
     if (src == SRC_CLOUD) gConfig.meta.remoteControl = rc;
     applyOutputConfig();
+    startHeater();
     configChanged();
     reply["t"] = "ok";
 
@@ -368,6 +477,43 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gWeather.search(q);
   } else if (!strcmp(c, "weather_refresh")) {
     gWeather.refreshSoon();
+
+  // ---------------- secure mode (anti-theft)
+  } else if (!strcmp(c, "secure")) {
+    // {"c":"secure","arm":true|false} and/or {"sens":0|1|2} (low / medium / high)
+    if (!cmd["sens"].isNull()) {
+      int sens = cmd["sens"] | -1;
+      if (sens < cv::SENS_LOW || sens > cv::SENS_HIGH) return replyErr(reply, "sens must be 0, 1 or 2");
+      secure::setSensitivity((uint8_t)sens);
+    }
+    if (!cmd["arm"].isNull()) {
+      // Disarming at the touchscreen needs the code (the phone is behind its own lock screen).
+      bool arm = cmd["arm"] | false;
+      const char *code = gConfig.secure.code;
+      if (!arm && src == SRC_DISPLAY && code[0] && strcmp(cmd["code"] | "", code) != 0)
+        return replyErr(reply, "Wrong code");
+      const char *why = nullptr;
+      // The exit delay is for leaving the van after arming at the touchscreen; the phone
+      // and web page arm straight away (you're already outside).
+      if (!secure::arm(arm, secureSensorOk(), millis(), &why, src != SRC_DISPLAY)) return replyErr(reply, why);
+      configChanged();  // the theft rule may have been put back
+    }
+    secure::loop(gState, secureSensorOk(), millis());
+    stateChanged();
+    reply["t"] = "ok";
+  } else if (!strcmp(c, "secure_code")) {
+    // {"c":"secure_code","code":"1234"}: the code for disarming at the touchscreen
+    // (4-8 digits, "" = none). Set from the phone only, never from the display.
+    if (src == SRC_DISPLAY) return replyErr(reply, "Set the code from the phone");
+    const char *code = cmd["code"] | "";
+    size_t n = strlen(code);
+    bool digits = true;
+    for (size_t i = 0; i < n; i++) digits &= isdigit((unsigned char)code[i]) != 0;
+    if (!digits || (n && (n < 4 || n > 8))) return replyErr(reply, "The code must be 4 to 8 digits");
+    snprintf(gConfig.secure.code, sizeof(gConfig.secure.code), "%s", code);
+    gConfig.meta.secCodeSet = n > 0;
+    configChanged();
+    cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
 
   // ---------------- levelling
   } else if (!strcmp(c, "level_zero")) {
@@ -415,6 +561,8 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   } else if (!strcmp(c, "bmpro_devices")) {
     reply["t"] = "bmpro_devices";
     if (gBmproOn) reply["list"] = serialized(gBmpro.devices());
+  } else if (survey::kOn && (!strcmp(c, "bmpro_connect") || !strcmp(c, "bmpro_write"))) {
+    return replyErr(reply, "Bluetooth survey build: listen-only, nothing is sent to the BMPRO");
   } else if (!strcmp(c, "bmpro_connect")) {
     if (!gBmproOn) return replyErr(reply, "BMPRO link not running");
     const char *addr = cmd["addr"] | "";
@@ -512,6 +660,7 @@ static void updateLoads(uint32_t now) {
       gNotify.push(gConfig.meta.pumpName[i], "Switched off - maximum run time reached", cv::SEV_WARN);
     }
   }
+  heaterLoop();
   gInverter.loop();
   gState.inv.on = gInverter.isOn();
   gState.inv.acPresent = gInverter.sensed();
@@ -525,7 +674,9 @@ static void updateLoads(uint32_t now) {
 
 static void buzzerLoop(uint32_t now) {
   bool alarm = gConfig.buzzer && gAlerts.anyUnackedAlarm();
-  digitalWrite(PIN_BUZZER, alarm && (now % 2000) < 200 ? HIGH : LOW);
+  // Secure mode entry delay: a short chirp every second until it's disarmed.
+  bool entry = gState.sec.mode == cv::SEC_ENTRY;
+  digitalWrite(PIN_BUZZER, (alarm && (now % 2000) < 200) || (entry && (now % 1000) < 40) ? HIGH : LOW);
 }
 
 static void midnightReset() {
@@ -541,15 +692,24 @@ static void midnightReset() {
   lastDay = lt.tm_mday;
 }
 
+// Where the RAM goes at start-up (the classic ESP32 runs tight with Wi-Fi + Bluetooth).
+static void heapMark(const char *what) {
+  Serial.printf("[mem] after %-10s heap %6u free, largest %6u\n", what, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+}
+
 // Network services run on core 0 so a slow TLS handshake over Starlink never
 // stalls sensor reading or the touchscreen link on core 1.
 static void netTask(void *) {
   gWeb.begin();
+  heapMark("web");
   gCloud.begin();
+  heapMark("cloud");
   for (;;) {
     gWeb.loop(gState);
     gCloud.loop(gState);
     gWeather.loop(gState);
+    gNet.watchdog();
+    gNet.netAlive();
     {
       StateLock l;
       gState.cloud = gCloud.connected();
@@ -566,6 +726,7 @@ void setup() {
   gStateMux = xSemaphoreCreateRecursiveMutex();
 
   pinMode(PIN_BUZZER, OUTPUT);
+  heapMark("boot");
   if (!LittleFS.begin(true)) Serial.println("[fs] LittleFS mount failed");
   if (!gConfig.load()) {
     Serial.println("[cfg] no config, writing defaults");
@@ -576,6 +737,8 @@ void setup() {
   gTemps.begin(PIN_ONEWIRE);
   if (gConfig.tankSource == TANK_ADC) gTanks.begin();
   gLevel.begin();
+  heapMark("level");
+  secure::begin(millis());
   gShunt.begin();
 
   gPump[0].begin("pump1", PIN_PUMP1_OUT, PIN_PUMP1_SENSE);
@@ -584,27 +747,41 @@ void setup() {
   applyOutputConfig();
   gAircon.begin(PIN_IR_TX, PIN_IR_RX);
 
-  gLink.begin(Serial0, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE);
+  gLink.begin(LINK_SERIAL, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE, PIN_LINK_RE);
+  if (demo::kOn) demo::begin(gState);
   gNet.begin();
+  heapMark("wifi");
   gNotify.begin();
   for (int i = 0; i < cv::NUM_SOLAR; i++) startSolar(i);
-  if (gConfig.victron[1].src != SOLAR_VEDIRECT) {  // UART2 is free for a GPS
-    Serial2.begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
+  if (gConfig.victron[GPS_SHARES_SOLAR].src != SOLAR_VEDIRECT) {  // the shared UART is free for a GPS
+    GPS_SERIAL.begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
     gGpsOn = true;
   }
   for (auto s : gConfig.tempSrc)
     if (s == TEMP_BLE) startBleTemps();
-  if (gConfig.usesBmpro()) {
+  startHeater();
+  heapMark("heater");
+  if (survey::kOn) {
+    survey::begin();  // listen-only Bluetooth logging; the BMPRO link stays off
+  } else if (gConfig.usesBmpro()) {
     gBmpro.begin(gConfig.bmproAddr, gConfig.bmproExplorer);
     gBmproOn = true;
+    heapMark("bmpro");
   }
-  xTaskCreatePinnedToCore(netTask, "net", 12288, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(netTask, "net", 10240, nullptr, 1, nullptr, 0);  // ~4.3 KB seen under load; HTTPS weather/TLS needs headroom
+  heapMark("net task");
+
+  // Watchdog: if loop() stops running for 30 s (a hang or a deadlock), the
+  // hub restarts itself. The Arduino core feeds it after every loop().
+  esp_task_wdt_init(30, true);
+  enableLoopWDT();
 }
 
 void loop() {
   uint32_t now = millis();
   {
     StateLock l;
+    if (!demo::kOn) {
     for (int i = 0; i < cv::NUM_SOLAR; i++) {
       uint8_t src = gConfig.victron[i].src;
       if (src == SOLAR_VEDIRECT && gVeDirectOn[i]) gVictron[i].poll(gState.solar[i]);
@@ -612,7 +789,6 @@ void loop() {
       else gState.solar[i].online = false;
     }
     gTemps.poll(gState);
-    gLevel.loop(gState);
     {
       float lat, lon;
       char name[24];
@@ -630,8 +806,20 @@ void loop() {
       bool pumps = gConfig.pumpViaBmpro(0) || gConfig.pumpViaBmpro(1);
       gBmpro.loop(gState, gConfig.bat.source == cv::BAT_SRC_BMPRO, gConfig.tankSource == TANK_BMPRO, pumps);
     }
+    }  // !demo::kOn
+    // Level sensor: always read (secure mode needs it); in the fake-data build
+    // its level isn't shown, and with no sensor plugged in a simulated one
+    // plays out wind and then a theft after arming.
+    gLevel.loop(gState, !demo::kOn);
+    if (demo::kOn && !gLevel.online()) secure::simLoop(now);
+    if (secure::loop(gState, secureSensorOk(), now)) stateChanged();
     updateLoads(now);
     gNet.loop(gState);
+    if (demo::kOn) demo::tick(gState, now);
+    // Mains chargers have no sensor: whatever charge the BMPRO and Victrons
+    // don't explain is theirs. Runs every loop, after the battery drivers, so
+    // chargeA / loadA always include it. Uses the BMPRO load figure when known.
+    gAcCharge.update(gState, now, demo::kOn ? demo::loadA() : gBmproOn ? gBmpro.loadA() : -1);
 
     static uint32_t nextEval = 0;
     if ((int32_t)(now - nextEval) >= 0) {
@@ -643,5 +831,7 @@ void loop() {
     gLink.loop(gState);
   }
   buzzerLoop(now);
+  if (survey::kOn) survey::loop();
+  if (gRestartAtMs && millis() - gRestartAtMs > 1000) ESP.restart();
   delay(2);
 }

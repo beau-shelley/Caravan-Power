@@ -32,7 +32,7 @@ volatile bool gDecodedAny = false;
 
 // Decoded data handed from the BLE task to loop(), with arrival times.
 BmproData gData;
-uint32_t gBatMs = 0, gChgMs = 0, gTankMs[cv::NUM_TANKS] = {}, gPumpMs[cv::NUM_PUMPS] = {};
+uint32_t gBatMs = 0, gChgMs = 0, gTankMs[cv::NUM_TANKS] = {}, gPumpMs[cv::NUM_PUMPS] = {}, gGasMs = 0, gLoadMs = 0;
 
 struct WriteReq {
   char uuid[40];
@@ -117,12 +117,22 @@ void applyDecoded(const BmproData &in) {
     gData.chargerA = in.chargerA;
     gChgMs = now;
   }
+  if (in.loadValid) {
+    gData.loadValid = true;
+    gData.loadA = in.loadA;
+    gLoadMs = now;
+  }
   for (int i = 0; i < cv::NUM_TANKS; i++)
     if (in.tankValid[i]) {
       gData.tankValid[i] = true;
       gData.tankPct[i] = in.tankPct[i];
       gTankMs[i] = now;
     }
+  if (in.gasValid) {
+    gData.gasValid = true;
+    gData.gasPct = in.gasPct;
+    gGasMs = now;
+  }
   for (int i = 0; i < cv::NUM_PUMPS; i++)
     if (in.pumpValid[i]) {
       gData.pumpValid[i] = true;
@@ -236,6 +246,13 @@ void Bmpro::connect(const char *addr) {
 bool Bmpro::connected() const { return gClient && gClient->isConnected(); }
 bool Bmpro::decoded() const { return gDecodedAny; }
 
+float Bmpro::loadA() const {
+  xSemaphoreTake(gMux, portMAX_DELAY);
+  float a = gData.loadValid && millis() - gLoadMs < 30000 ? gData.loadA : -1;
+  xSemaphoreGive(gMux);
+  return a;
+}
+
 void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
   constexpr uint32_t STALE_MS = 30000;
   uint32_t now = millis();
@@ -259,6 +276,9 @@ void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
       s.tank[i].online = gData.tankValid[i] && now - gTankMs[i] < STALE_MS;
       if (s.tank[i].online) s.tank[i].pct = gData.tankPct[i];
     }
+  // Gas bottle (SmartSense): goes online once decode() learns its frame.
+  s.gas.online = gData.gasValid && now - gGasMs < STALE_MS;
+  if (s.gas.online) s.gas.pct = gData.gasPct;
   if (usePumps)
     for (int i = 0; i < cv::NUM_PUMPS; i++) {
       bool fresh = gData.pumpValid[i] && now - gPumpMs[i] < STALE_MS;
@@ -328,6 +348,9 @@ String Bmpro::devices() const {
 //     out.pumpValid[0] = out.pumpValid[1] = true;
 //     out.pumpOn[0] = data[10] & 0x01;  out.pumpOn[1] = data[10] & 0x02;
 //     return true;
+//   }
+//   // SmartSense gas bottle level (relayed by the OdysseyLink), e.g.
+//   if (... SmartSense frame ...) { out.gasValid = true; out.gasPct = data[n]; return true;
 //   }
 //
 // encodePump(): the bytes the Odyssey app writes to switch a pump (from an

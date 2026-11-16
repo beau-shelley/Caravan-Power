@@ -22,6 +22,8 @@ static const MetricInfo kMetrics[M_COUNT] = {
     {"tank3", "Tank 3", "%", 5.0f},
     {"wx_gust", "Forecast gusts", "km/h", 5.0f},
     {"wx_rain", "Forecast rain chance", "%", 10.0f},
+    {"gas", "Gas bottle", "%", 5.0f},
+    {"theft", "Theft alarm", "", 1.0f},
 };
 
 const MetricInfo &metricInfo(Metric m) { return kMetrics[m < M_COUNT ? m : 0]; }
@@ -57,6 +59,12 @@ bool metricValue(const State &s, Metric m, float &out) {
     // Forecast metrics: only while the forecast is reasonably fresh (6 h).
     case M_WX_GUST: out = s.wx.day[0].gustMax; return s.wx.valid && s.ts && s.ts - s.wx.updated < 6 * 3600;
     case M_WX_RAIN: out = s.wx.day[0].rainProb; return s.wx.valid && s.ts && s.ts - s.wx.updated < 6 * 3600;
+    case M_GAS: out = s.gas.pct; return s.gas.online;
+    // Always "online" so the alarm clears as soon as secure mode is disarmed.
+    // 10 + cause during the 5 min entry delay (warning), 20 + cause for the alarm (critical).
+    case M_THEFT:
+      out = s.sec.mode == SEC_ENTRY ? 10.0f + s.sec.cause : s.sec.mode == SEC_TRIGGERED ? 20.0f + s.sec.cause : 0;
+      return true;
     default: return false;
   }
 }
@@ -85,8 +93,59 @@ const char *chargeStateName(uint8_t cs) {
   }
 }
 
+const char *heaterPhaseText(uint8_t phase) {
+  switch (phase) {
+    case HTR_STARTING: return "Heating up";
+    case HTR_RUNNING: return "Running";
+    case HTR_COOLING: return "Cooling down";
+    default: return "Off";
+  }
+}
+
+// The usual E-01..E-10 codes of these Chinese 2-5 kW air heaters, as the
+// AirHeaterBLE app reports them. Assumed until seen on Beau's heater.
+const char *heaterErrorText(uint8_t err) {
+  switch (err) {
+    case 0: return "";
+    case 1: return "Didn't start (E-01)";
+    case 2: return "Out of fuel (E-02)";
+    case 3: return "Supply voltage fault (E-03)";
+    case 4: return "Outlet sensor fault (E-04)";
+    case 5: return "Inlet sensor fault (E-05)";
+    case 6: return "Fuel pump fault (E-06)";
+    case 7: return "Fan fault (E-07)";
+    case 8: return "Glow plug fault (E-08)";
+    case 9: return "Overheated (E-09)";
+    case 10: return "Overheat sensor fault (E-10)";
+    default: return "Heater fault";
+  }
+}
+
+bool heaterCmdFromJson(JsonObjectConst o, HeaterCmd &c, const char **why) {
+  c = HeaterCmd();
+  if (o["on"].is<bool>()) c.on = o["on"].as<bool>() ? 1 : 0;
+  if (o["mode"].is<const char *>()) {
+    const char *m = o["mode"];
+    if (!strcmp(m, "temp")) c.mode = HTR_MODE_TEMP;
+    else if (!strcmp(m, "level")) c.mode = HTR_MODE_LEVEL;
+    else { if (why) *why = "mode must be temp or level"; return false; }
+  }
+  if (!o["temp"].isNull()) {
+    int t = o["temp"] | -100;
+    if (t < HEATER_MIN_C || t > HEATER_MAX_C) { if (why) *why = "Set temperature must be 8-36 \xC2\xB0" "C"; return false; }
+    c.temp = (int8_t)t;
+  }
+  if (!o["level"].isNull()) {
+    int l = o["level"] | -1;
+    if (l < 1 || l > HEATER_LEVELS) { if (why) *why = "Power level must be 1-10"; return false; }
+    c.level = (int8_t)l;
+  }
+  if (!c.any()) { if (why) *why = "nothing to change"; return false; }
+  return true;
+}
+
 const char *severityName(uint8_t sev) {
-  return sev == SEV_ALARM ? "alarm" : sev == SEV_WARN ? "warning" : "info";
+  return sev >= SEV_CRIT ? "critical" : sev == SEV_ALARM ? "alarm" : sev == SEV_WARN ? "warning" : "info";
 }
 
 // ---------------------------------------------------------------- rules
@@ -119,7 +178,7 @@ bool RuleSet::remove(uint8_t id) {
   return false;
 }
 
-static void addRule(RuleSet &rs, const char *name, Metric m, Cmp c, float thr, float hyst,
+static Rule *addRule(RuleSet &rs, const char *name, Metric m, Cmp c, float thr, float hyst,
                     uint16_t delay, Severity sev, Action act = ACT_NONE, bool enabled = true) {
   Rule r;
   strncpy(r.name, name, sizeof(r.name) - 1);
@@ -131,7 +190,7 @@ static void addRule(RuleSet &rs, const char *name, Metric m, Cmp c, float thr, f
   r.sev = sev;
   r.action = act;
   r.enabled = enabled;
-  rs.upsert(r);
+  return rs.upsert(r);
 }
 
 // Sensible starting points for a 12 V lithium caravan setup. Every one of
@@ -141,17 +200,35 @@ void loadDefaultRules(RuleSet &rs) {
   addRule(rs, "Battery low", M_BAT_V, CMP_LT, 12.4f, 0.3f, 60, SEV_WARN);
   addRule(rs, "Battery critical", M_BAT_V, CMP_LT, 11.8f, 0.6f, 30, SEV_ALARM, ACT_INVERTER_OFF);
   addRule(rs, "Battery over-voltage", M_BAT_V, CMP_GT, 14.8f, 0.3f, 10, SEV_ALARM);
-  addRule(rs, "Charge below 30%", M_BAT_SOC, CMP_LT, 30, 5, 60, SEV_WARN);
-  addRule(rs, "Charge below 15%", M_BAT_SOC, CMP_LT, 15, 5, 60, SEV_ALARM, ACT_AIRCON_OFF);
+  // One stepped rule: warning at 30 %, alarm at 15 %, critical at 5 %.
+  Rule *soc = addRule(rs, "Battery charge low", M_BAT_SOC, CMP_LT, 30, 5, 60, SEV_WARN, ACT_AIRCON_OFF);
+  if (soc) {
+    soc->levelCount = 2;
+    soc->levels[0] = {15, SEV_ALARM};
+    soc->levels[1] = {5, SEV_CRIT};
+  }
   addRule(rs, "High load", M_LOAD_A, CMP_GT, 180, 20, 15, SEV_WARN);
   addRule(rs, "Fridge warm", M_TEMP_FRIDGE, CMP_GT, 6, 1, 1200, SEV_ALARM);
   addRule(rs, "Fridge freezing", M_TEMP_FRIDGE, CMP_LT, -1, 1, 1800, SEV_WARN, ACT_NONE, false);
   addRule(rs, "Inside hot", M_TEMP_IN, CMP_GT, 35, 2, 300, SEV_WARN);
   addRule(rs, "Inside cold", M_TEMP_IN, CMP_LT, 5, 1, 300, SEV_WARN);
-  addRule(rs, "Fresh 1 low", M_TANK1, CMP_LT, 15, 5, 30, SEV_INFO);
-  addRule(rs, "Fresh 2 low", M_TANK2, CMP_LT, 15, 5, 30, SEV_INFO);
+  addRule(rs, "Tank 1 low", M_TANK1, CMP_LT, 15, 5, 30, SEV_INFO);
+  addRule(rs, "Tank 2 low", M_TANK2, CMP_LT, 15, 5, 30, SEV_INFO);
   addRule(rs, "Grey tank full", M_TANK3, CMP_GT, 85, 5, 30, SEV_WARN);
   addRule(rs, "Strong wind forecast", M_WX_GUST, CMP_GT, 50, 10, 0, SEV_WARN);  // bring the awning in
+  ensureTheftRule(rs);
+}
+
+bool ensureTheftRule(RuleSet &rs) {
+  for (int i = 0; i < rs.count; i++)
+    if (rs.rules[i].metric == M_THEFT) return false;
+  // No delay: secure mode already waits out wind before it goes off. A
+  // warning when movement starts the 5 min entry delay, critical after it.
+  Rule *r = addRule(rs, "Theft alarm", M_THEFT, CMP_GT, 5, 0, 0, SEV_WARN);
+  if (!r) return false;
+  r->levelCount = 1;
+  r->levels[0] = {15, SEV_CRIT};
+  return true;
 }
 
 // ---------------------------------------------------------------- JSON helpers
@@ -180,6 +257,8 @@ void stateToJson(const State &s, JsonObject o) {
   b["ttg"] = s.bat.ttgMin;
   b["sa"] = r1(s.bat.solarA);
   b["ca"] = r1(s.bat.chargerA);
+  b["aca"] = r1(s.bat.acA);
+  b["acon"] = s.bat.acOn;
   b["chg"] = r1(s.bat.chargeA);
   b["load"] = r1(s.bat.loadA);
 
@@ -215,6 +294,10 @@ void stateToJson(const State &s, JsonObject o) {
     j["p"] = r1(x.pct);
   }
 
+  JsonObject gas = o["gas"].to<JsonObject>();
+  gas["on"] = s.gas.online;
+  gas["p"] = r1(s.gas.pct);
+
   JsonArray pm = o["pump"].to<JsonArray>();
   for (auto &x : s.pump) {
     JsonObject j = pm.add<JsonObject>();
@@ -232,7 +315,25 @@ void stateToJson(const State &s, JsonObject o) {
   ac["on"] = s.ac.on;
   ac["pre"] = s.ac.preset;
 
+  if (s.htr.link != HTR_LINK_NONE) {  // only sent once a heater is set up
+    const Heater &h = s.htr;
+    JsonObject j = o["htr"].to<JsonObject>();
+    j["ln"] = h.link;
+    j["on"] = h.online;
+    j["ph"] = h.phase;
+    j["md"] = h.mode;
+    j["st"] = h.setC;
+    j["lv"] = h.level;
+    if (h.hasStatus()) {
+      j["cab"] = r1(h.cabinC);
+      j["hx"] = r1(h.bodyC);
+      j["v"] = r1(h.supplyV);
+      j["err"] = h.err;
+    }
+  }
+
   levelToJson(s.lvl, o["lvl"].to<JsonObject>());
+  secureToJson(s.sec, o["sec"].to<JsonObject>());
   weatherToJson(s.wx, o["wx"].to<JsonObject>());
 
   JsonArray al = o["alerts"].to<JsonArray>();
@@ -267,6 +368,8 @@ void stateFromJson(State &s, JsonObjectConst o) {
   s.bat.ttgMin = b["ttg"] | -1;
   s.bat.solarA = b["sa"] | 0.0f;
   s.bat.chargerA = b["ca"] | 0.0f;
+  s.bat.acA = b["aca"] | 0.0f;
+  s.bat.acOn = b["acon"] | false;
   s.bat.chargeA = b["chg"] | 0.0f;
   s.bat.loadA = b["load"] | 0.0f;
 
@@ -302,6 +405,9 @@ void stateFromJson(State &s, JsonObjectConst o) {
     s.tank[i].pct = tk[i]["p"] | 0.0f;
   }
 
+  s.gas.online = o["gas"]["on"] | false;
+  s.gas.pct = o["gas"]["p"] | 0.0f;
+
   JsonArrayConst pm = o["pump"];
   for (int i = 0; i < NUM_PUMPS; i++) {
     JsonObjectConst j = pm[i];
@@ -316,7 +422,25 @@ void stateFromJson(State &s, JsonObjectConst o) {
   s.ac.on = o["ac"]["on"] | false;
   s.ac.preset = o["ac"]["pre"] | -1;
 
+  s.htr = Heater();
+  if (o["htr"].is<JsonObjectConst>()) {
+    JsonObjectConst j = o["htr"];
+    Heater &h = s.htr;
+    h.link = j["ln"] | 0;
+    h.online = j["on"] | false;
+    h.phase = j["ph"] | 0;
+    h.mode = j["md"] | 0;
+    h.setC = j["st"] | 20;
+    h.level = j["lv"] | 5;
+    h.cabinC = j["cab"] | 0.0f;
+    h.bodyC = j["hx"] | 0.0f;
+    h.supplyV = j["v"] | 0.0f;
+    h.err = j["err"] | 0;
+  }
+
   if (o["lvl"].is<JsonObjectConst>()) levelFromJson(s.lvl, o["lvl"]);
+  s.sec = Secure();
+  if (o["sec"].is<JsonObjectConst>()) secureFromJson(s.sec, o["sec"]);
   if (o["wx"].is<JsonObjectConst>()) weatherFromJson(s.wx, o["wx"]);
 
   JsonArrayConst al = o["alerts"];
@@ -349,6 +473,14 @@ void ruleToJson(const Rule &r, JsonObject o) {
   o["sev"] = r.sev;
   o["ntf"] = r.notify;
   o["act"] = actionKey(r.action);
+  if (r.levelCount) {
+    JsonArray lv = o["lv"].to<JsonArray>();
+    for (int i = 0; i < r.levelCount; i++) {
+      JsonObject l = lv.add<JsonObject>();
+      l["thr"] = r2(r.levels[i].threshold);
+      l["sev"] = r.levels[i].sev;
+    }
+  }
 }
 
 bool ruleFromJson(Rule &r, JsonObjectConst o) {
@@ -365,9 +497,23 @@ bool ruleFromJson(Rule &r, JsonObjectConst o) {
   if (r.hysteresis < 0) r.hysteresis = 0;
   r.delaySec = o["dly"] | 0;
   uint8_t sev = o["sev"] | (uint8_t)SEV_WARN;
-  r.sev = (Severity)(sev > (uint8_t)SEV_ALARM ? (uint8_t)SEV_ALARM : sev);
+  r.sev = (Severity)(sev > (uint8_t)SEV_CRIT ? (uint8_t)SEV_CRIT : sev);
   r.notify = o["ntf"] | true;
   r.action = actionFromKey(o["act"] | "none");
+  // Optional extra levels: [{"thr":15,"sev":2},{"thr":5,"sev":3}]. Levels that
+  // aren't strictly deeper than the previous one are dropped.
+  r.levelCount = 0;
+  for (JsonObjectConst l : o["lv"].as<JsonArrayConst>()) {
+    if (r.levelCount >= MAX_LEVELS) break;
+    if (!l["thr"].is<float>()) continue;
+    float thr = l["thr"].as<float>();
+    float prev = r.levelThreshold(r.levelCount);
+    if (r.cmp == CMP_LT ? !(thr < prev) : !(thr > prev)) continue;
+    uint8_t ls = l["sev"] | (uint8_t)SEV_ALARM;
+    r.levels[r.levelCount].threshold = thr;
+    r.levels[r.levelCount].sev = (Severity)(ls > (uint8_t)SEV_CRIT ? (uint8_t)SEV_CRIT : ls);
+    r.levelCount++;
+  }
   return true;
 }
 
@@ -404,6 +550,36 @@ void levelFromJson(Level &l, JsonObjectConst o) {
   l.jockeyMm = o["jk"] | l.jockeyMm;
 }
 
+void secureToJson(const Secure &x, JsonObject o) {
+  o["m"] = x.mode;
+  o["c"] = x.cause;
+  o["sn"] = x.sens;
+  o["ok"] = x.sensor;
+  if (x.armLeft) o["al"] = x.armLeft;
+  o["since"] = x.since;
+  o["ti"] = r1(x.tilt);
+  o["tl"] = r1(x.tiltLim);
+  o["tu"] = (int)std::lround(x.turn);
+  o["ul"] = (int)std::lround(x.turnLim);
+  o["sh"] = x.shake;
+  o["sl"] = x.shakeLim;
+}
+
+void secureFromJson(Secure &x, JsonObjectConst o) {
+  x.mode = o["m"] | 0;
+  x.cause = o["c"] | 0;
+  x.sens = o["sn"] | (int)SENS_MEDIUM;
+  x.sensor = o["ok"] | false;
+  x.armLeft = o["al"] | 0;
+  x.since = o["since"] | 0u;
+  x.tilt = o["ti"] | 0.0f;
+  x.tiltLim = o["tl"] | 0.0f;
+  x.turn = o["tu"] | 0.0f;
+  x.turnLim = o["ul"] | 0.0f;
+  x.shake = o["sh"] | 0;
+  x.shakeLim = o["sl"] | 0;
+}
+
 void metaToJson(const Meta &m, JsonObject o) {
   o["t"] = "meta";
   JsonArray a;
@@ -420,6 +596,8 @@ void metaToJson(const Meta &m, JsonObject o) {
   o["cap"] = m.batCapacityAh;
   o["rc"] = m.remoteControl;
   o["tcal"] = m.tankCal;
+  o["ss"] = m.screenSleepSec;
+  o["sc"] = m.secCodeSet;
   o["ls"] = m.locSrc;
   o["ln"] = m.locName;
   o["fw"] = m.fw;
@@ -444,9 +622,11 @@ void metaFromJson(Meta &m, JsonObjectConst o) {
   m.batCapacityAh = o["cap"] | m.batCapacityAh;
   m.remoteControl = o["rc"] | m.remoteControl;
   m.tankCal = o["tcal"] | m.tankCal;
+  m.screenSleepSec = o["ss"] | m.screenSleepSec;
+  m.secCodeSet = o["sc"] | m.secCodeSet;
   m.locSrc = o["ls"] | m.locSrc;
   if (o["ln"].is<const char *>()) copyStr(m.locName, sizeof(m.locName), o["ln"]);
-  copyStr(m.fw, sizeof(m.fw), o["fw"] | m.fw);
+  if (o["fw"].is<const char *>()) copyStr(m.fw, sizeof(m.fw), o["fw"]);
 }
 
 }  // namespace cv

@@ -1,13 +1,60 @@
-// Touchscreen UI (LVGL 8.3) - 800x480 landscape.
+// Touchscreen UI (LVGL 8.3) - landscape, sized from board::SCREEN_W/H
+// (1024x600 on the Waveshare 7B).
 //   +--------+-------------------------------------------+
 //   |  nav   |  status bar: page, clock, link/wifi/cloud |
 //   |  rail  +-------------------------------------------+
-//   |        |  page content (712 x 436)                 |
+//   |        |  page content (PAGE_W x PAGE_H)           |
 //   +--------+-------------------------------------------+
 #pragma once
 #include <lvgl.h>
 
+#include "../board.h"
+
+// Extra icon fonts (see ICON_WATER / ICON_TAP below). Declared outside the namespace:
+// the .c files define them with C linkage.
+LV_FONT_DECLARE(ui_icons_20);
+LV_FONT_DECLARE(ui_icons_24);
+LV_FONT_DECLARE(ui_icons_28);
+// Theme textures (tex_theme.c, made by tools/theme/make_theme.py).
+LV_IMG_DECLARE(tex_camo);   // seamless dark camo tile, screen background
+LV_IMG_DECLARE(tex_tread);  // chequer (diamond) plate tile, nav rail
+
 namespace ui {
+
+// ---------------------------------------------------------------- features
+// Inverter and aircon control are switched off for now (they'll come back
+// later). Build with -D FEATURE_INVERTER_CONTROL=1 / -D FEATURE_AIRCON_CONTROL=1
+// to show them again. The code stays compiled either way so it doesn't rot.
+#ifndef FEATURE_INVERTER_CONTROL
+#define FEATURE_INVERTER_CONTROL 0
+#endif
+#ifndef FEATURE_AIRCON_CONTROL
+#define FEATURE_AIRCON_CONTROL 0
+#endif
+constexpr bool HAS_INVERTER = FEATURE_INVERTER_CONTROL, HAS_AIRCON = FEATURE_AIRCON_CONTROL;
+
+// ---------------------------------------------------------------- layout
+// Every page is laid out from these, never from literal screen sizes.
+constexpr int SCR_W = board::SCREEN_W, SCR_H = board::SCREEN_H;
+constexpr bool LARGE = SCR_W >= 1000;          // 1024x600 class vs 800x480 class
+constexpr int RAIL_W = LARGE ? 100 : 88;       // nav rail
+constexpr int BAR_H = LARGE ? 52 : 44;         // status bar
+constexpr int PAGE_W = SCR_W - RAIL_W, PAGE_H = SCR_H - BAR_H;
+constexpr int GAP = 12;                        // outer margin and gutter between cards
+constexpr int CARD_PAD = 14;                   // card() inner padding
+constexpr int INNER_W = PAGE_W - 2 * GAP, INNER_H = PAGE_H - 2 * GAP;
+// n equal columns across the page: width of one, and x of column i.
+constexpr int colW(int n) { return (INNER_W - (n - 1) * GAP) / n; }
+constexpr int colX(int i, int n) { return GAP + i * (colW(n) + GAP); }
+// Split the page into two columns, the left one `pct` percent wide.
+constexpr int splitW(int pct) { return (INNER_W - GAP) * pct / 100; }
+// Content size inside a card of the given outer size.
+constexpr int innerOf(int outer) { return outer - 2 * CARD_PAD; }
+// Status-bar weather widget: right offset and width, so the alert banner
+// knows where it has to stop. WX_RIGHT_EDGE = distance from the bar's right
+// edge to the widget's left edge.
+constexpr int WX_RIGHT_OFS = LARGE ? 262 : 248, WX_W = LARGE ? 210 : 196;
+constexpr int WX_RIGHT_EDGE = WX_RIGHT_OFS + WX_W;
 
 // The nav rail only shows everyday pages; Level, Alerts and Settings live
 // behind "More" (Alerts is also one tap away via the bell / alert banner).
@@ -16,16 +63,37 @@ enum Page { PAGE_HOME, PAGE_POWER, PAGE_WATER, PAGE_CLIMATE, PAGE_MORE, PAGE_LEV
 void begin();   // build everything
 void loop();    // refresh widgets from app:: model (call often; cheap if nothing changed)
 void showPage(int p);
-int sleepMinutes();
+int sleepSeconds();
 
 // ---------------------------------------------------------------- palette
+// Extra icons (Font Awesome Free 6, SIL OFL 1.1) in ui_icons_20/24/28.c, made
+// with lv_font_conv from fa-solid-900.ttf: -r 0xf043,0xe006,0xf023,0xf09c,0xf3ed --bpp 4.
+#define ICON_WATER ""  // U+F043 droplet (UTF-8 EF 81 83)
+#define ICON_TAP ""    // U+E006 faucet-drip, for pumps (UTF-8 EE 80 86)
+// Secure mode (anti-theft): -r 0xf023,0xf09c,0xf3ed added to the same fonts.
+#define ICON_LOCK "\xEF\x80\xA3"    // U+F023 lock (armed)
+#define ICON_UNLOCK "\xEF\x82\x9C"  // U+F09C lock-open (off)
+#define ICON_SHIELD "\xEF\x8F\xAD"  // U+F3ED shield-halved (alarm)
+// The extra icons need their own font; LVGL's symbols use Montserrat.
+bool isExtraIcon(const char *sym);
+
 namespace col {
-constexpr uint32_t BG = 0x0B1220, RAIL = 0x0E1626, CARD = 0x131C2E, BORDER = 0x1E293B;
-constexpr uint32_t TEXT = 0xE2E8F0, MUTED = 0x94A3B8, DIM = 0x475569;
-constexpr uint32_t SOLAR = 0xFBBF24, CHARGE = 0x34D399, LOAD = 0xF87171, WATER = 0x38BDF8;
-constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0x22D3EE, WARN = 0xF59E0B, ALARM = 0xEF4444;
-constexpr uint32_t OK = 0x22C55E, TILE = 0x1A2438;
+// Caravan theme: gunmetal panels on a dark camo background, black chequer-plate
+// rail, lime accents (like the stripe on the van). Status colours keep their
+// meanings: amber warning, red alarm, fuchsia critical, blue cold/water.
+// Same values in web/index.html (:root) and the app's Colors.kt.
+constexpr uint32_t BG = 0x0E0F10, RAIL = 0x0B0C0D, CARD = 0x1E2124, BORDER = 0x34383C;
+constexpr uint32_t TEXT = 0xECEEEA, MUTED = 0x9EA4A6, DIM = 0x5A6064;
+constexpr uint32_t SOLAR = 0xFACC15, CHARGE = 0x8FDB3A, LOAD = 0xF87171, WATER = 0x38BDF8;
+constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0xA3E635, WARN = 0xF59E0B, ALARM = 0xEF4444;
+constexpr uint32_t OK = 0x84CC16, TILE = 0x2A2E32, GAS = 0xFB923C, MAINS = 0x60A5FA;
+constexpr uint32_t SECURE = 0x84CC16;  // secure mode armed (green, same as the phone page)
+constexpr uint32_t CRIT = 0xD946EF;  // critical alerts (same colour as the phone page)
+constexpr uint32_t HEAT = 0xFB923C;  // diesel heater (warm orange, same as the phone page)
 }  // namespace col
+inline uint32_t sevColor(int sev) {
+  return sev >= cv::SEV_CRIT ? col::CRIT : sev == cv::SEV_ALARM ? col::ALARM : sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
+}
 
 // ---------------------------------------------------------------- helpers (ui_common.cpp)
 inline lv_color_t c(uint32_t hex) { return lv_color_hex(hex); }
@@ -45,6 +113,7 @@ void confirm(const char *title, const char *msg, void (*onYes)(void *), void *ud
 uint32_t tempColor(int role, float c);
 uint32_t socColor(float soc);
 uint32_t tankColor(int i, float pct);
+uint32_t gasColor(float pct);
 void fmtDuration(char *buf, size_t n, int32_t minutes);
 
 // ---------------------------------------------------------------- pages
@@ -63,10 +132,14 @@ void updateAlerts();
 void buildSettings(lv_obj_t *p);
 void updateSettings();
 
-void flushRuleEdits();
-void openTownSearch();  // ui_alerts.cpp - weather location keyboard + picker  // ui_alerts.cpp - debounced rule threshold edits
+
+// Diesel heater card on the Climate page (ui_heater.cpp). Hidden until a
+// heater is set up on the hub (state.htr.link != none).
+lv_obj_t *buildHeater(lv_obj_t *page, int x, int y, int w, int h);
+void updateHeater();
 
 void buildWeatherWidget(lv_obj_t *statusBar);  // ui_weather.cpp
+void buildForecast(lv_obj_t *box, int w, int h, const char *note = nullptr, bool bubble = false);
 void updateWeather();
 void openWeatherForTest();
 
@@ -74,5 +147,6 @@ void openWeatherForTest();
 void togglePump(int i);
 void toggleInverter();
 void toggleAircon();
+void secureButton();  // arm / disarm, asks first (disarm takes the code once one is set)
 
 }  // namespace ui

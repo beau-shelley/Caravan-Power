@@ -10,6 +10,7 @@
 #include <cstring>
 #include <ArduinoJson.h>
 
+#include "TheftGuard.h"
 #include "Weather.h"
 
 namespace cv {
@@ -46,9 +47,11 @@ struct Battery {
   float soc = 0;      // 0..100 %
   int32_t ttgMin = -1;  // time-to-go (discharging) or time-to-full (charging), -1 unknown
   float solarA = 0;   // sum of all solar controllers
-  float chargerA = 0; // mains/DC-DC charger (BMPRO 35A) if measured
+  float chargerA = 0; // BMPRO charger output (its solar input + DC-DC from the vehicle)
+  float acA = 0;      // mains chargers, inferred by elimination (see AcCharge.h)
+  bool acOn = false;  // mains bulk charging detected (debounced); Home shows a tile
   float chargeA = 0;  // total charging sources
-  float loadA = 0;    // derived: chargeA - a
+  float loadA = 0;    // measured, or derived: chargeA - a
 };
 
 struct Temp {
@@ -58,6 +61,13 @@ struct Temp {
 };
 
 struct Tank {
+  bool online = false;
+  float pct = 0;
+};
+
+// LPG bottle level from a BMPRO SmartSense gas sensor (ultrasonic, under the
+// bottle), relayed by the OdysseyLink. Decoding is still a stub on the hub.
+struct Gas {
   bool online = false;
   float pct = 0;
 };
@@ -79,6 +89,41 @@ struct Aircon {
   int8_t preset = -1;   // -1 = off / unknown
 };
 
+// Diesel heater (Power Science 2 kW in Beau's van). The hub talks to it over
+// Bluetooth (the AirHeaterBLE app's protocol, see AirHeater.h) or, as a
+// fallback, sends 433 MHz remote codes (no status comes back that way).
+enum HeaterLink : uint8_t { HTR_LINK_NONE = 0, HTR_LINK_BLE = 1, HTR_LINK_RF = 2 };
+enum HeaterPhase : uint8_t { HTR_OFF = 0, HTR_STARTING = 1, HTR_RUNNING = 2, HTR_COOLING = 3 };
+enum HeaterMode : uint8_t { HTR_MODE_TEMP = 0, HTR_MODE_LEVEL = 1 };  // thermostat / fixed power level
+constexpr int HEATER_MIN_C = 8, HEATER_MAX_C = 36, HEATER_LEVELS = 10;
+
+struct Heater {
+  uint8_t link = HTR_LINK_NONE;  // NONE = no heater set up: the screens hide the heater card
+  bool online = false;    // status heard recently (Bluetooth). RF never is.
+  uint8_t phase = HTR_OFF;
+  uint8_t mode = HTR_MODE_TEMP;
+  int8_t setC = 20;       // thermostat set point, HEATER_MIN_C..HEATER_MAX_C
+  uint8_t level = 5;      // power level 1..HEATER_LEVELS
+  float cabinC = 0;       // the heater's own air-intake / remote sensor
+  float bodyC = 0;        // heat exchanger (case) temperature
+  float supplyV = 0;
+  uint8_t err = 0;        // heater error code, 0 = none (see heaterErrorText)
+  bool running() const { return phase == HTR_STARTING || phase == HTR_RUNNING; }
+  // Readings (cabin, body, volts, error) only mean something with Bluetooth status.
+  bool hasStatus() const { return link == HTR_LINK_BLE && online; }
+};
+const char *heaterPhaseText(uint8_t phase);
+const char *heaterErrorText(uint8_t err);
+
+// A heater command from any client: {"c":"heater","on":true} / {"mode":"temp"|"level"}
+// / {"temp":22} / {"level":6}. Fields may be combined; -1 = not given.
+struct HeaterCmd {
+  int8_t on = -1, mode = -1, temp = -1, level = -1;
+  bool any() const { return on >= 0 || mode >= 0 || temp >= 0 || level >= 0; }
+};
+// Parses and range-checks; on failure *why says what's wrong.
+bool heaterCmdFromJson(JsonObjectConst o, HeaterCmd &c, const char **why);
+
 // Caravan level (MPU-6050 on the hub). pitch + = front high, roll + = left high.
 struct Level {
   bool online = false;
@@ -88,7 +133,9 @@ struct Level {
   uint16_t trackMm = 1900, jockeyMm = 4500;
 };
 
-enum Severity : uint8_t { SEV_INFO = 0, SEV_WARN = 1, SEV_ALARM = 2 };
+// SEV_CRIT is the top step of a stepped rule (e.g. battery at 5 %): shown and
+// pushed like an alarm but louder/redder. Anything >= SEV_ALARM sounds the buzzer.
+enum Severity : uint8_t { SEV_INFO = 0, SEV_WARN = 1, SEV_ALARM = 2, SEV_CRIT = 3 };
 
 struct ActiveAlert {
   uint8_t ruleId = 0;
@@ -107,10 +154,13 @@ struct State {
   Battery bat;
   Temp temp[NUM_TEMPS];
   Tank tank[NUM_TANKS];
+  Gas gas;
   Pump pump[NUM_PUMPS];
   Inverter inv;
   Aircon ac;
+  Heater htr;
   Level lvl;
+  Secure sec;  // secure mode (anti-theft), see TheftGuard.h
   Weather wx;
   uint8_t alertCount = 0;
   ActiveAlert alerts[MAX_ACTIVE_ALERTS];
@@ -131,6 +181,8 @@ enum Metric : uint8_t {
   M_TEMP_IN, M_TEMP_OUT, M_TEMP_FRIDGE,
   M_TANK1, M_TANK2, M_TANK3,
   M_WX_GUST, M_WX_RAIN,   // today's forecast max wind gust (km/h), rain chance (%)
+  M_GAS,  // appended: rules refer to metrics by key, but keep the order stable
+  M_THEFT,  // secure mode: 0 quiet, else the SecureCause that set the alarm off
   M_COUNT
 };
 
@@ -152,6 +204,16 @@ enum Action : uint8_t { ACT_NONE = 0, ACT_AIRCON_OFF, ACT_INVERTER_OFF, ACT_PUMP
 const char *actionKey(Action a);
 Action actionFromKey(const char *k);
 
+// A rule can step up through extra levels after its first threshold, e.g.
+// charge < 30 % warning, then < 15 % alarm, then < 5 % critical. Each level is
+// strictly deeper than the one before (lower for "<", higher for ">") and
+// fires once; it re-arms only after the value recovers past it + hysteresis.
+constexpr int MAX_LEVELS = 2;  // extra levels on top of threshold/sev
+struct RuleLevel {
+  float threshold = 0;
+  Severity sev = SEV_ALARM;
+};
+
 struct Rule {
   uint8_t id = 0;
   bool enabled = true;
@@ -163,7 +225,12 @@ struct Rule {
   uint16_t delaySec = 0;  // condition must hold this long before firing
   Severity sev = SEV_WARN;
   bool notify = true;     // push to phone
-  Action action = ACT_NONE;
+  Action action = ACT_NONE;  // runs when the rule reaches its deepest level
+  uint8_t levelCount = 0;
+  RuleLevel levels[MAX_LEVELS];
+  // Level 0 is threshold/sev; 1..levelCount are levels[].
+  float levelThreshold(int k) const { return k <= 0 ? threshold : levels[k - 1].threshold; }
+  Severity levelSev(int k) const { return k <= 0 ? sev : levels[k - 1].sev; }
 };
 
 struct RuleSet {
@@ -179,14 +246,17 @@ struct RuleSet {
 };
 
 void loadDefaultRules(RuleSet &rs);
+// Secure mode raises its alarm through a rule; puts the default one back if
+// it's missing (older saved rule lists, or deleted). Returns true if added.
+bool ensureTheftRule(RuleSet &rs);
 
 // ---------------------------------------------------------------- metadata
 // Slow-changing names/labels, sent on connect and whenever they change.
 struct Meta {
   char solarName[NUM_SOLAR][16] = {"Roof", "Portable"};
   char tempName[NUM_TEMPS][16] = {"Inside", "Outside", "Fridge"};
-  char tankName[NUM_TANKS][16] = {"Fresh 1", "Fresh 2", "Grey"};
-  char pumpName[NUM_PUMPS][16] = {"Main pump", "Aux pump"};
+  char tankName[NUM_TANKS][16] = {"Tank 1", "Tank 2", "Grey"};
+  char pumpName[NUM_PUMPS][16] = {"Internal", "External"};
   uint8_t acPresetCount = 0;
   char acPresetName[MAX_AC_PRESETS][16] = {};
   float batCapacityAh = 300;
@@ -194,10 +264,14 @@ struct Meta {
   char locName[24] = "";   // weather location name
   bool remoteControl = true;
   bool tankCal = false;  // true when tanks are wired taps that need calibrating
+  bool secCodeSet = false;  // a disarm code is set for the touchscreen (set from the phone)
+  uint16_t screenSleepSec = 300;  // touchscreen dims after this many idle seconds, 0 = never (set from the phone)
   char fw[16] = "1.0.0";
 };
 void levelToJson(const Level &l, JsonObject o);
 void levelFromJson(Level &l, JsonObjectConst o);
+void secureToJson(const Secure &x, JsonObject o);
+void secureFromJson(Secure &x, JsonObjectConst o);
 void metaToJson(const Meta &m, JsonObject o);
 void metaFromJson(Meta &m, JsonObjectConst o);
 

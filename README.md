@@ -11,14 +11,14 @@ It talks to the BMPRO system **wirelessly through the OdysseyLink** (the same Bl
 | ![home](docs/img/01-home.png) | ![alarm](docs/img/06-home-alarm.png) |
 | **Power** (per-MPPT tracking + 30 min history) | **Water** (tanks + pump control) |
 | ![power](docs/img/02-power.png) | ![water](docs/img/03-water.png) |
-| **Climate** (temps, aircon presets, inverter) | **More** (Level, Alerts & rules, Settings: out of the way) |
+| **Climate** (temps + weather forecast) | **More** (Level, Alerts & rules, Settings: out of the way) |
 | ![climate](docs/img/04-climate.png) | ![more](docs/img/11-more.png) |
-| **Alerts** (active alerts + editable rules) | |
-| ![alerts](docs/img/05-alerts.png) | |
+| **Alerts** (active alerts + the rules, read-only) | **Settings** (points you to the phone) |
+| ![alerts](docs/img/05-alerts.png) | ![settings](docs/img/07-settings.png) |
 | **Forecast** (tap the weather in the status bar) | **Level** (bubble + wheel/jockey mm) |
 | ![forecast](docs/img/09-forecast.png) | ![level](docs/img/08-level.png) |
-| **Level on your phone** (Bluetooth) | **Weather location** (town search on the touchscreen) |
-| <img src="docs/img/web-level.png" width="240"> | ![location](docs/img/10-location-search.png) |
+| **Level on your phone** (Bluetooth) | **Alert rules on your phone** |
+| <img src="docs/img/web-level.png" width="240"> | <img src="docs/img/web-phone-rules.png" width="240"> |
 | **Phone: once level, set the weather location** | **Touchscreen: once level** |
 | <img src="docs/img/web-level-prompt.png" width="240"> | ![level done](docs/img/12-level-done.png) |
 
@@ -40,12 +40,14 @@ Remote dashboard (desktop and phone, dark and light):
 | 2 water pumps on the touchscreen | Switched **by the BMPRO**, commanded over Bluetooth, so the Odyssey app stays in sync. Dry-run lockout and a max run time. Fallback: relays |
 | Water tank gauges | Your tank sensors already report to the OdysseyLink; the hub reads the levels from it over Bluetooth (no wiring). Fallback: ADS1115 taps |
 | Remove the Trek 3 | The touchscreen covers everything the Trek showed. Follow the test-before-removing steps in the BMPRO doc |
-| Inverter control | Relay on the Powertech remote port (pulse or latch), with a 240 V output sense |
-| Air-con control | Learns IR codes from the Houghton remote and replays them (up to 8 presets plus OFF) |
+| Inverter control *(switched off for now)* | Relay on the Powertech remote port (pulse or latch), with a 240 V output sense |
+| Air-con control *(switched off for now)* | Learns IR codes from the Houghton remote and replays them (up to 8 presets plus OFF) |
 | Remote access over Starlink | Outbound MQTT over TLS, so it works behind Starlink CGNAT with no port forwarding |
-| Weather forecast | Current conditions in the touchscreen's status bar (on every page, including Home); tap for a 4-day forecast. Also on the dashboard. From [Open-Meteo](https://open-meteo.com) (free, no key). Location set with one tap when the phone level page says the van is level, a town search on the touchscreen, or the dashboard; no GPS module needed (one is supported but optional). Forecast gusts / rain chance can trigger alerts (default: "Strong wind forecast" > 50 km/h) |
+| Weather forecast | Current conditions in the touchscreen's status bar (on every page, including Home); tap for a 4-day forecast. The full forecast also fills the Climate page. Also on the dashboard. From [Open-Meteo](https://open-meteo.com) (free, no key). Location set with one tap when the phone level page says the van is level, or a town search on the dashboard; no GPS module needed (one is supported but optional). Forecast gusts / rain chance can trigger alerts (default: "Strong wind forecast" > 50 km/h) |
 | Caravan levelling | MPU-6050 on the hub. Bubble level + "raise left wheel 30 mm / jockey down 45 mm" on the touchscreen and **on your phone over Bluetooth** (no Wi-Fi needed). Sensor can be mounted at any angle: *Set level* + *Learn front* calibration, saved permanently |
-| Modern UI on the 7" Waveshare | LVGL 8.3 dark UI, 800×480. The rail shows only everyday pages (Home, Power, Water, Climate); Level, Alerts & rules and Settings sit behind **More**. Tap the bell for alerts. Screen sleeps, wakes on alarm |
+| Modern UI on the 7" Waveshare | LVGL 8.3 dark UI, 1024×600 (Waveshare 7B). Layouts are computed from the panel resolution, so nothing is pinned to one screen size. The rail shows only everyday pages (Home, Power, Water, Climate); Level, Alerts & rules and Settings sit behind **More**. Tap the bell for alerts. Screen dims right down when idle (10 s to 1 h, or never, set from the phone); the first touch only wakes it, and it wakes on alarm |
+
+> **Inverter and aircon control are switched off for now.** They'll be added to the project later. The code is still there behind two flags in [`firmware/display/src/ui/ui.h`](firmware/display/src/ui/ui.h): build with `-DFEATURE_INVERTER_CONTROL=1` and/or `-DFEATURE_AIRCON_CONTROL=1` (in `build_flags` in the display's `platformio.ini`) to bring back the Home tiles, the Climate cards and the aircon section in Settings, and set `FEATURES` at the top of the script in `web/index.html` to bring back the dashboard buttons. While they're off, the Climate page shows the weather forecast instead.
 
 ## Architecture
 
@@ -68,8 +70,8 @@ Remote dashboard (desktop and phone, dark and light):
  └──────────────────────────────┬─────────────────────────────────────────────────────────┘
                                 │ RS485 (4-core: 12 V, GND, A, B)
  ┌──────────────────────────────┴───────────────┐
- │ DISPLAY  Waveshare ESP32-S3-Touch-LCD-7      │      Trek 3: removed
- │  800×480 LVGL touchscreen (replaces Trek 3)  │      Odyssey phone app: still works
+ │ DISPLAY  Waveshare ESP32-S3-Touch-LCD-7B     │      Trek 3: removed
+ │ 1024×600 LVGL touchscreen (replaces Trek 3)  │      Odyssey phone app: still works
  └──────────────────────────────────────────────┘
 ```
 
@@ -84,7 +86,7 @@ firmware/
   lib/CaravanCommon/   shared: data model, JSON format, alert engine, VE.Direct parser,
                        SoC estimator, RS485 framing (portable C++, host-tested)
   hub/                 PlatformIO project - ESP32-S3 hub
-  display/             PlatformIO project - Waveshare ESP32-S3-Touch-LCD-7
+  display/             PlatformIO project - Waveshare ESP32-S3-Touch-LCD-7B
 web/index.html         dashboard (local + cloud), single file, no build step
 web/level.html         phone levelling page (Web Bluetooth straight to the hub, works offline)
 tests/                 host unit tests (make -C tests) + UI simulator (tests/sim)
@@ -94,28 +96,32 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 ## Quick start
 
 1. **Wire it up.** Follow [docs/WIRING.md](docs/WIRING.md): the RS485 link to the display, the inverter relay and the IR LED. The BMPRO, the Victrons and the temperature sensors are all wireless.
-2. **Set up the cloud side** (optional; the system runs fully offline without it) using [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md): a free HiveMQ Cloud broker plus the ntfy app.
+2. **Set up the cloud side** (optional; the system runs fully offline without it) using [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md): a free EMQX Cloud Serverless broker plus the ntfy app.
 3. **Flash the hub.**
    ```sh
    cd firmware/hub
    cp src/secrets.example.h src/secrets.h    # Wi-Fi, MQTT, ntfy topic, web password
-   pio run -t upload                          # firmware
+   pio run -t upload                          # firmware (classic ESP32; add -e hub for an ESP32-S3)
    pio run -t uploadfs                        # web dashboard -> LittleFS
    pio device monitor                         # watch it find sensors
+   pio run -e hub-esp32-demo -t upload        # bench test: fake readings sent to the display over RS485
    ```
+   Use PlatformIO Core **6.1.19** (`pip install platformio==6.1.19`). 6.2.0 breaks the display build on Windows: it installs SCons 4.11 and the display's pioarduino platform deletes it mid-build ("No module named SCons.Tool.FortranCommon"). Ignore the upgrade nag.
 4. **Flash the display.**
    ```sh
    cd firmware/display
-   pio run -e display-demo -t upload --upload-port COM3  # standalone GUI demo (no hub needed)
-   # Later, use -e display instead to show live data from the hub over RS485.
+   pio run -e display-demo -t upload --upload-port COM7  # standalone GUI demo (no hub needed)
+   # Use -e display instead to show live data from the hub over RS485
+   # (pair it with the hub-esp32-demo build to see the link working on the bench).
    ```
-5. **Commission it** from the touchscreen, under **Settings**:
+   The 7B has two USB-C ports. Flash through the **UART port** (CH343, "USB-Enhanced-SERIAL CH343" in Device Manager; COM7 on the development PC, yours may differ). The native-USB port shows no log output. See [HANDOFF.md](HANDOFF.md) section 8 for Windows gotchas.
+5. **Commission it from your phone.** All setup is on the dashboard (open `http://caravan.local` on the caravan Wi-Fi; the touchscreen's More → Settings shows the address). The touchscreen is slow for forms, so it only shows the result:
    - Add the two Victron Bluetooth keys: dashboard → *Setup* → *Victron solar controllers* (see [docs/WIRING.md](docs/WIRING.md#victron-smartsolar-10050-2---bluetooth)).
    - Connect to the OdysseyLink and decode its protocol: [docs/BMPRO_INTEGRATION.md](docs/BMPRO_INTEGRATION.md). Tanks are calibrated in the Odyssey app as before.
-   - Learn the aircon presets: set the Houghton remote to e.g. *Cool 22 auto*, tap *Learn preset* and press the remote's button. Repeat for each mode you use, then do *Learn OFF*.
+   - *(Only when aircon control is switched on, see the note under the feature table)* Learn the aircon presets on the touchscreen (More → Settings, since you point the remote at the hub): set the Houghton remote to e.g. *Cool 22 auto*, tap *Learn preset* and press the remote's button. Repeat for each mode you use, then do *Learn OFF*.
    - Calibrate the level sensor: More → *Caravan level* → *Set level* (and *Learn front*), see [docs/WIRING.md](docs/WIRING.md#level-sensor-mpu-6050).
    - Assign the temperature sensors: dashboard → *Setup* → *Find Bluetooth thermometers*, then pick Inside / Outside / Fridge for each.
-6. **Tune the alert rules** on the Alerts page (+/− thresholds) or in the dashboard (full editor). The defaults suit 12 V lithium: see `loadDefaultRules()` in [`CaravanModel.cpp`](firmware/lib/CaravanCommon/src/CaravanModel.cpp).
+6. **Tune the alert rules** on your phone: dashboard → *Alerts & rules*. The touchscreen's Alerts page shows them read-only. The defaults suit 12 V lithium: see `loadDefaultRules()` in [`CaravanModel.cpp`](firmware/lib/CaravanCommon/src/CaravanModel.cpp).
 7. **Remove the Trek 3** once the touchscreen shows battery, tanks and pumps from the BMPRO, and after the unplug test in the BMPRO doc passes.
 
 ## How many Bluetooth devices can it handle?
@@ -151,10 +157,11 @@ git clone --depth 1 -b v7.2.1  https://github.com/bblanchon/ArduinoJson ../Ardui
 git clone --depth 1 -b v8.3.11 https://github.com/lvgl/lvgl ../lvgl
 make -C tests                 # 182 unit checks under ASan/UBSan: weather + GPS parsing, levelling maths, Bluetooth thermometers, Victron
                               # BLE decrypt (incl. FIPS-197 AES vector), VE.Direct, alerts, JSON, SoC, RS485
-make -C tests/sim             # builds the real display UI against LVGL and renders every page to PNG
+make -C tests/sim             # builds the real display UI against LVGL and renders every page at 1024x600 (PPM)
+# make -C tests/sim OUT=out-800 RES="-DDISPLAY_HOR_RES=800 -DDISPLAY_VER_RES=480"   # same UI at another size
 ```
 
-Open [web/touchscreen-demo.html](web/touchscreen-demo.html) in a browser to explore a clickable touchscreen preview without the hub or display. It uses screenshots of the real 800×480 LVGL interface; navigation and selected controls are simulated rather than running the firmware. The preview loads its images from `docs/img`, so keep that folder alongside `web`.
+Open [web/touchscreen-demo.html](web/touchscreen-demo.html) in a browser to explore a clickable touchscreen preview without the hub or display. It uses 1024×600 screenshots of the real LVGL interface; navigation and selected controls are simulated rather than running the firmware. The preview loads its images from `docs/img`, so keep that folder alongside `web`.
 
 Open `web/index.html?demo` in a browser to try the separate remote dashboard with fake data.
 
@@ -164,7 +171,7 @@ Open `web/index.html?demo` in a browser to try the separate remote dashboard wit
 - **Fusing:** Fuse every new 12 V feed at the source: 2 A for the hub/display (and pump-rated fuses if you use the relay fallback).
 - **Pump backup:** the Odyssey phone app keeps working alongside the hub, so you can still run the pumps if the hub is ever down.
 - **Load shedding:** Automatic actions only ever turn things **off**. Nothing is switched on without a person pressing a button.
-- **Remote control:** It can be disabled from the touchscreen (More → Settings → *Allow remote control*). That switch can't be changed from the cloud.
+- **Remote control:** It can be disabled from the touchscreen (More → Settings → *Allow remote control*) or the dashboard on the caravan Wi-Fi (*Setup* → *Caravan display*). That switch can't be changed from the cloud.
 
 ## Credits
 

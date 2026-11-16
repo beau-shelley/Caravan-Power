@@ -85,6 +85,20 @@ void HubConfig::toJson(JsonObject o) const {
   loc["lat"] = location.lat;
   loc["lon"] = location.lon;
   loc["name"] = location.name;
+  JsonObject sc = o["sec"].to<JsonObject>();
+  sc["armed"] = secure.armed;
+  sc["sens"] = secure.sens;
+  sc["code"] = secure.code;
+  if (secure.haveBase) {
+    JsonArray sb = sc["base"].to<JsonArray>();
+    sb.add(secure.base.x);
+    sb.add(secure.base.y);
+    sb.add(secure.base.z);
+  }
+  JsonObject ht = o["htr"].to<JsonObject>();
+  ht["link"] = heater.link;
+  ht["addr"] = heater.addr;
+  ht["pass"] = heater.passkey;
   JsonArray ts = o["tsrc"].to<JsonArray>();
   for (auto v : tempSrc) ts.add(v);
   JsonArray tb = o["tble"].to<JsonArray>();
@@ -99,6 +113,7 @@ void HubConfig::toJson(JsonObject o) const {
 void HubConfig::fromJson(JsonObjectConst o) {
   if (o["meta"].is<JsonObjectConst>()) cv::metaFromJson(meta, o["meta"]);
   if (o["rules"].is<JsonArrayConst>()) cv::rulesFromJson(rules, o["rules"]);
+  cv::ensureTheftRule(rules);  // rule lists saved before secure mode existed
 
   JsonObjectConst b = o["bat"];
   if (!b.isNull()) {
@@ -156,6 +171,23 @@ void HubConfig::fromJson(JsonObjectConst o) {
     if (loc["name"].is<const char *>()) copyStr(location.name, sizeof(location.name), loc["name"]);
   }
   meta.locSrc = location.src;
+  JsonObjectConst sc = o["sec"];
+  if (!sc.isNull()) {
+    secure.armed = sc["armed"] | false;
+    secure.sens = sc["sens"] | secure.sens;
+    if (sc["code"].is<const char *>()) copyStr(secure.code, sizeof(secure.code), sc["code"]);
+    if (secure.sens > cv::SENS_HIGH) secure.sens = cv::SENS_MEDIUM;
+    secure.haveBase = sc["base"].size() == 3;
+    if (secure.haveBase) secure.base = {sc["base"][0].as<float>(), sc["base"][1].as<float>(), sc["base"][2].as<float>()};
+  }
+  meta.secCodeSet = secure.code[0] != 0;
+  JsonObjectConst ht = o["htr"];
+  if (!ht.isNull()) {
+    heater.link = ht["link"] | heater.link;
+    if (heater.link > cv::HTR_LINK_RF) heater.link = cv::HTR_LINK_NONE;
+    if (ht["addr"].is<const char *>()) copyStr(heater.addr, sizeof(heater.addr), ht["addr"]);
+    heater.passkey = ht["pass"] | heater.passkey;
+  }
   copyStr(meta.locName, sizeof(meta.locName), location.name);
   JsonObjectConst lv = o["lvl"];
   if (!lv.isNull()) {

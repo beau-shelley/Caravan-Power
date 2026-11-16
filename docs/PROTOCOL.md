@@ -22,15 +22,17 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | Key | Meaning |
 |---|---|
 | `ts`, `tz` | unix time, local UTC offset (s) |
-| `bat` | `on`, `src` (1 shunt, 2 BMPRO), `v`, `a` (+charge), `soc`, `ttg` (min, -1 idle), `sa` solar A, `ca` charger A, `chg` total charge A, `load` load A |
+| `bat` | `on`, `src` (1 shunt, 2 BMPRO), `v`, `a` (+charge), `soc`, `ttg` (min, -1 idle), `sa` solar A, `ca` BMPRO charger A (its solar + DC-DC), `aca` mains chargers A (inferred, 0 unless bulk), `acon` mains bulk charging detected (debounced), `chg` total charge A incl. mains, `load` load A |
 | `sol[2]` | `on`, `pv` V (-1 when not available, i.e. over Bluetooth), `w` W, `bv`, `ba`, `cs` (VE.Direct charge state), `err`, `yt` kWh today, `mx` peak W today, `ytot` |
 | `tmp[3]` | inside, outside, fridge: `on`, `c`, `lo`, `hi` (today), `b` sensor battery % (Bluetooth, if reported) |
 | `tank[3]` | `on`, `p` % |
 | `pump[2]` | `on`, `sn` sensed, `lk` dry-run lockout, `rt` run seconds |
 | `inv` | `on`, `ac` (240 V present) |
 | `ac` | `on`, `pre` preset index |
+| `htr` | diesel heater, only present once one is set up: `ln` link (1 Bluetooth, 2 433 MHz), `on` status heard recently, `ph` phase (0 off, 1 heating up, 2 running, 3 cooling down), `md` mode (0 thermostat, 1 power level), `st` set °C (8-36), `lv` power level (1-10). Bluetooth only, while `on`: `cab` cabin °C, `hx` heat exchanger °C, `v` supply V, `err` (0 none, 1-10 = E-01..E-10) |
 | `alerts[]` | `id`, `sev` (0 info, 1 warn, 2 alarm), `ack`, `since`, `val`, `msg` |
 | `lvl` | `on`, `z` (level set), `f` (front learned), `p` pitch ° (+ front high), `r` roll ° (+ left high), `tr` track mm, `jk` axle-to-jockey mm. Also sent alone as `{"t":"lvl",…}` 4×/s on RS485 |
+| `sec` | Secure mode: `m` 0 off / 1 arming / 2 armed / 3 alarm, `c` cause (1 tilt, 2 turned, 3 shaking, 4 sensor lost), `sn` sensitivity, `ok` level sensor working, `al` seconds until armed, `since` unix time of the last change, live `ti` tilt ° vs `tl` limit, `tu` turned ° vs `ul`, `sh` shaking seconds in the last minute vs `sl`. The alarm itself is the `theft` rule metric (Critical), so it is pushed like any alert |
 | `wx` | `ok`, `up` fetched (unix), `src` (1 GPS, 2 phone, 3 manual), `pl` place, `t` °C, `c` WMO code, `day`, `w`/`g` wind/gust km/h, `d[4]` = `[code, weekday 0=Sun, max, min, rain %, rain mm, gust]` |
 | `net` | `wifi`, `cloud`, `ip` |
 
@@ -39,9 +41,13 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | Command | Fields | Notes |
 |---|---|---|
 | `state`, `hello`, `rules_get`, `ping` | | read-only; `hello` returns meta + rules |
+| `restart` | | replies `{"t":"restarting"}`, then the hub restarts 1 s later. The touchscreen sends it from More → Restart system, then restarts itself |
 | `pump` | `i`, `on` | refused if locked out; with the relay fallback, also if the BMPRO turned it on |
 | `inverter` | `on` | |
 | `aircon` | `preset` or `off:true` | |
+| `heater` | any of `on` (bool), `mode` (`"temp"`/`"level"`), `temp` (8-36), `level` (1-10) | diesel heater; a set point for the other mode switches mode first. Errors: none set up, not connected, still cooling down (simulated) |
+| `heater_set` | `link` (0 none, 1 Bluetooth, 2 433 MHz), `addr`, `pass` (4-digit app passkey, default 1234) | saved in the hub config as `htr` |
+| `heater_seen`, `heater_log` | | read-only: Bluetooth heaters nearby (`{"t":"heater_seen","list":[{addr,name,rssi,age}]}`), and the recent raw frames (`{"t":"heater_log","log":"..."}`) for checking the protocol |
 | `ack` | | acknowledge all alerts (silences buzzer) |
 | `rule_set` | `rule:{id,en,name,m,cmp,thr,hys,dly,sev,ntf,act}` | `id:0` creates a new rule |
 | `rule_del` | `id` | |
@@ -54,6 +60,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `location_set` | `lat`, `lon`, `name`, `src` (2 phone, 3 manual) | weather location (refused while a GPS has a fix) |
 | `location_search` | `q` | town search via the hub (used by the touchscreen); reply `{"t":"loc_results","list":[{name,area,lat,lon}]}` |
 | `weather_refresh` | | fetch the forecast now |
+| `secure` | `arm` true/false, and/or `sens` 0 low / 1 medium / 2 high | Secure mode (anti-theft). Arming from the display starts a 60 s exit delay; from the phone or web page it arms at once (the first 5 s also measure the gyro bias). Arming is allowed from the cloud even with remote control off; disarming follows that setting. Fails without the level sensor |
 | `level_zero` | | "Set level": averages 2 s and saves the mounting angle |
 | `level_front` | | "Learn front": with the front lifted 2-3 cm |
 | `level_reset`, `level_status` | | forget calibration / last calibration result |
@@ -61,6 +68,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `ble_sensors` | | Bluetooth thermometers in range (temp, battery, signal, assigned role) |
 | `temp_set` | `role`, `src` (0 wired, 1 Bluetooth), `addr` | assign a Bluetooth thermometer to inside/outside/fridge |
 | `remote_control` | `on` | **not accepted from the cloud** |
+| `display_set` | `sleep` (seconds, 0 = never, max 14400) | idle time before the touchscreen dims right down (the first touch only wakes it); kept on the hub and sent to the display in `meta.ss` |
 | `config_set` | `cfg:{…}` | partial config merge (see `HubConfig::toJson`) |
 | `victron_set` | `i`, `key` (32 hex), optional `addr`, `src` (0 Bluetooth, 1 VE.Direct, 2 off) | add/replace a SmartSolar's Instant Readout key |
 | `victron_seen` | | Victron devices in Bluetooth range and which are decoding |
@@ -74,6 +82,23 @@ When remote control is off, every command except the read-only ones is refused f
 Rule metric keys: `bat_v bat_soc bat_a load_a charge_a solar_w solar1_w solar2_w temp_in temp_out temp_fridge tank1 tank2 tank3 wx_gust wx_rain` (the last two are today's forecast max gust and rain chance).
 Actions: `none aircon_off inverter_off pumps_off`.
 
+## Setting up from a phone or app
+
+All setup is done from the phone (the web dashboard's **Alerts & rules** and **Setup** tabs, or an app); the touchscreen only shows the rules and points to the phone. An app talks to the hub exactly like the web page:
+
+1. `GET /api/token` (HTTP Basic auth) → `{tok, wsPort}`, then open `ws://<hub>:<wsPort>/` and send `{"c":"auth","tok":…}`. Without a WebSocket, `POST /api/cmd` with one command per request works too, and the reply is the response body.
+2. Send `{"c":"hello"}`. The reply has `meta` (names, `rc`, `ss`, `tcal`, weather location) and `rules`.
+3. Change things with the commands above: `rule_set` / `rule_del` / `rules_reset` reply with the whole new rule list (`{"t":"rules",…}`); `display_set` and `remote_control` reply with the new `meta`. Every change is saved on the hub and pushed to the display.
+
+`meta` keys: `sol`, `tmp`, `tank`, `pump` (names), `acp` (aircon preset names), `cap` battery Ah, `rc` remote control allowed, `tcal` tanks need calibrating here, `ls`/`ln` weather location source/name, `ss` screen dim timeout in seconds, `fw`.
+
+Rule JSON: `{id, en, name, m, cmp ("<" or ">"), thr, hys, dly, sev, ntf, act, lv?}`. Severity: 0 info, 1 warning, 2 alarm, 3 critical.
+Optional `lv` adds up to 2 deeper steps to one rule, e.g. charge `thr:30, sev:1, lv:[{"thr":15,"sev":2},{"thr":5,"sev":3}]`.
+Each step must be strictly deeper than the one before (lower for `<`, higher for `>`); others are dropped.
+Each step fires once (an alert with that step's severity, unacknowledged again, pushed again). Moving around inside a step never re-fires it.
+A step re-arms when the value recovers past its threshold ± `hys`, and the alert drops back to the step above without a push. It clears when the value recovers past `thr` ± `hys`.
+The rule's `act` runs when it reaches its deepest step (the only step for a rule without `lv`). `dly` applies to every step.
+
 ## Hub config (`GET/POST /api/config`)
 
 `meta` (names, aircon presets, `rc`), `rules`, and the following:
@@ -85,6 +110,7 @@ Actions: `none aircon_off inverter_off pumps_off`.
 - `bmproAddr`: OdysseyLink Bluetooth address
 - `inv`: `mode`, `pulse`, `sense`
 - `loc`: `src`, `lat`, `lon`, `name` (weather location)
+- `htr`: `link` (0 none = default, 1 Bluetooth, 2 433 MHz), `addr`, `pass` (diesel heater, see docs/HEATER.md)
 - `tsrc[]` (0 wired, 1 Bluetooth per role), `tble[]` (Bluetooth address per role)
 - `tempAddr[]`, `cloudInt` s, `buzzer`, `bmproExplorer` (verbose Bluetooth logging)
 

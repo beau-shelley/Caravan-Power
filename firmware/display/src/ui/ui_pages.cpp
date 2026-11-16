@@ -1,3 +1,4 @@
+#include <math.h>
 // POWER, WATER and CLIMATE pages.
 #include "../app.h"
 #include "ui.h"
@@ -14,11 +15,11 @@ static lv_chart_series_t *serSolar, *serLoad;
 static uint32_t seenMetaPower = UINT32_MAX;
 
 static lv_obj_t *miniStat(lv_obj_t *parent, int x, int y, const char *cap, lv_obj_t **capOut = nullptr) {
-  lv_obj_t *l = lbl(parent, &lv_font_montserrat_12, col::MUTED, cap);
+  lv_obj_t *l = lbl(parent, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, cap);
   lv_obj_set_pos(l, x, y);
   if (capOut) *capOut = l;
-  lv_obj_t *v = lbl(parent, &lv_font_montserrat_16, col::TEXT, "--");
-  lv_obj_set_pos(v, x, y + 16);
+  lv_obj_t *v = lbl(parent, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::TEXT, "--");
+  lv_obj_set_pos(v, x, y + (LARGE ? 18 : 16));
   return v;
 }
 
@@ -33,39 +34,50 @@ static void socBtnCb(lv_event_t *) {
   confirm("Battery full?", "Set state of charge to 100%?\nOnly do this when the battery is fully charged.", socFullCb);
 }
 
+// Top: one card per solar controller. Bottom: battery detail | 30-minute chart.
+static constexpr int PW_TOP_H = (INNER_H - GAP) * 46 / 100, PW_BOT_H = INNER_H - GAP - PW_TOP_H;
+static constexpr int PW_BOT_Y = GAP + PW_TOP_H + GAP;
+static constexpr int PW_BAT_W = splitW(LARGE ? 37 : 39), PW_CHART_W = INNER_W - GAP - PW_BAT_W;
+
 void buildPower(lv_obj_t *p) {
+  constexpr int sw = colW(cv::NUM_SOLAR), statStep = innerOf(sw) / 4;
   for (int i = 0; i < cv::NUM_SOLAR; i++) {
-    lv_obj_t *cd = card(p, 12 + i * 350, 12, 338, 196, i == 0 ? "SOLAR CONTROLLER 1" : "SOLAR CONTROLLER 2", col::SOLAR);
+    lv_obj_t *cd = card(p, colX(i, cv::NUM_SOLAR), GAP, sw, PW_TOP_H, i == 0 ? "SOLAR CONTROLLER 1" : "SOLAR CONTROLLER 2",
+                        col::SOLAR);
     spName[i] = lbl(cd, &lv_font_montserrat_20, col::TEXT, app::meta.solarName[i]);
     lv_obj_set_pos(spName[i], 0, 22);
     spChip[i] = chip(cd);
     lv_obj_align(spChip[i], LV_ALIGN_TOP_RIGHT, 0, 24);
-    spW[i] = lbl(cd, &lv_font_montserrat_40, col::SOLAR, "-- W");
+    spW[i] = lbl(cd, LARGE ? &lv_font_montserrat_48 : &lv_font_montserrat_40, col::SOLAR, "-- W");
     lv_obj_set_pos(spW[i], 0, 50);
-    spPv[i] = miniStat(cd, 0, 116, "PANEL", &spPvCap[i]);
-    spA[i] = miniStat(cd, 74, 116, "CHARGE");
-    spToday[i] = miniStat(cd, 148, 116, "TODAY");
-    spMax[i] = miniStat(cd, 244, 116, "PEAK");
+    constexpr int statY = innerOf(PW_TOP_H) - (LARGE ? 42 : 38);  // stats row along the bottom
+    spPv[i] = miniStat(cd, 0, statY, "PANEL", &spPvCap[i]);
+    spA[i] = miniStat(cd, statStep - 6, statY, "CHARGE");
+    spToday[i] = miniStat(cd, 2 * statStep - 12, statY, "TODAY");
+    spMax[i] = miniStat(cd, 3 * statStep + 12, statY, "PEAK");
     spErr[i] = lbl(cd, &lv_font_montserrat_12, col::ALARM, "");
     lv_obj_align(spErr[i], LV_ALIGN_TOP_RIGHT, 0, 64);
   }
 
-  lv_obj_t *b = card(p, 12, 220, 264, 204, "BATTERY DETAIL", col::CHARGE);
-  static const char *caps[] = {"Voltage", "Current", "Charge", "Solar in", "Charger in", "Loads", "Source"};
+  lv_obj_t *b = card(p, GAP, PW_BOT_Y, PW_BAT_W, PW_BOT_H, "BATTERY DETAIL", col::CHARGE);
+  static const char *caps[] = {"Voltage", "Current", "Charge", "Solar in", "BMPRO / mains", "Loads", "Source"};
+  constexpr int rowStep = (innerOf(PW_BOT_H) - 24) / 7;
+  const lv_font_t *rf = rowStep >= 30 ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
   for (int i = 0; i < 7; i++) {
-    lv_obj_t *cl = lbl(b, &lv_font_montserrat_14, col::MUTED, caps[i]);
-    lv_obj_set_pos(cl, 0, 24 + i * 21);
-    bpRows[i] = lbl(b, &lv_font_montserrat_14, col::TEXT, "--");
-    lv_obj_align(bpRows[i], LV_ALIGN_TOP_RIGHT, 0, 24 + i * 21);
+    lv_obj_t *cl = lbl(b, rf, col::MUTED, caps[i]);
+    lv_obj_set_pos(cl, 0, 24 + i * rowStep);
+    bpRows[i] = lbl(b, rf, col::TEXT, "--");
+    lv_obj_align(bpRows[i], LV_ALIGN_TOP_RIGHT, 0, 24 + i * rowStep);
   }
   lv_obj_t *btn = button(b, 96, 24, "Set 100%", col::TILE, socBtnCb);
   lv_obj_align(btn, LV_ALIGN_TOP_RIGHT, 0, -6);
   lv_obj_t *lb = lv_obj_get_child(btn, 0);
   lv_obj_set_style_text_font(lb, &lv_font_montserrat_12, 0);
 
-  lv_obj_t *cc = card(p, 288, 220, 412, 204, "LAST 30 MIN  -  solar W / load W", col::SOLAR);
+  lv_obj_t *cc = card(p, GAP + PW_BAT_W + GAP, PW_BOT_Y, PW_CHART_W, PW_BOT_H, "LAST 30 MIN  -  solar W / load W",
+                     col::SOLAR);
   chart = lv_chart_create(cc);
-  lv_obj_set_size(chart, 384, 160);
+  lv_obj_set_size(chart, innerOf(PW_CHART_W), innerOf(PW_BOT_H) - 20);
   lv_obj_set_pos(chart, 0, 20);
   lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
   lv_chart_set_point_count(chart, 180);  // one point / 10 s
@@ -150,7 +162,8 @@ void updatePower() {
     for (int i = 0; i < 3; i++) setText(bpRows[i], "--");
   }
   setText(bpRows[3], "%.1f A", s.bat.solarA);
-  setText(bpRows[4], "%.1f A", s.bat.chargerA);
+  if (s.bat.acOn) setText(bpRows[4], "%.1f / %.0f A", s.bat.chargerA, s.bat.acA);
+  else setText(bpRows[4], "%.1f / 0 A", s.bat.chargerA);
   setText(bpRows[5], "%.1f A", s.bat.loadA);
   setText(bpRows[6], "%s", s.bat.source == cv::BAT_SRC_BMPRO ? "BMPRO" : s.bat.source == cv::BAT_SRC_SHUNT ? "Shunt" : "None");
 }
@@ -163,24 +176,28 @@ static uint32_t seenMetaWater = UINT32_MAX;
 static void pumpBtnCb(lv_event_t *e) { togglePump((int)(intptr_t)lv_event_get_user_data(e)); }
 
 void buildWater(lv_obj_t *p) {
+  // Top: one card per tank. Bottom: one card per pump.
+  constexpr int tankH = (INNER_H - GAP) * 58 / 100, pumpH = INNER_H - GAP - tankH, pumpY = GAP + tankH + GAP;
   for (int i = 0; i < cv::NUM_TANKS; i++) {
-    lv_obj_t *cd = card(p, 12 + i * 232, 12, 220, 252, "TANK", col::WATER);
-    wName[i] = lbl(cd, &lv_font_montserrat_20, col::TEXT, app::meta.tankName[i]);
+    lv_obj_t *cd = card(p, colX(i, cv::NUM_TANKS), GAP, colW(cv::NUM_TANKS), tankH, "TANK", col::WATER);
+    wName[i] = lbl(cd, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, app::meta.tankName[i]);
     lv_obj_set_pos(wName[i], 0, 20);
-    wBar[i] = vbar(cd, 70, 170, col::WATER);
+    wBar[i] = vbar(cd, LARGE ? 84 : 70, innerOf(tankH) - 54, col::WATER);
     lv_obj_set_pos(wBar[i], 0, 54);
-    wPct[i] = lbl(cd, &lv_font_montserrat_40, col::TEXT, "--");
+    wPct[i] = lbl(cd, LARGE ? &lv_font_montserrat_48 : &lv_font_montserrat_40, col::TEXT, "--");
     lv_obj_align(wPct[i], LV_ALIGN_BOTTOM_RIGHT, 0, -6);
   }
+  constexpr int pw = colW(cv::NUM_PUMPS), btnW = LARGE ? 150 : 120;
   for (int i = 0; i < cv::NUM_PUMPS; i++) {
-    lv_obj_t *cd = card(p, 12 + i * 350, 276, 338, 148, "WATER PUMP", col::WATER);
-    pName[i] = lbl(cd, &lv_font_montserrat_20, col::TEXT, app::meta.pumpName[i]);
+    lv_obj_t *cd = card(p, colX(i, cv::NUM_PUMPS), pumpY, pw, pumpH, "WATER PUMP", col::WATER);
+    pName[i] = lbl(cd, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, app::meta.pumpName[i]);
     lv_obj_set_pos(pName[i], 0, 22);
-    pStatus[i] = lbl(cd, &lv_font_montserrat_14, col::MUTED, "--");
-    lv_obj_set_width(pStatus[i], 170);
+    pStatus[i] = lbl(cd, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, col::MUTED, "--");
+    lv_obj_set_width(pStatus[i], innerOf(pw) - btnW - 16);
     lv_label_set_long_mode(pStatus[i], LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(pStatus[i], 0, 54);
-    pBtn[i] = button(cd, 120, 84, LV_SYMBOL_POWER, col::TILE, pumpBtnCb, (void *)(intptr_t)i);
+    lv_obj_set_pos(pStatus[i], 0, LARGE ? 60 : 54);
+    constexpr int btnH = innerOf(pumpH) - 20 < (LARGE ? 110 : 84) ? innerOf(pumpH) - 20 : (LARGE ? 110 : 84);
+    pBtn[i] = button(cd, btnW, btnH, LV_SYMBOL_POWER, col::TILE, pumpBtnCb, (void *)(intptr_t)i);
     lv_obj_set_style_text_font(lv_obj_get_child(pBtn[i], 0), &lv_font_montserrat_28, 0);
     lv_obj_align(pBtn[i], LV_ALIGN_RIGHT_MID, 0, 10);
   }
@@ -219,6 +236,17 @@ void updateWater() {
 static lv_obj_t *cName[cv::NUM_TEMPS], *cVal[cv::NUM_TEMPS], *cMinMax[cv::NUM_TEMPS];
 static lv_obj_t *acGrid, *acStatus, *acOff;
 static lv_obj_t *acBtns[cv::MAX_AC_PRESETS];
+static int acGridW, acGridH;
+static lv_obj_t *wxCard, *wxBox, *wxCaption;  // forecast card (when aircon + inverter are off)
+static int wxBoxW, wxBoxH;
+static lv_obj_t *heaterCard;
+static int heaterShown = -1;  // forecast card shares its row with the heater card once one is set up
+static constexpr int HTR_W = splitW(LARGE ? 38 : 42);
+static uint32_t wxSeen = UINT32_MAX;
+static void buildAircon(lv_obj_t *p, int x, int y, int w, int h);
+static void buildInverter(lv_obj_t *p, int x, int y, int w, int h);
+static void updateAircon();
+static void updateInverter();
 static lv_obj_t *invBtn, *invLbl, *invAc;
 static uint32_t seenMetaClimate = UINT32_MAX;
 
@@ -236,48 +264,77 @@ static void rebuildPresets() {
     lv_obj_set_pos(h, 0, 10);
     return;
   }
+  // 4 x 2 grid filling the preset area
+  const int gw = acGridW, gh = acGridH;
+  const int bw = (gw - 3 * 8) / 4, bh = (gh - 8) / 2 < 64 ? (gh - 8) / 2 : 64;
   for (int i = 0; i < n; i++) {
-    acBtns[i] = button(acGrid, 96, 52, app::meta.acPresetName[i], col::TILE, acPresetCb, (void *)(intptr_t)i);
-    lv_obj_set_pos(acBtns[i], (i % 4) * 104, (i / 4) * 60);
+    acBtns[i] = button(acGrid, bw, bh, app::meta.acPresetName[i], col::TILE, acPresetCb, (void *)(intptr_t)i);
+    lv_obj_set_pos(acBtns[i], (i % 4) * (bw + 8), (i / 4) * (bh + 8));
     lv_obj_t *l = lv_obj_get_child(acBtns[i], 0);
-    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
-    lv_obj_set_width(l, 88);
+    lv_obj_set_style_text_font(l, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, 0);
+    lv_obj_set_width(l, bw - 8);
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
   }
 }
 
 void buildClimate(lv_obj_t *p) {
+  // Top: one card per temperature. Bottom: aircon presets | inverter, or the
+  // weather forecast while those controls are switched off (see ui.h).
+  constexpr int tempH = LARGE ? 168 : 140, botY = GAP + tempH + GAP, botH = INNER_H - GAP - tempH;
+  constexpr int acW = !HAS_AIRCON ? 0 : HAS_INVERTER ? splitW(66) : INNER_W;
+  constexpr int invW = !HAS_INVERTER ? 0 : HAS_AIRCON ? INNER_W - GAP - acW : INNER_W;
+  constexpr int invX = HAS_AIRCON ? GAP + acW + GAP : GAP;
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
-    lv_obj_t *cd = card(p, 12 + i * 232, 12, 220, 140, "TEMPERATURE", col::CLIMATE);
-    cName[i] = lbl(cd, &lv_font_montserrat_16, col::MUTED, app::meta.tempName[i]);
+    lv_obj_t *cd = card(p, colX(i, cv::NUM_TEMPS), GAP, colW(cv::NUM_TEMPS), tempH, "TEMPERATURE", col::CLIMATE);
+    cName[i] = lbl(cd, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED, app::meta.tempName[i]);
     lv_obj_set_pos(cName[i], 0, 20);
     cVal[i] = lbl(cd, &lv_font_montserrat_48, col::TEXT, "--");
     lv_obj_set_pos(cVal[i], 0, 42);
-    cMinMax[i] = lbl(cd, &lv_font_montserrat_12, col::MUTED, "");
+    cMinMax[i] = lbl(cd, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
     lv_obj_align(cMinMax[i], LV_ALIGN_BOTTOM_LEFT, 0, 0);
   }
 
-  lv_obj_t *ac = card(p, 12, 164, 448, 260, "AIR CONDITIONER", col::CLIMATE);
-  acStatus = lbl(ac, &lv_font_montserrat_20, col::TEXT, "Off");
-  lv_obj_set_pos(acStatus, 0, 20);
-  acOff = button(ac, 96, 36, LV_SYMBOL_POWER " Off", col::TILE, acOffCb);
-  lv_obj_align(acOff, LV_ALIGN_TOP_RIGHT, 0, 14);
-  acGrid = panel(ac, 0, 62, 420, 172);
-  rebuildPresets();
+  if (!HAS_AIRCON && !HAS_INVERTER) {
+    // Diesel heater on the left (only once one is set up), forecast beside it.
+    heaterCard = buildHeater(p, GAP, botY, HTR_W, botH);
+    lv_obj_add_flag(heaterCard, LV_OBJ_FLAG_HIDDEN);
+    wxCard = card(p, GAP, botY, INNER_W, botH, "FORECAST", col::WATER);
+    wxCaption = lv_obj_get_child(wxCard, 1);  // card(): child 0 = dot, 1 = caption
+    wxBox = panel(wxCard, 0, 0, innerOf(INNER_W), innerOf(botH));
+    wxBoxW = innerOf(INNER_W);
+    wxBoxH = innerOf(botH);
+  }
+  if (HAS_AIRCON) buildAircon(p, GAP, botY, acW, botH);
+  if (HAS_INVERTER) buildInverter(p, invX, botY, invW, botH);
+}
 
-  lv_obj_t *iv = card(p, 472, 164, 228, 260, "INVERTER 3000W", col::SOLAR);
+static void buildAircon(lv_obj_t *p, int x, int y, int acW, int botH) {
+  lv_obj_t *ac = card(p, x, y, acW, botH, "AIR CONDITIONER", col::CLIMATE);
+  acStatus = lbl(ac, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "Off");
+  lv_obj_set_pos(acStatus, 0, 20);
+  acOff = button(ac, LARGE ? 110 : 96, LARGE ? 42 : 36, LV_SYMBOL_POWER " Off", col::TILE, acOffCb);
+  lv_obj_align(acOff, LV_ALIGN_TOP_RIGHT, 0, 14);
+  acGridW = innerOf(acW);
+  acGridH = innerOf(botH) - (LARGE ? 70 : 62);
+  acGrid = panel(ac, 0, LARGE ? 70 : 62, acGridW, acGridH);
+  rebuildPresets();
+}
+
+static void buildInverter(lv_obj_t *p, int x, int y, int invW, int botH) {
+  lv_obj_t *iv = card(p, x, y, invW, botH, "INVERTER 3000W", col::SOLAR);
+  constexpr int invD = LARGE ? 160 : 120;
   invBtn = lv_btn_create(iv);
-  lv_obj_set_size(invBtn, 120, 120);
-  lv_obj_align(invBtn, LV_ALIGN_TOP_MID, 0, 26);
+  lv_obj_set_size(invBtn, invD, invD);
+  lv_obj_align(invBtn, LV_ALIGN_TOP_MID, 0, LARGE ? 32 : 26);
   lv_obj_set_style_radius(invBtn, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_shadow_width(invBtn, 0, 0);
   lv_obj_add_event_cb(invBtn, invBtnCb, LV_EVENT_CLICKED, nullptr);
   lv_obj_t *ic = lbl(invBtn, &lv_font_montserrat_48, col::MUTED, LV_SYMBOL_POWER);
   lv_obj_center(ic);
-  invLbl = lbl(iv, &lv_font_montserrat_20, col::TEXT, "Off");
+  invLbl = lbl(iv, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "Off");
   lv_obj_align(invLbl, LV_ALIGN_BOTTOM_MID, 0, -24);
-  invAc = lbl(iv, &lv_font_montserrat_12, col::MUTED, "");
+  invAc = lbl(iv, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
   lv_obj_align(invAc, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 
@@ -286,24 +343,55 @@ void updateClimate() {
   if (seenMetaClimate != app::metaVer) {
     seenMetaClimate = app::metaVer;
     for (int i = 0; i < cv::NUM_TEMPS; i++) lv_label_set_text(cName[i], app::meta.tempName[i]);
-    rebuildPresets();
+    if (HAS_AIRCON) rebuildPresets();
   }
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
     const cv::Temp &t = s.temp[i];
     if (t.online) {
-      setText(cVal[i], "%.1f\xC2\xB0", t.c);
+      setText(cVal[i], "%d\xC2\xB0", (int)lroundf(t.c));
       lv_obj_set_style_text_color(cVal[i], c(tempColor(i, t.c)), 0);
       if (t.batt >= 0 && t.batt <= 20)  // Bluetooth sensor needs a new battery
-        setText(cMinMax[i], LV_SYMBOL_DOWN " %.1f\xC2\xB0  " LV_SYMBOL_UP " %.1f\xC2\xB0  " LV_SYMBOL_BATTERY_1 " %d%%",
-                t.minC, t.maxC, t.batt);
+        setText(cMinMax[i], LV_SYMBOL_DOWN " %d\xC2\xB0  " LV_SYMBOL_UP " %d\xC2\xB0  " LV_SYMBOL_BATTERY_1 " %d%%",
+                (int)lroundf(t.minC), (int)lroundf(t.maxC), t.batt);
       else
-        setText(cMinMax[i], LV_SYMBOL_DOWN " %.1f\xC2\xB0   " LV_SYMBOL_UP " %.1f\xC2\xB0  today", t.minC, t.maxC);
+        setText(cMinMax[i], LV_SYMBOL_DOWN " %d\xC2\xB0   " LV_SYMBOL_UP " %d\xC2\xB0  today", (int)lroundf(t.minC), (int)lroundf(t.maxC));
     } else {
       setText(cVal[i], "--");
       lv_obj_set_style_text_color(cVal[i], c(col::DIM), 0);
       setText(cMinMax[i], "sensor offline");
     }
   }
+  if (heaterCard) {
+    int shown = s.htr.link != cv::HTR_LINK_NONE;
+    if (shown != heaterShown) {  // heater set up / removed: re-flow the bottom row
+      heaterShown = shown;
+      int fx = shown ? GAP + HTR_W + GAP : GAP, fw = shown ? INNER_W - HTR_W - GAP : INNER_W;
+      if (shown) lv_obj_clear_flag(heaterCard, LV_OBJ_FLAG_HIDDEN);
+      else lv_obj_add_flag(heaterCard, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_set_pos(wxCard, fx, lv_obj_get_y(wxCard));
+      lv_obj_set_width(wxCard, fw);
+      wxBoxW = innerOf(fw);
+      lv_obj_set_width(wxBox, wxBoxW);
+      wxSeen = UINT32_MAX;  // rebuild the forecast at the new width
+    }
+    if (shown) updateHeater();
+  }
+  if (wxBox) {  // forecast card: rebuild on a new forecast, or once a minute for "updated N min ago"
+    const cv::Weather &w = s.wx;
+    uint32_t sig = w.valid ? (w.updated ^ (s.ts / 60)) + 1 : 0;
+    if (sig != wxSeen) {
+      wxSeen = sig;
+      if (w.place[0]) setText(wxCaption, "FORECAST  -  %s", w.place);
+      else setText(wxCaption, "FORECAST");
+      buildForecast(wxBox, wxBoxW, wxBoxH);
+    }
+  }
+  if (HAS_AIRCON) updateAircon();
+  if (HAS_INVERTER) updateInverter();
+}
+
+static void updateAircon() {
+  const cv::State &s = app::state;
   for (int i = 0; i < app::meta.acPresetCount; i++) {
     if (!acBtns[i]) continue;
     bool on = s.ac.on && s.ac.preset == i;
@@ -314,7 +402,10 @@ void updateClimate() {
     setText(acStatus, "On - %s", app::meta.acPresetName[s.ac.preset]);
   else
     setText(acStatus, "Off");
+}
 
+static void updateInverter() {
+  const cv::State &s = app::state;
   lv_obj_set_style_bg_color(invBtn, c(s.inv.on ? col::SOLAR : col::TILE), 0);
   lv_obj_set_style_text_color(lv_obj_get_child(invBtn, 0), c(s.inv.on ? col::BG : col::MUTED), 0);
   setText(invLbl, "%s", s.inv.on ? "On" : "Off");

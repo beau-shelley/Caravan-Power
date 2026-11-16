@@ -3,6 +3,7 @@
 #include <NimBLEDevice.h>
 
 #include "Ble.h"
+#include "BleTag.h"
 #include "VictronBle.h"
 
 namespace hub {
@@ -17,6 +18,7 @@ struct Slot {
   cv::Solar solar;
   uint32_t lastMs = 0;
   uint32_t packets = 0;
+  uint32_t lastLogMs = 0;
 };
 Slot gSlots[cv::NUM_SOLAR];
 
@@ -27,6 +29,7 @@ struct SeenDev {
   int rssi;
   int8_t slot;
   uint32_t lastMs;
+  uint32_t hintMs;  // last "key doesn't match" log line
 };
 constexpr int MAX_SEEN = 8;
 SeenDev gSeen[MAX_SEEN];
@@ -62,6 +65,12 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
       s.packets++;
       portEXIT_CRITICAL(&gLock);
       matched = i;
+      // Readings to the USB log every 10 s, so a van visit shows it working.
+      if (!s.lastLogMs || millis() - s.lastLogMs >= 10000) {
+        s.lastLogMs = millis();
+        Serial.printf("[victron] solar %d %s: %.2f V %.1f A %.0f W, today %.2f kWh, state %u, rssi %d\n", i + 1,
+                      addr.c_str(), tmp.batV, tmp.batA, tmp.pvW, tmp.yieldTodayKwh, tmp.cs, d->getRSSI());
+      }
       break;
     }
   }
@@ -78,10 +87,23 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
     gSeen[idx].model = adv.model;
     gSeen[idx].record = adv.record;
     gSeen[idx].rssi = d->getRSSI();
-    if (matched >= 0 || gSeen[idx].lastMs == 0) gSeen[idx].slot = matched;
+    bool fresh = gSeen[idx].lastMs == 0;
+    if (fresh) gSeen[idx].hintMs = 0;
+    if (matched >= 0 || fresh) gSeen[idx].slot = matched;
     gSeen[idx].lastMs = millis();
   }
+  // Heard a Victron that no saved key opens: say so once a minute, with the
+  // first key byte it expects (handy for spotting a mistyped key).
+  bool hint = false;
+  if (matched < 0 && idx >= 0 && (!gSeen[idx].hintMs || millis() - gSeen[idx].hintMs >= 60000)) {
+    gSeen[idx].hintMs = millis();
+    hint = true;
+  }
   portEXIT_CRITICAL(&gLock);
+  if (hint)
+    Serial.printf("[victron] %s (%s, model 0x%04X) heard, but no saved key matches - its key starts with %02x. "
+                  "Enter it on the phone: Setup > Victron solar controllers\n",
+                  addr.c_str(), cv::victronRecordName(adv.record), adv.model, adv.keyCheck);
 }
 }  // namespace
 
