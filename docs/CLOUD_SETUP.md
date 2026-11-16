@@ -3,9 +3,11 @@
 Starlink uses **CGNAT**: there's no public IP address, so you can't port-forward into the caravan. Instead, the hub makes an **outbound**, encrypted connection to an MQTT broker, and your phone or laptop connects to the same broker. Nothing in the van is exposed to the internet.
 
 ```
-Hub ──TLS 8883──▶ MQTT broker (EMQX) ◀──WSS 8084── phone app / web dashboard
-Hub ──HTTPS────▶ ntfy.sh ──push──▶ ntfy app on your phone
+Hub ──RS485──▶ Display ──TLS 8883──▶ MQTT broker (EMQX) ◀──WSS 8084── phone app / web dashboard
+                      └──HTTPS────▶ ntfy.sh ──push──▶ ntfy app on your phone
 ```
+
+The **display board** makes the internet connections. The classic ESP32 hub hasn't enough RAM for encrypted (TLS) connections next to Wi-Fi and Bluetooth, while the display's ESP32-S3 has 8 MB of PSRAM. The hub sends the display its data, alert events and push alerts over RS485, and runs the commands the display relays from the cloud (still subject to the remote-control switch). Both boards build with the same `firmware/hub/src/secrets.h`, so the display joins the same Wi-Fi and uses the same broker and ntfy topic. Set `CLOUD_ON_DISPLAY 0` in `secrets.h` only for a hub with no display.
 
 The system works fully without any of this. The touchscreen, the phone app on the van Wi-Fi and the local web page (`http://caravan.local`) only need the hub.
 
@@ -32,7 +34,7 @@ HiveMQ Cloud no longer has a free plan, so we use **EMQX Cloud Serverless**. Its
    #define MQTT_USER "caravan-hub"
    #define MQTT_PASS "…"
    ```
-   Then flash the hub. Its serial log shows `[cloud] connected` within a few seconds of joining Wi-Fi. In the EMQX console, **Clients** then lists `caravan-hub`.
+   Then flash the hub **and the display** (the display reads the same file). The display's serial log (COM3) shows `[wifi] connected` and then `[cloud] connected` within a few seconds; `[cloud] failed rc=4` or `rc=5` means a wrong username or password. In the EMQX console, **Clients** then lists `caravan-display-…`.
 5. In the phone app: **Setup → Away from the van (cloud)**. Enter the Address (just the host name; the app adds `wss://…:8084/mqtt`), username `caravan-dash` and its password, then **Save**. Turn the phone's Wi-Fi off to check: Home shows an "Away from the van" strip and live numbers.
 
 The app picks the connection by itself: on the van Wi-Fi it talks to the hub directly; anywhere else it goes through EMQX. It looks for the hub again every 30 s, so it switches back as soon as you're at the van.

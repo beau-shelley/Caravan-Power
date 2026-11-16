@@ -23,6 +23,12 @@
 #define MQTT_USER "caravan-hub"
 #define MQTT_PASS "changeme"
 
+// The display board (ESP32-S3) runs the cloud MQTT link and the ntfy push
+// alerts, using the settings in this file: the classic ESP32 hub hasn't the RAM
+// for TLS next to Wi-Fi + Bluetooth. Both boards build with this one file.
+// Set to 0 only for a hub with no display (the hub then does it itself).
+#define CLOUD_ON_DISPLAY 1
+
 // Phone push notifications via ntfy (https://ntfy.sh, free iOS/Android app).
 // Pick a long random topic name - anyone who knows it can read your alerts.
 #define NTFY_SERVER "https://ntfy.sh"
