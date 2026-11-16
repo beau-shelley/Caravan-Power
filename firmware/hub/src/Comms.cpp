@@ -128,7 +128,8 @@ void Net::loop(cv::State &s) {
   static uint32_t lastTry = 0;
   bool up = WiFi.status() == WL_CONNECTED;
   if (up && !was) {
-    Serial.printf("[net] Wi-Fi up, IP %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("[net] Wi-Fi up, IP %s (heap %u free, largest %u)\n", WiFi.localIP().toString().c_str(),
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     MDNS.begin(HOSTNAME);
     MDNS.addService("http", "tcp", 80);
   }
