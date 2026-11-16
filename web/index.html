@@ -384,8 +384,8 @@ function render() {
 
   $("#temps").innerHTML = S.tmp.map((t, i) => `
     <div class="t"><span class="muted">${esc(META.tmp[i])}</span>
-      <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? t.c.toFixed(1) + "°" : "--"}</span>
-      <span class="muted small">${t.on ? `&nbsp;↓${t.lo.toFixed(1)} ↑${t.hi.toFixed(1)}` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
+      <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? Math.round(t.c) + "°" : "--"}</span>
+      <span class="muted small">${t.on ? `&nbsp;↓${Math.round(t.lo)}° ↑${Math.round(t.hi)}°` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
 
   $("#tanks").innerHTML = S.tank.map((t, i) => {
     const bad = i === 2 ? t.p > 85 : t.p < 15, warn = i === 2 ? t.p > 70 : t.p < 30;
@@ -472,7 +472,7 @@ function onMessage(msg) {
     case "err": toast(msg.msg); break;
     case "sensors": renderSensors(msg.list); break;
     case "ble_sensors": $("#bleRows").innerHTML = msg.list.length ? msg.list.map((s) => `
-      <div class="row between" style="padding:6px 0"><span><b>${s.c.toFixed(1)}°</b> ${esc(s.name || s.type)}
+      <div class="row between" style="padding:6px 0"><span><b>${Math.round(s.c)}°</b> ${esc(s.name || s.type)}
         <span class="muted small">${esc(s.type)} · <code>${esc(s.addr)}</code> · ${s.rssi} dBm${s.batt >= 0 ? " · batt " + s.batt + "%" : ""}</span></span>
         <select data-bleaddr="${esc(s.addr)}" style="width:160px"><option value="-1">Not used</option>
         ${META.tmp.map((n, i) => `<option value="${i}" ${s.role === i ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`).join("")
@@ -626,7 +626,7 @@ $("#vicRows").addEventListener("click", (e) => { const b = e.target.closest("but
   send({ c:"victron_set", i, key, addr: $("#vicAddr" + i).value.trim().toLowerCase(), src: 0 }); });
 function renderSensors(list) {
   $("#sensorRows").innerHTML = list.length ? list.map((s) => `
-    <div class="row between" style="padding:6px 0"><span><code>${esc(s.addr)}</code> <b>${s.c.toFixed(1)}°</b></span>
+    <div class="row between" style="padding:6px 0"><span><code>${esc(s.addr)}</code> <b>${Math.round(s.c)}°</b></span>
       <select data-addr="${esc(s.addr)}" style="width:160px"><option value="-1">Unassigned</option>
       ${META.tmp.map((n, i) => `<option value="${i}" ${s.role === i ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`).join("")
     : `<span class="muted">No DS18B20 sensors found</span>`;

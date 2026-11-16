@@ -1,3 +1,4 @@
+#include <math.h>
 // HOME - everything important on one screen.
 //  [ Battery ring  ] [ Energy flow: solar / charger / loads + per-MPPT  ]
 //  [ Temperatures  ] [ Water tanks      ] [ Gas bottle | Internal / External pumps ]
@@ -254,7 +255,7 @@ void updateHome() {
   // temps
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
     if (s.temp[i].online) {
-      setText(tVal[i], "%.1f\xC2\xB0", s.temp[i].c);
+      setText(tVal[i], "%d\xC2\xB0", (int)lroundf(s.temp[i].c));
       lv_obj_set_style_text_color(tVal[i], c(tempColor(i, s.temp[i].c)), 0);
     } else {
       setText(tVal[i], "--");

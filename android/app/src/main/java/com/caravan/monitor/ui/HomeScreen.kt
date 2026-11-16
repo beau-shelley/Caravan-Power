@@ -71,7 +71,7 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
         if (s.wx.ok) {
             SectionCard("Weather${if (s.wx.place.isNotBlank()) " · ${s.wx.place}" else ""}", Accent.climate) {
                 Row(Modifier.fillMaxWidth()) {
-                    Stat("Now", "${fmt1(s.wx.tempC)} °C", Modifier.weight(1f))
+                    Stat("Now", "${fmtDeg(s.wx.tempC)} °C", Modifier.weight(1f))
                     Stat("Wind", "${s.wx.windKmh.toInt()} km/h", Modifier.weight(1f))
                     Stat("Gusts", "${s.wx.gustKmh.toInt()} km/h", Modifier.weight(1f))
                 }
@@ -147,8 +147,8 @@ private fun TempsCard(s: HubState, meta: Meta) {
             s.tmp.forEachIndexed { i, t ->
                 Column(Modifier.weight(1f)) {
                     Text(meta.tempNames.getOrElse(i) { "Temp ${i + 1}" }, style = MaterialTheme.typography.labelSmall, color = Accent.muted)
-                    Text(if (t.on) "${fmt1(t.c)}°" else "–", fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
-                    if (t.on) Text("${fmt1(t.lo)}° / ${fmt1(t.hi)}°", style = MaterialTheme.typography.bodySmall, color = Accent.muted)
+                    Text(if (t.on) "${fmtDeg(t.c)}°" else "–", fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+                    if (t.on) Text("${fmtDeg(t.lo)}° / ${fmtDeg(t.hi)}°", style = MaterialTheme.typography.bodySmall, color = Accent.muted)
                 }
             }
         }
@@ -197,6 +197,8 @@ fun Bar(fraction: Double, color: androidx.compose.ui.graphics.Color) {
 
 private fun socColor(soc: Double) = when { soc < 20 -> Accent.alarm; soc < 40 -> Accent.warn; else -> Accent.battery }
 private fun fmt1(v: Double) = String.format(Locale.US, "%.1f", v)
+// Temperatures are shown as whole degrees (rounded; never "-0").
+private fun fmtDeg(v: Double) = Math.round(v).toInt().toString()
 private fun fmt2(v: Double) = String.format(Locale.US, "%.2f", v)
 private fun signed(v: Double) = (if (v > 0) "+" else "") + fmt1(v)
 private fun ttgText(a: Double, ttg: Int): String = when {
