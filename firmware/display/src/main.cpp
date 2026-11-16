@@ -26,8 +26,8 @@ void setup() {
 }
 
 static void sleepLogic() {
-  // Wake for any new un-acknowledged warning/alarm; otherwise sleep after the
-  // configured idle time (saves ~1 W - the backlight is the biggest load).
+  // Wake for any new un-acknowledged warning/alarm; otherwise dim right down
+  // after the idle time set on the phone (the backlight is the biggest load).
   static uint8_t lastUnacked = 0;
   uint8_t unacked = 0;
   for (int i = 0; i < app::state.alertCount; i++)
@@ -35,11 +35,24 @@ static void sleepLogic() {
   if (unacked > lastUnacked && !board::backlightOn()) board::backlight(true);
   lastUnacked = unacked;
 
-  int mins = ui::sleepMinutes();
-  if (mins > 0 && board::backlightOn() && unacked == 0 &&
-      millis() - board::lastTouchMs() > (uint32_t)mins * 60000UL) {
+  int secs = ui::sleepSeconds();
+  if (secs > 0 && board::backlightOn() && unacked == 0 &&
+      millis() - board::lastTouchMs() > (uint32_t)secs * 1000UL) {
     board::backlight(false);
-    ui::showPage(ui::PAGE_HOME);  // wake up on the home screen
+  }
+  // Short timeouts (10-30 s) shouldn't throw you off the page you're reading,
+  // e.g. the Level page while winding the jockey. After 5 min dimmed, go
+  // back to Home so that's what you see on waking.
+  static uint32_t dimmedAt = 0;
+  static bool homed = false;
+  if (board::backlightOn()) {
+    dimmedAt = 0;
+    homed = false;
+  } else if (!dimmedAt) {
+    dimmedAt = millis() | 1;
+  } else if (!homed && millis() - dimmedAt > 5 * 60000UL) {
+    ui::showPage(ui::PAGE_HOME);
+    homed = true;
   }
 }
 

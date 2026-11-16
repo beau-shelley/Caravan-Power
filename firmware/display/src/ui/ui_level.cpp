@@ -30,7 +30,6 @@ static lv_obj_t *ring(lv_obj_t *p, int r, uint32_t color, int width) {
   return o;
 }
 
-static void locCb(lv_event_t *) { openTownSearch(); }
 static void zeroDo(void *) { app::cmd("level_zero"); }
 static void frontDo(void *) { app::cmd("level_front"); }
 static void zeroCb(lv_event_t *) {
@@ -133,10 +132,12 @@ void buildLevel(lv_obj_t *p) {
   lv_label_set_long_mode(lDims, LV_LABEL_LONG_WRAP);
   lv_obj_set_pos(lDims, 0, dimsY);
   // Shown once the van has been level for a few seconds: good moment to set
-  // the weather location for this site (the phone level page offers the same).
-  bLoc = button(a, aw, LARGE ? 46 : 40, LV_SYMBOL_GPS " Set weather location", col::CHARGE, locCb);
-  lv_obj_set_style_text_color(lv_obj_get_child(bLoc, 0), c(col::BG), 0);
-  lv_obj_set_pos(bLoc, 0, locY);
+  // the weather location for this site. That's done on the phone (level page
+  // or Setup tab), which can use the phone's own GPS.
+  bLoc = lbl(a, capF, col::CHARGE, LV_SYMBOL_GPS " Set the weather location on your phone");
+  lv_obj_set_width(bLoc, aw);
+  lv_label_set_long_mode(bLoc, LV_LABEL_LONG_WRAP);
+  lv_obj_set_pos(bLoc, 0, locY + 14);
   lv_obj_add_flag(bLoc, LV_OBJ_FLAG_HIDDEN);
   lv_obj_t *bz = button(a, (aw - 8) / 2, btnH, "Set level", col::TILE, zeroCb);
   lv_obj_align(bz, LV_ALIGN_BOTTOM_LEFT, 0, 0);
@@ -201,7 +202,7 @@ void updateLevel() {
   else if (!l.zeroed) setText(lStatus, LV_SYMBOL_WARNING " Not calibrated. Park on level ground and press Set level.");
   else if (!l.fwdLearned) setText(lStatus, "Calibrated. Optional: Learn front if the sensor isn't square to the van. Do the wheels first, then the jockey.");
   else setText(lStatus, "Calibrated. Do the wheels first, then the jockey.");
-  setText(lDims, "Wheels %u mm apart, jockey %u mm\nfrom axle (change in dashboard)", l.trackMm, l.jockeyMm);
+  setText(lDims, "Wheels %u mm apart, jockey %u mm\nfrom axle (change on phone)", l.trackMm, l.jockeyMm);
 }
 
 }  // namespace ui

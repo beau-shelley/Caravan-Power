@@ -324,6 +324,14 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gConfig.meta.remoteControl = cmd["on"] | false;
     configChanged();
     cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
+  } else if (!strcmp(c, "display_set")) {
+    // Touchscreen preferences live on the hub so they can be set from the phone.
+    // sleep: idle seconds before the screen dims right down, 0 = never.
+    long sleep = cmd["sleep"] | -1L;
+    if (sleep < 0 || sleep > 14400) return replyErr(reply, "sleep must be 0-14400 seconds");
+    gConfig.meta.screenSleepSec = (uint16_t)sleep;
+    configChanged();
+    cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
   } else if (!strcmp(c, "config_set")) {
     bool rc = gConfig.meta.remoteControl;
     gConfig.fromJson(cmd["cfg"]);

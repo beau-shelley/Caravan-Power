@@ -54,7 +54,7 @@ enum Page { PAGE_HOME, PAGE_POWER, PAGE_WATER, PAGE_CLIMATE, PAGE_MORE, PAGE_LEV
 void begin();   // build everything
 void loop();    // refresh widgets from app:: model (call often; cheap if nothing changed)
 void showPage(int p);
-int sleepMinutes();
+int sleepSeconds();
 
 // ---------------------------------------------------------------- palette
 namespace col {
@@ -102,8 +102,6 @@ void updateAlerts();
 void buildSettings(lv_obj_t *p);
 void updateSettings();
 
-void flushRuleEdits();
-void openTownSearch();  // ui_alerts.cpp - weather location keyboard + picker  // ui_alerts.cpp - debounced rule threshold edits
 
 void buildWeatherWidget(lv_obj_t *statusBar);  // ui_weather.cpp
 void buildForecast(lv_obj_t *box, int w, int h, const char *note = nullptr, bool bubble = false);

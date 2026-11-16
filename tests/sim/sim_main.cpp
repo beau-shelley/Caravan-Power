@@ -159,7 +159,7 @@ int main() {
   shot("08-level");
   ui::showPage(ui::PAGE_MORE);
   shot("11-more");
-  app::state.lvl.roll = 0.1f;  // now level -> "Set weather location" appears
+  app::state.lvl.roll = 0.1f;  // now level -> "set weather location on your phone" hint appears
   app::state.lvl.pitch = -0.2f;
   ui::showPage(ui::PAGE_LEVEL);
   for (int i = 0; i < 4; i++) shot("12-level-done");  // level held > 3 s (sim refreshes once per shot)
@@ -186,17 +186,6 @@ int main() {
   s.temp[cv::TEMP_FRIDGE].c = 3.4f;
   ui::showPage(ui::PAGE_SETTINGS);
   shot("07-settings");
-  {
-    JsonDocument r;
-    deserializeJson(r, R"({"t":"loc_results","list":[{"name":"Mudgee NSW","area":"Mid-Western Regional","lat":-32.6,"lon":149.59},
-      {"name":"Mudgeeraba QLD","area":"Gold Coast","lat":-28.08,"lon":153.36}]})");
-    ui::handleLocResults(r.as<JsonObjectConst>());
-    shot("10-location-search");
-    JsonDocument none;  // closes the picker (empty result list)
-    deserializeJson(none, R"({"t":"loc_results","list":[]})");
-    ui::handleLocResults(none.as<JsonObjectConst>());
-    gNow += 5000;
-  }
   ui::showPage(ui::PAGE_HOME);
   ui::openWeatherForTest();
   shot("09-forecast");

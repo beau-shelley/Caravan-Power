@@ -24,7 +24,6 @@ void cmd(const char *c);
 void cmdPump(int i, bool on);
 void cmdInverter(bool on);
 void cmdAircon(int preset);  // -1 = off
-void cmdRule(const cv::Rule &r);
 
 // Hook for replies the UI cares about (errors, learn status, ...)
 using ReplyHandler = void (*)(JsonObjectConst msg);
