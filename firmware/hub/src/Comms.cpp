@@ -454,6 +454,9 @@ void Notifier::push(const char *title, const char *msg, uint8_t sev, bool cleare
   if (cleared) {
     m.prio = 2;
     strcpy(m.tags, "white_check_mark");
+  } else if (sev >= cv::SEV_CRIT) {
+    m.prio = 5;
+    strcpy(m.tags, "sos,rotating_light");
   } else if (sev == cv::SEV_ALARM) {
     m.prio = 5;  // "urgent": breaks through Do Not Disturb on most phones
     strcpy(m.tags, "rotating_light");

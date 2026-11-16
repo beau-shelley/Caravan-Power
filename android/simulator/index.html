@@ -62,19 +62,27 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 .simchip { display: none; }
 .sheet-close { display: none; }
 
+/* On a phone the page itself scrolls (no inner scroll box), and the
+   navigation bar, notifications and dialogs are fixed to the screen. */
 @media (max-width: 760px) {
   body { padding-left: 0; padding-right: 0; }
-  .stage { padding: 0; height: 100%; display: block; }
-  .phone { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+  .stage { padding: 0; display: block; min-height: 0; }
+  .phone { width: 100%; height: auto; min-height: 100vh; border: 0; border-radius: 0; box-shadow: none; overflow: visible; display: block; }
   .statusbar { display: none; }
+  .screen { overflow: visible; padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+  .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; height: calc(80px + env(safe-area-inset-bottom, 0px)); }
+  .toast { position: fixed; top: calc(8px + env(safe-area-inset-top, 0px)); }
+  .snack { position: fixed; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+  .fab { position: fixed; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); }
+  .menu { position: fixed; top: calc(64px + env(safe-area-inset-top, 0px)); }
+  .scrim { position: fixed; padding-top: calc(12px + env(safe-area-inset-top, 0px)); padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
   .panel { position: fixed; inset: auto 0 0 0; width: auto; top: auto; border-radius: 20px 20px 0 0; z-index: 50;
-    max-height: 80%; overflow-y: auto; transform: translateY(105%); transition: transform .25s ease;
+    max-height: 80vh; overflow-y: auto; transform: translateY(105%); transition: transform .25s ease;
     padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
     padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px)); }
   .panel.open { transform: none; box-shadow: 0 -20px 60px rgba(0,0,0,.6); }
-  .menu { top: 64px; }
-  .simchip { display: block; position: absolute; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); left: max(12px, env(safe-area-inset-left, 0px));
-    z-index: 20; border: 1px solid #2f3842; background: var(--raised); color: var(--text); border-radius: 999px; padding: 6px 12px;
+  .simchip { display: block; position: fixed; z-index: 35; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); left: max(12px, env(safe-area-inset-left, 0px));
+    border: 1px solid #2f3842; background: var(--raised); color: var(--text); border-radius: 999px; padding: 6px 12px;
     font-size: 13px; font-weight: 600; }
   .sheet-close { display: block; position: absolute; right: 14px; top: 12px; border: 0; background: none; font-size: 22px; color: var(--muted); }
 }
@@ -501,13 +509,31 @@ function navHTML() {
 }
 
 // Setup has text fields, so it only re-renders when you open it; the other tabs refresh every tick.
+function morph(a, b) {
+  const an = [...a.childNodes], bn = [...b.childNodes];
+  for (let i = 0; i < bn.length; i++) {
+    const x = an[i], y = bn[i];
+    if (!x) { a.appendChild(y.cloneNode(true)); continue; }
+    if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) { a.replaceChild(y.cloneNode(true), x); continue; }
+    if (x.nodeType === 3) { if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue; continue; }
+    if (x.nodeType !== 1) continue;
+    for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
+    for (const at of [...y.attributes]) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
+    if (x.tagName === "INPUT" && x !== document.activeElement) { x.value = y.value; x.checked = y.checked; }
+    morph(x, y);
+  }
+  for (let i = an.length - 1; i >= bn.length; i--) a.removeChild(an[i]);
+}
 function render(force = false) {
   const scr = $("screen");
   if (tab !== 2 || force) {
     const html = tab === 0 ? homeHTML() : tab === 1 ? alertsHTML() : setupHTML();
-    const top = scr.scrollTop;
-    scr.innerHTML = `<div class="pad">${html}</div>`;
-    scr.scrollTop = top;
+    // Patch the existing DOM instead of replacing it, so a scroll or swipe
+    // in progress is never interrupted by the once-a-second refresh.
+    const tpl = document.createElement("div");
+    tpl.innerHTML = `<div class="pad">${html}</div>`;
+    if (force || !scr.firstChild) scr.replaceChildren(...tpl.childNodes);
+    else morph(scr, tpl);
   } else {
     const cl = $("connLine");
     if (cl) { cl.textContent = S.conn ? "Connected to 192.168.1.50" : "Hub not found. Are you on the caravan's Wi-Fi?"; cl.style.color = S.conn ? "var(--battery)" : "var(--warn)"; }
@@ -589,7 +615,7 @@ document.addEventListener("click", (ev) => {
   if (!t) { if (menuOpen) { menuOpen = false; render(); } return; }
   const d = t.dataset;
   if (menuOpen && d.act !== "menu" && d.act !== "reset") { menuOpen = false; render(); }
-  if (d.go != null) { tab = +d.go; menuOpen = false; $("screen").scrollTop = 0; render(true); return; }
+  if (d.go != null) { tab = +d.go; menuOpen = false; $("screen").scrollTop = 0; window.scrollTo(0, 0); render(true); return; }
   if (d.pump != null) { const i = +d.pump; S.pump[i] = !S.pump[i]; logLine(`${META.pump[i]} pump ${S.pump[i] ? "on" : "off"}`); render(); return; }
   if (d.toggle != null) { ev.stopPropagation(); const r = S.rules.find((x) => x.id === +d.toggle); r.en = !r.en; logLine(`Rule "${esc(r.name)}" ${r.en ? "on" : "off"}`); render(); return; }
   if (d.rule != null && S.conn) { openEditor(S.rules.find((x) => x.id === +d.rule)); return; }

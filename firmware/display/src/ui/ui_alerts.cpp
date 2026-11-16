@@ -47,7 +47,7 @@ static void refreshRow(int i) {
   describeRule(*r, buf, sizeof(buf));
   setText(rows[i].desc, "%s", buf);
   setText(rows[i].name, "%s", r->name);
-  uint32_t sc = r->sev == cv::SEV_ALARM ? col::ALARM : r->sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
+  uint32_t sc = r->sev >= cv::SEV_ALARM ? col::ALARM : r->sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
   lv_obj_set_style_text_color(rows[i].name, c(r->enabled ? sc : col::DIM), 0);
   if (r->enabled) lv_obj_add_state(rows[i].sw, LV_STATE_CHECKED);
   else lv_obj_clear_state(rows[i].sw, LV_STATE_CHECKED);
@@ -144,7 +144,7 @@ void updateAlerts() {
     lv_obj_clean(alList);
     for (int i = 0; i < s.alertCount; i++) {
       const cv::ActiveAlert &al = s.alerts[i];
-      uint32_t cc = al.sev == cv::SEV_ALARM ? col::ALARM : al.sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
+      uint32_t cc = al.sev >= cv::SEV_ALARM ? col::ALARM : al.sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
       lv_obj_t *it = lv_obj_create(alList);
       lv_obj_set_size(it, lv_pct(100), LV_SIZE_CONTENT);
       lv_obj_set_style_bg_color(it, lv_color_mix(c(cc), c(col::CARD), 50), 0);

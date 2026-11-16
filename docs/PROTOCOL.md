@@ -74,6 +74,13 @@ When remote control is off, every command except the read-only ones is refused f
 Rule metric keys: `bat_v bat_soc bat_a load_a charge_a solar_w solar1_w solar2_w temp_in temp_out temp_fridge tank1 tank2 tank3 wx_gust wx_rain` (the last two are today's forecast max gust and rain chance).
 Actions: `none aircon_off inverter_off pumps_off`.
 
+Rule JSON: `{id, en, name, m, cmp ("<" or ">"), thr, hys, dly, sev, ntf, act, lv?}`. Severity: 0 info, 1 warning, 2 alarm, 3 critical.
+Optional `lv` adds up to 2 deeper steps to one rule, e.g. charge `thr:30, sev:1, lv:[{"thr":15,"sev":2},{"thr":5,"sev":3}]`.
+Each step must be strictly deeper than the one before (lower for `<`, higher for `>`); others are dropped.
+Each step fires once (an alert with that step's severity, unacknowledged again, pushed again). Moving around inside a step never re-fires it.
+A step re-arms when the value recovers past its threshold ± `hys`, and the alert drops back to the step above without a push. It clears when the value recovers past `thr` ± `hys`.
+The rule's `act` runs when it reaches its deepest step (the only step for a rule without `lv`). `dly` applies to every step.
+
 ## Hub config (`GET/POST /api/config`)
 
 `meta` (names, aircon presets, `rc`), `rules`, and the following:
