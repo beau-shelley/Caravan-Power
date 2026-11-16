@@ -104,12 +104,15 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
    pio run -t upload                          # firmware (classic ESP32; add -e hub for an ESP32-S3)
    pio run -t uploadfs                        # web dashboard -> LittleFS
    pio device monitor                         # watch it find sensors
+   pio run -e hub-esp32-demo -t upload        # bench test: fake readings sent to the display over RS485
    ```
+   Use PlatformIO Core **6.1.19** (`pip install platformio==6.1.19`). 6.2.0 breaks the display build on Windows: it installs SCons 4.11 and the display's pioarduino platform deletes it mid-build ("No module named SCons.Tool.FortranCommon"). Ignore the upgrade nag.
 4. **Flash the display.**
    ```sh
    cd firmware/display
    pio run -e display-demo -t upload --upload-port COM7  # standalone GUI demo (no hub needed)
-   # Later, use -e display instead to show live data from the hub over RS485.
+   # Use -e display instead to show live data from the hub over RS485
+   # (pair it with the hub-esp32-demo build to see the link working on the bench).
    ```
    The 7B has two USB-C ports. Flash through the **UART port** (CH343, "USB-Enhanced-SERIAL CH343" in Device Manager; COM7 on the development PC, yours may differ). The native-USB port shows no log output. See [HANDOFF.md](HANDOFF.md) section 8 for Windows gotchas.
 5. **Commission it from your phone.** All setup is on the dashboard (open `http://caravan.local` on the caravan Wi-Fi; the touchscreen's More → Settings shows the address). The touchscreen is slow for forms, so it only shows the result:
