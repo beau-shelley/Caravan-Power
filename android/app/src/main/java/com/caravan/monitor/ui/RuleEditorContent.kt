@@ -222,17 +222,21 @@ private fun defaultThreshold(key: String) = when (key) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SeverityChips(sev: Int, onPick: (Int) -> Unit) {
-    // Four equal chips so "Critical" still fits inside a level card; the label carries the colour.
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf(Severity.INFO, Severity.WARN, Severity.ALARM, Severity.CRIT).forEach { s ->
-            FilterChip(
-                selected = sev == s, onClick = { onPick(s) }, modifier = Modifier.weight(1f),
-                label = {
-                    Text(Severity.label(s), maxLines = 1, color = sevColor(s), fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp, letterSpacing = 0.sp,
-                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                },
-            )
+    // Two rows of two so every label shows in full, even with large phone text sizes.
+    val all = listOf(Severity.INFO, Severity.WARN, Severity.ALARM, Severity.CRIT)
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        all.chunked(2).forEach { pair ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                pair.forEach { s ->
+                    FilterChip(
+                        selected = sev == s, onClick = { onPick(s) }, modifier = Modifier.weight(1f),
+                        label = {
+                            Text(Severity.label(s), maxLines = 1, softWrap = false, color = sevColor(s),
+                                fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                        },
+                    )
+                }
+            }
         }
     }
 }
