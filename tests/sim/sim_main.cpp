@@ -265,8 +265,22 @@ int main() {
   sec.turn = 2;
   sec.shake = 1;
   shot("21-home-armed");
-  sec.mode = cv::SEC_TRIGGERED;
+  // Movement: 5 minutes to disarm (with the code) before the full alarm.
+  app::meta.secCodeSet = true;
+  sec.mode = cv::SEC_ENTRY;
   sec.cause = cv::SEC_TURN;
+  sec.armLeft = 272;
+  s.alertCount = 1;
+  s.alerts[0] = {};
+  s.alerts[0].ruleId = 14;
+  s.alerts[0].sev = cv::SEV_WARN;
+  s.alerts[0].since = s.ts;
+  strcpy(s.alerts[0].msg, "Theft alarm: movement - disarm within 5 min");
+  shot("23-home-movement-entry-delay");
+  ui::secureButton();  // code keypad
+  shot("24-disarm-keypad");
+  lv_obj_del(lv_obj_get_child(lv_layer_top(), -1));
+  sec.mode = cv::SEC_TRIGGERED;
   s.alertCount = 1;
   s.alerts[0] = {};
   s.alerts[0].ruleId = 14;

@@ -61,7 +61,10 @@ bool metricValue(const State &s, Metric m, float &out) {
     case M_WX_RAIN: out = s.wx.day[0].rainProb; return s.wx.valid && s.ts && s.ts - s.wx.updated < 6 * 3600;
     case M_GAS: out = s.gas.pct; return s.gas.online;
     // Always "online" so the alarm clears as soon as secure mode is disarmed.
-    case M_THEFT: out = s.sec.mode == SEC_TRIGGERED ? (float)s.sec.cause : 0; return true;
+    // 10 + cause during the 5 min entry delay (warning), 20 + cause for the alarm (critical).
+    case M_THEFT:
+      out = s.sec.mode == SEC_ENTRY ? 10.0f + s.sec.cause : s.sec.mode == SEC_TRIGGERED ? 20.0f + s.sec.cause : 0;
+      return true;
     default: return false;
   }
 }
@@ -219,8 +222,13 @@ void loadDefaultRules(RuleSet &rs) {
 bool ensureTheftRule(RuleSet &rs) {
   for (int i = 0; i < rs.count; i++)
     if (rs.rules[i].metric == M_THEFT) return false;
-  // No delay: secure mode already waits out wind before it goes off.
-  return addRule(rs, "Theft alarm", M_THEFT, CMP_GT, 0.5f, 0, 0, SEV_CRIT) != nullptr;
+  // No delay: secure mode already waits out wind before it goes off. A
+  // warning when movement starts the 5 min entry delay, critical after it.
+  Rule *r = addRule(rs, "Theft alarm", M_THEFT, CMP_GT, 5, 0, 0, SEV_WARN);
+  if (!r) return false;
+  r->levelCount = 1;
+  r->levels[0] = {15, SEV_CRIT};
+  return true;
 }
 
 // ---------------------------------------------------------------- JSON helpers
@@ -589,6 +597,7 @@ void metaToJson(const Meta &m, JsonObject o) {
   o["rc"] = m.remoteControl;
   o["tcal"] = m.tankCal;
   o["ss"] = m.screenSleepSec;
+  o["sc"] = m.secCodeSet;
   o["ls"] = m.locSrc;
   o["ln"] = m.locName;
   o["fw"] = m.fw;
@@ -614,6 +623,7 @@ void metaFromJson(Meta &m, JsonObjectConst o) {
   m.remoteControl = o["rc"] | m.remoteControl;
   m.tankCal = o["tcal"] | m.tankCal;
   m.screenSleepSec = o["ss"] | m.screenSleepSec;
+  m.secCodeSet = o["sc"] | m.secCodeSet;
   m.locSrc = o["ls"] | m.locSrc;
   if (o["ln"].is<const char *>()) copyStr(m.locName, sizeof(m.locName), o["ln"]);
   if (o["fw"].is<const char *>()) copyStr(m.fw, sizeof(m.fw), o["fw"]);

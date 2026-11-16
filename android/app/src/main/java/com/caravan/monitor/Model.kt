@@ -57,7 +57,7 @@ data class Heater(
 }
 /**
  * Secure mode (anti-theft), hub key "sec". mode 0 off, 1 arming (exit delay),
- * 2 armed, 3 alarm. cause 1 tilt, 2 turned, 3 shaking, 4 sensor lost.
+ * 2 armed, 3 alarm, 4 movement (5 min entry delay to disarm; armLeft counts it down). cause 1 tilt, 2 turned, 3 shaking, 4 sensor lost.
  * sens 0 low, 1 medium, 2 high. Live movement vs its limits while armed.
  */
 data class Secure(
@@ -72,11 +72,12 @@ data class Secure(
         const val ARMING = 1
         const val ARMED = 2
         const val ALARM = 3
+        const val ENTRY = 4
         val SENS = listOf("Low", "Medium", "High")
         // Same wording as the touchscreen and web page (TheftGuard.cpp secureCauseText).
         fun causeText(c: Int) = when (c) {
             1 -> "van tilted (jacked or hitched?)"; 2 -> "van turned (being towed?)"
-            3 -> "van shaking like it's on the road"; 4 -> "movement sensor stopped answering"; else -> "movement"
+            3 -> "van shaking (on the road?)"; 4 -> "movement sensor stopped answering"; else -> "movement"
         }
         fun parse(o: JSONObject?): Secure {
             if (o == null) return Secure()
@@ -153,6 +154,8 @@ data class Meta(
     val fw: String = "",
     /** Touchscreen dim timeout in seconds (0 = never), or -1 if the hub firmware doesn't support it yet. */
     val screenSleepSec: Int = -1,
+    /** A disarm code is set for the touchscreen (the phone never needs it). */
+    val secCodeSet: Boolean = false,
 ) {
     companion object {
         fun parse(o: JSONObject): Meta {
@@ -165,6 +168,7 @@ data class Meta(
                 remoteControl = o.optBoolean("rc", true),
                 fw = o.optString("fw"),
                 screenSleepSec = o.optInt("ss", -1),
+                secCodeSet = o.optBoolean("sc"),
             )
         }
     }

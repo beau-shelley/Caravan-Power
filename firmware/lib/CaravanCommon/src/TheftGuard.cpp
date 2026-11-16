@@ -37,6 +37,7 @@ const char *secureModeText(uint8_t m) {
     case SEC_ARMING: return "Arming";
     case SEC_ARMED: return "Armed";
     case SEC_TRIGGERED: return "ALARM";
+    case SEC_ENTRY: return "Movement";
     default: return "Off";
   }
 }
@@ -45,7 +46,7 @@ const char *secureCauseText(uint8_t c) {
   switch (c) {
     case SEC_TILT: return "van tilted (jacked or hitched?)";
     case SEC_TURN: return "van turned (being towed?)";
-    case SEC_SHAKE: return "van shaking like it's on the road";
+    case SEC_SHAKE: return "van shaking (on the road?)";
     case SEC_SENSOR: return "movement sensor stopped answering";
     default: return "";
   }
@@ -121,7 +122,8 @@ void TheftGuard::startWatching(uint32_t nowMs) {
 void TheftGuard::trigger(uint8_t cause, uint32_t nowMs) {
   if (mode_ != SEC_ARMED) return;
   cause_ = cause;
-  setMode(SEC_TRIGGERED, nowMs);
+  alarmAtMs_ = nowMs + ENTRY_DELAY_MS;
+  setMode(SEC_ENTRY, nowMs);
 }
 
 void TheftGuard::sample(const Vec3 &a, const Vec3 &g, uint32_t nowMs) {
@@ -151,7 +153,7 @@ void TheftGuard::sample(const Vec3 &a, const Vec3 &g, uint32_t nowMs) {
     biasN_++;
   }
 
-  if (mode_ != SEC_ARMED && mode_ != SEC_TRIGGERED) return;
+  if (mode_ != SEC_ARMED && mode_ != SEC_TRIGGERED && mode_ != SEC_ENTRY) return;
 
   // ---- tilt from where it was armed, held for a while
   tilt_ = angleDeg(gSlow_, base_);
@@ -186,10 +188,12 @@ bool TheftGuard::tick(uint32_t nowMs, bool sensorOk) {
   if (mode_ == SEC_ARMING && (int32_t)(nowMs - armAtMs_) >= 0) {
     if (sensorOk_) startWatching(nowMs);
     else {
-      cause_ = SEC_SENSOR;  // can't watch anything without the sensor
-      setMode(SEC_TRIGGERED, nowMs);
+      setMode(SEC_ARMED, nowMs);  // can't watch anything without the sensor
+      trigger(SEC_SENSOR, nowMs);
     }
   }
+  // Entry delay over without a disarm: full alarm.
+  if (mode_ == SEC_ENTRY && (int32_t)(nowMs - alarmAtMs_) >= 0) setMode(SEC_TRIGGERED, nowMs);
 
   // Sensor watchdog.
   if (mode_ == SEC_ARMED && !sensorOk_) {
@@ -206,7 +210,7 @@ bool TheftGuard::tick(uint32_t nowMs, bool sensorOk) {
   if (nowMs - vibSecStartMs_ >= 1000) {
     float rmsMg = vibN_ ? (float)std::sqrt(vibSum_ / vibN_) * 1000 : 0;
     lastRmsMg_ = rmsMg > 255 ? 255 : (uint8_t)rmsMg;
-    if (mode_ == SEC_ARMED || mode_ == SEC_TRIGGERED) shakeBits_ = (shakeBits_ << 1) | (rmsMg > lim_.shakeMg ? 1 : 0);
+    if (mode_ == SEC_ARMED || mode_ == SEC_TRIGGERED || mode_ == SEC_ENTRY) shakeBits_ = (shakeBits_ << 1) | (rmsMg > lim_.shakeMg ? 1 : 0);
     vibSum_ = 0;
     vibN_ = 0;
     vibSecStartMs_ = nowMs;
@@ -231,8 +235,11 @@ void TheftGuard::fill(Secure &o, uint32_t nowMs) const {
   if (mode_ == SEC_ARMING) {
     int32_t left = (int32_t)(armAtMs_ - nowMs);
     o.armLeft = left > 0 ? (uint16_t)((left + 999) / 1000) : 0;
+  } else if (mode_ == SEC_ENTRY) {
+    int32_t left = (int32_t)(alarmAtMs_ - nowMs);
+    o.armLeft = left > 0 ? (uint16_t)((left + 999) / 1000) : 0;
   }
-  bool watching = mode_ == SEC_ARMED || mode_ == SEC_TRIGGERED;
+  bool watching = mode_ == SEC_ARMED || mode_ == SEC_TRIGGERED || mode_ == SEC_ENTRY;
   o.tilt = watching ? tilt_ : 0;
   o.turn = watching ? std::fabs(yaw_) : 0;
   o.shake = watching ? (uint8_t)shakeCount() : 0;

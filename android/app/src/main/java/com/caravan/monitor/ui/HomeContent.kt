@@ -109,16 +109,18 @@ fun HomeContent(
 @Composable
 private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit) {
     val color = when (x.mode) {
-        Secure.ARMING -> Accent.warn; Secure.ARMED -> Accent.secure; Secure.ALARM -> Accent.critical; else -> Accent.muted
+        Secure.ARMING, Secure.ENTRY -> Accent.warn; Secure.ARMED -> Accent.secure; Secure.ALARM -> Accent.critical; else -> Accent.muted
     }
     val title = when (x.mode) {
         Secure.ARMING -> "Arming in ${x.armLeft} s"; Secure.ARMED -> "Secure mode armed"
-        Secure.ALARM -> "THEFT ALARM"; else -> "Secure mode off"
+        Secure.ALARM -> "THEFT ALARM"; Secure.ENTRY -> "Movement! Alarm in ${x.armLeft / 60}:${"%02d".format(x.armLeft % 60)}"
+        else -> "Secure mode off"
     }
     val sub = when (x.mode) {
         Secure.ARMING -> "Time to leave the van"
         Secure.ARMED -> "Tilt ${fmt1(x.tilt)}° of ${fmtNum(x.tiltLim)}°, turned ${x.turn}° of ${x.turnLim}°"
         Secure.ALARM -> Secure.causeText(x.cause).replaceFirstChar { it.uppercase() }
+        Secure.ENTRY -> "${Secure.causeText(x.cause).replaceFirstChar { it.uppercase() }} · disarm if it's you"
         else -> if (x.sensorOk) "${Secure.SENS[x.sens.coerceIn(0, 2)]} sensitivity · wind is ignored" else "Level sensor not answering"
     }
     Card(
@@ -129,7 +131,7 @@ private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit) {
     ) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(40.dp).background(color.copy(alpha = 0.18f), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                Icon(when (x.mode) { Secure.ALARM -> CaravanIcons.Shield; Secure.OFF -> CaravanIcons.Unlock; else -> CaravanIcons.Lock },
+                Icon(when (x.mode) { Secure.ALARM, Secure.ENTRY -> CaravanIcons.Shield; Secure.OFF -> CaravanIcons.Unlock; else -> CaravanIcons.Lock },
                     null, Modifier.size(22.dp), tint = color)
             }
             Spacer(Modifier.width(10.dp))

@@ -14,6 +14,10 @@
 //           Gusts come and go, so short bursts don't add up to an alarm.
 //   Sensor - the level sensor stops answering while armed (unplugged).
 //
+// Movement first starts a 5 minute entry delay (a warning on every screen and
+// the phone, beeping on the hub). Disarm within it - with the code on the
+// display - and nothing more happens; otherwise the full Critical alarm.
+//
 // Arming has a 60 s exit delay so you can close the door and walk away. The
 // hub remembers it's armed (and the van's resting tilt) across a restart, so
 // pulling the power and moving the van is still caught when it comes back.
@@ -25,7 +29,9 @@
 
 namespace cv {
 
-enum SecureMode : uint8_t { SEC_OFF = 0, SEC_ARMING = 1, SEC_ARMED = 2, SEC_TRIGGERED = 3 };
+// SEC_ENTRY: movement was detected; 5 minutes to disarm (code on the display,
+// none needed on the phone) before it becomes SEC_TRIGGERED, the full alarm.
+enum SecureMode : uint8_t { SEC_OFF = 0, SEC_ARMING = 1, SEC_ARMED = 2, SEC_TRIGGERED = 3, SEC_ENTRY = 4 };
 enum SecureCause : uint8_t { SEC_NONE = 0, SEC_TILT = 1, SEC_TURN = 2, SEC_SHAKE = 3, SEC_SENSOR = 4 };
 enum SecureSens : uint8_t { SENS_LOW = 0, SENS_MEDIUM = 1, SENS_HIGH = 2 };
 const char *secureModeText(uint8_t mode);
@@ -38,7 +44,7 @@ struct Secure {
   uint8_t cause = SEC_NONE;
   uint8_t sens = SENS_MEDIUM;
   bool sensor = false;    // level sensor is working (secure mode needs it)
-  uint16_t armLeft = 0;   // seconds until armed (SEC_ARMING)
+  uint16_t armLeft = 0;   // seconds left: until armed (SEC_ARMING) or until the alarm (SEC_ENTRY)
   uint32_t since = 0;     // unix time of the last mode change (0 = clock not set)
   // Live movement readings while armed, and the limits they're compared to,
   // so you can see how close wind gets to setting it off.
@@ -61,6 +67,7 @@ class TheftGuard {
   static constexpr uint32_t ARM_DELAY_MS = 60000;   // exit delay
   static constexpr uint32_t RESUME_DELAY_MS = 5000; // after a restart: settle, measure gyro bias
   static constexpr uint32_t SENSOR_LOST_MS = 5000;
+  static constexpr uint32_t ENTRY_DELAY_MS = 300000;  // 5 min to disarm after movement
 
   void setSensitivity(uint8_t sens);
   uint8_t sensitivity() const { return sens_; }
@@ -87,7 +94,7 @@ class TheftGuard {
   uint8_t sens_ = SENS_MEDIUM;
   GuardLimits lim_ = guardLimits(SENS_MEDIUM);
   uint8_t mode_ = SEC_OFF, cause_ = SEC_NONE;
-  uint32_t modeSinceMs_ = 0, armAtMs_ = 0;
+  uint32_t modeSinceMs_ = 0, armAtMs_ = 0, alarmAtMs_ = 0;
   bool keepBase_ = false;  // resume(): keep the saved baseline
 
   // Filters (run whenever samples arrive, armed or not, so arming is instant).

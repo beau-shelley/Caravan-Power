@@ -487,6 +487,11 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
       secure::setSensitivity((uint8_t)sens);
     }
     if (!cmd["arm"].isNull()) {
+      // Disarming at the touchscreen needs the code (the phone is behind its own lock screen).
+      bool arm = cmd["arm"] | false;
+      const char *code = gConfig.secure.code;
+      if (!arm && src == SRC_DISPLAY && code[0] && strcmp(cmd["code"] | "", code) != 0)
+        return replyErr(reply, "Wrong code");
       const char *why = nullptr;
       if (!secure::arm(cmd["arm"] | false, secureSensorOk(), millis(), &why)) return replyErr(reply, why);
       configChanged();  // the theft rule may have been put back
@@ -494,6 +499,19 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     secure::loop(gState, secureSensorOk(), millis());
     stateChanged();
     reply["t"] = "ok";
+  } else if (!strcmp(c, "secure_code")) {
+    // {"c":"secure_code","code":"1234"}: the code for disarming at the touchscreen
+    // (4-8 digits, "" = none). Set from the phone only, never from the display.
+    if (src == SRC_DISPLAY) return replyErr(reply, "Set the code from the phone");
+    const char *code = cmd["code"] | "";
+    size_t n = strlen(code);
+    bool digits = true;
+    for (size_t i = 0; i < n; i++) digits &= isdigit((unsigned char)code[i]) != 0;
+    if (!digits || (n && (n < 4 || n > 8))) return replyErr(reply, "The code must be 4 to 8 digits");
+    snprintf(gConfig.secure.code, sizeof(gConfig.secure.code), "%s", code);
+    gConfig.meta.secCodeSet = n > 0;
+    configChanged();
+    cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
 
   // ---------------- levelling
   } else if (!strcmp(c, "level_zero")) {
@@ -654,7 +672,9 @@ static void updateLoads(uint32_t now) {
 
 static void buzzerLoop(uint32_t now) {
   bool alarm = gConfig.buzzer && gAlerts.anyUnackedAlarm();
-  digitalWrite(PIN_BUZZER, alarm && (now % 2000) < 200 ? HIGH : LOW);
+  // Secure mode entry delay: a short chirp every second until it's disarmed.
+  bool entry = gState.sec.mode == cv::SEC_ENTRY;
+  digitalWrite(PIN_BUZZER, (alarm && (now % 2000) < 200) || (entry && (now % 1000) < 40) ? HIGH : LOW);
 }
 
 static void midnightReset() {

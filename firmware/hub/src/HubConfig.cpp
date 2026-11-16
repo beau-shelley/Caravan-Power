@@ -88,6 +88,7 @@ void HubConfig::toJson(JsonObject o) const {
   JsonObject sc = o["sec"].to<JsonObject>();
   sc["armed"] = secure.armed;
   sc["sens"] = secure.sens;
+  sc["code"] = secure.code;
   if (secure.haveBase) {
     JsonArray sb = sc["base"].to<JsonArray>();
     sb.add(secure.base.x);
@@ -174,10 +175,12 @@ void HubConfig::fromJson(JsonObjectConst o) {
   if (!sc.isNull()) {
     secure.armed = sc["armed"] | false;
     secure.sens = sc["sens"] | secure.sens;
+    if (sc["code"].is<const char *>()) copyStr(secure.code, sizeof(secure.code), sc["code"]);
     if (secure.sens > cv::SENS_HIGH) secure.sens = cv::SENS_MEDIUM;
     secure.haveBase = sc["base"].size() == 3;
     if (secure.haveBase) secure.base = {sc["base"][0].as<float>(), sc["base"][1].as<float>(), sc["base"][2].as<float>()};
   }
+  meta.secCodeSet = secure.code[0] != 0;
   JsonObjectConst ht = o["htr"];
   if (!ht.isNull()) {
     heater.link = ht["link"] | heater.link;

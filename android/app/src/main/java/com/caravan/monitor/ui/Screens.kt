@@ -65,10 +65,10 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
         var sens by remember { mutableStateOf(sec.sens.coerceIn(0, 2)) }
         AlertDialog(
             onDismissRequest = { askSecure = null },
-            title = { Text(if (arm) "Arm secure mode?" else if (sec.mode == Secure.ALARM) "Turn the theft alarm off?" else "Turn secure mode off?") },
+            title = { Text(if (arm) "Arm secure mode?" else if (sec.mode == Secure.ALARM || sec.mode == Secure.ENTRY) "Turn the theft alarm off?" else "Turn secure mode off?") },
             text = {
                 if (arm) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("The van has 60 seconds to settle, then jacking, hitching or towing sets off a Critical alert here and on the display. Wind rocking the van is ignored.")
+                    Text("The van has 60 seconds to settle. Then if it's jacked up, hitched or towed you get a warning and 5 minutes to disarm before the Critical alarm. Wind rocking the van is ignored.")
                     Text("Sensitivity", style = MaterialTheme.typography.labelMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Secure.SENS.forEachIndexed { i, n ->
@@ -164,6 +164,7 @@ fun SetupScreen() {
         onBatteryExempt = { askBatteryExemption(ctx) },
         onScreenSleep = { app.hub.send("display_set", "sleep" to it); app.hub.send("hello") },
         onRemoteControl = { app.hub.send("remote_control", "on" to it); app.hub.send("hello") },
+        onSecureCode = { app.hub.send("secure_code", "code" to it); app.hub.send("hello") },
         onOpenWebPage = { app.hub.baseUrl()?.let { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) } },
         update = update,
         updateTokenSet = update.state != UpdState.NO_TOKEN,

@@ -140,6 +140,6 @@ void openWeatherForTest();
 void togglePump(int i);
 void toggleInverter();
 void toggleAircon();
-void secureButton();  // arm / disarm, asks first
+void secureButton();  // arm / disarm, asks first (disarm takes the code once one is set)
 
 }  // namespace ui

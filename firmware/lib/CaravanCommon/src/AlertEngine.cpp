@@ -5,8 +5,10 @@
 namespace cv {
 
 void formatAlert(char *buf, size_t n, const Rule &r, float value) {
-  if (r.metric == M_THEFT) {  // the value is what set it off
-    snprintf(buf, n, "%s: %s", r.name, secureCauseText((uint8_t)value));
+  if (r.metric == M_THEFT) {  // 10 + cause: entry delay, 20 + cause: alarm
+    int v = (int)value;
+    if (v >= 20) snprintf(buf, n, "%s: %s", r.name, secureCauseText((uint8_t)(v - 20)));
+    else snprintf(buf, n, "%s: movement - disarm within 5 min", r.name);  // short: fits the banner
     return;
   }
   const MetricInfo &mi = metricInfo(r.metric);

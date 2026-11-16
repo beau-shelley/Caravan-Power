@@ -78,8 +78,10 @@ bool loop(cv::State &s, bool sensorOk, uint32_t nowMs) {
       gConfig.save();
       Serial.println("[secure] ARMED");
     }
+    if (m == cv::SEC_ENTRY)
+      Serial.printf("[secure] MOVEMENT: %s - 5 minutes to disarm\n", cv::secureCauseText(gGuard.cause()));
     if (m == cv::SEC_TRIGGERED)
-      Serial.printf("[secure] ALARM: %s\n", cv::secureCauseText(gGuard.cause()));
+      Serial.printf("[secure] ALARM: %s (not disarmed in 5 minutes)\n", cv::secureCauseText(gGuard.cause()));
   }
   gGuard.fill(s.sec, nowMs);
   s.sec.since = gSince;
@@ -91,7 +93,8 @@ void simLoop(uint32_t nowMs) {
   gSimLastMs = nowMs;
   uint8_t motion = cv::SIM_CALM;
   float t = 0;
-  if (gGuard.mode() == cv::SEC_ARMED || gGuard.mode() == cv::SEC_TRIGGERED) {
+  uint8_t gm = gGuard.mode();
+  if (gm == cv::SEC_ARMED || gm == cv::SEC_TRIGGERED || gm == cv::SEC_ENTRY) {
     if (!gSimArmedAtMs) gSimArmedAtMs = nowMs;
     float since = (nowMs - gSimArmedAtMs) / 1000.0f;
     if (since < kSimWindSec) {

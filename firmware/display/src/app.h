@@ -28,8 +28,9 @@ void cmdAircon(int preset);  // -1 = off
 void cmdHeaterOn(bool on);
 void cmdHeaterSet(const char *key, int value);
 void cmdHeaterMode(bool level);
-// Secure mode (anti-theft): {"c":"secure","arm":true|false}
-void cmdSecure(bool arm);
+// Secure mode (anti-theft): {"c":"secure","arm":true|false,"code":"1234"}.
+// Disarming here needs the code once one is set on the phone (meta.secCodeSet).
+void cmdSecure(bool arm, const char *code = nullptr);
 
 // Hook for replies the UI cares about (errors, learn status, ...)
 using ReplyHandler = void (*)(JsonObjectConst msg);

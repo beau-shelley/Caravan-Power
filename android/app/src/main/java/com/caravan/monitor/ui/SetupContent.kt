@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +47,8 @@ fun SetupContent(
     onScreenSleep: (Int) -> Unit,
     onRemoteControl: (Boolean) -> Unit,
     onOpenWebPage: () -> Unit,
+    /** Disarm code for the touchscreen: 4-8 digits, "" removes it. */
+    onSecureCode: (String) -> Unit = {},
     update: UpdateInfo = UpdateInfo(),
     updateTokenSet: Boolean = false,
     onSaveUpdateToken: (String) -> Unit = {},
@@ -135,6 +138,29 @@ fun SetupContent(
                 }
                 Text("When off, the remote dashboard can look but not switch pumps or change settings.",
                     style = MaterialTheme.typography.bodySmall, color = Accent.muted)
+            }
+        }
+
+        SectionCard("Secure mode", Accent.secure, icon = CaravanIcons.Lock) {
+            Text("Arm it from Home. If the van is moved, you get 5 minutes to disarm before the full alarm. " +
+                "Disarming on the touchscreen needs this code; this phone doesn't (it has its own lock screen).",
+                style = MaterialTheme.typography.bodySmall, color = Accent.muted)
+            Spacer(Modifier.height(8.dp))
+            if (!connected) Text("Connect to the hub to change the code.", color = Accent.muted)
+            else {
+                var code by remember { mutableStateOf("") }
+                Text(if (meta.secCodeSet) "A code is set." else "No code yet: anyone at the touchscreen can disarm.",
+                    color = if (meta.secCodeSet) Accent.secure else Accent.warn, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(code, { v -> code = v.filter { it.isDigit() }.take(8) }, label = { Text("New code (4-8 digits)") },
+                    singleLine = true, visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { onSecureCode(code); code = "" }, enabled = code.length >= 4) { Text("Save code") }
+                    if (meta.secCodeSet) OutlinedButton(onClick = { onSecureCode("") }) { Text("Remove code") }
+                }
             }
         }
 

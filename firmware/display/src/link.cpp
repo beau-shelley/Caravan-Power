@@ -91,10 +91,11 @@ void cmdHeaterMode(bool level) {
   send(d);
 }
 
-void cmdSecure(bool arm) {
+void cmdSecure(bool arm, const char *code) {
   JsonDocument d;
   d["c"] = "secure";
   d["arm"] = arm;
+  if (code) d["code"] = code;
   send(d);
 }
 

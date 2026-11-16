@@ -44,6 +44,7 @@ struct SecureCfg {
   uint8_t sens = cv::SENS_MEDIUM;
   bool haveBase = false;
   cv::Vec3 base{0, 0, 1};  // resting gravity direction when it was armed
+  char code[9] = "";       // disarm code for the touchscreen (4-8 digits, set from the phone); "" = none
 };
 
 struct LocationCfg {

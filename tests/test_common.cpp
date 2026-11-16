@@ -762,7 +762,7 @@ static float runGuard(uint8_t sens, uint8_t motion, float sec, bool rotated = fa
     sim.at(motion, t, a, w);
     g.sample(rotated ? mount(a) : a, rotated ? mount(w) : w, ms);
     g.tick(ms, true);
-    if (g.mode() == SEC_TRIGGERED) {
+    if (g.mode() != SEC_ARMED) {  // movement: the entry delay has started
       if (cause) *cause = g.cause();
       return t;
     }
@@ -798,8 +798,17 @@ static void testTheftGuard() {
     if (g.mode() != SEC_ARMED) printf("  mode %d cause %d\n", g.mode(), g.cause());
     CHECK(g.mode() == SEC_ARMED);
     for (int i = 0; i < 3; i++) g.tick(ms += 1000, false);
-    CHECK(g.mode() == SEC_TRIGGERED);
+    CHECK(g.mode() == SEC_ENTRY);
     CHECK(g.cause() == SEC_SENSOR);
+    // 5 minutes to disarm, then the full alarm.
+    g.tick(ms += 1000, false);
+    Secure st;
+    g.fill(st, ms);
+    CHECK(st.armLeft > 290 && st.armLeft <= 300);
+    g.tick(ms += 290000, false);
+    CHECK(g.mode() == SEC_ENTRY);
+    g.tick(ms += 12000, false);
+    CHECK(g.mode() == SEC_TRIGGERED);
     g.disarm();
     CHECK(g.mode() == SEC_OFF);
   }
@@ -835,12 +844,12 @@ static void testTheftGuard() {
     float p = 3.0f / 57.29578f;
     g.sample(Vec3{std::sin(p), 0, std::cos(p)}, Vec3{}, ms);
     g.resume(Vec3{0, 0, 1}, ms);
-    for (int i = 0; i < 2500 && g.mode() != SEC_TRIGGERED; i++) {
+    for (int i = 0; i < 2500 && g.mode() != SEC_ENTRY; i++) {
       ms += 10;
       g.sample(Vec3{std::sin(p), 0, std::cos(p)}, Vec3{}, ms);
       g.tick(ms, true);
     }
-    CHECK(g.mode() == SEC_TRIGGERED);
+    CHECK(g.mode() == SEC_ENTRY);
     CHECK(g.cause() == SEC_TILT);
   }
 
@@ -851,20 +860,27 @@ static void testTheftGuard() {
     CHECK(!ensureTheftRule(rs));  // already there
     RuleSet empty;
     CHECK(ensureTheftRule(empty));
-    CHECK(empty.count == 1 && empty.rules[0].sev == SEV_CRIT);
+    CHECK(empty.count == 1 && empty.rules[0].sev == SEV_WARN && empty.rules[0].levelSev(1) == SEV_CRIT);
     State s;
     AlertEngine e;
     e.evaluate(s, rs, 1000, 0);
     int before = s.alertCount;
-    s.sec.mode = SEC_TRIGGERED;
+    s.sec.mode = SEC_ENTRY;  // movement: a warning, 5 minutes to disarm
     s.sec.cause = SEC_TURN;
     e.evaluate(s, rs, 2000, 0);
+    CHECK(s.alertCount == before + 1);
+    bool warned = false;
+    for (int i = 0; i < s.alertCount; i++)
+      warned |= s.alerts[i].sev == SEV_WARN && std::string(s.alerts[i].msg) == "Theft alarm: movement - disarm within 5 min";
+    CHECK(warned);
+    s.sec.mode = SEC_TRIGGERED;  // not disarmed in time: critical
+    e.evaluate(s, rs, 3000, 0);
     CHECK(s.alertCount == before + 1);
     CHECK(s.alerts[0].sev == SEV_CRIT);
     CHECK(std::string(s.alerts[0].msg) == "Theft alarm: van turned (being towed?)");
     s.sec.mode = SEC_OFF;
     s.sec.cause = SEC_NONE;
-    e.evaluate(s, rs, 3000, 0);
+    e.evaluate(s, rs, 4000, 0);
     CHECK(s.alertCount == before);
   }
   // JSON round trip.

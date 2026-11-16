@@ -234,6 +234,13 @@ fun main() {
                 META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop)
         }
     }
+    shot("12-home-movement-entry-delay", 840) {
+        AppScaffold(0, {}, 1) {
+            HomeContent(calm.copy(sec = calm.sec.copy(mode = Secure.ENTRY, cause = 2, armLeft = 272),
+                alerts = listOf(ActiveAlert(14, Severity.WARN, false, 0, 12.0, "Theft alarm: movement - disarm within 5 min"))),
+                META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop)
+        }
+    }
     val theft = calm.copy(sec = calm.sec.copy(mode = Secure.ALARM, cause = 2),
         alerts = listOf(ActiveAlert(14, Severity.CRIT, false, 0, 2.0, "Theft alarm: van turned (being towed?)")))
     shot("11-home-theft-alarm", 840) {

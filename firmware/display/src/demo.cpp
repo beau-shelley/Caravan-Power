@@ -179,6 +179,7 @@ void command(const JsonDocument &cmd) {
       s.sec.mode = cv::SEC_ARMING;
       s.sec.armLeft = 60;
     } else if (!arm) {
+      if (app::meta.secCodeSet && strcmp(cmd["code"] | "", "1234")) return;  // demo code 1234
       s.sec.mode = cv::SEC_OFF;
       s.sec.armLeft = 0;
       s.sec.tilt = s.sec.turn = 0;

@@ -295,6 +295,13 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <div class="row" style="margin-top:8px"><button class="btn" id="vicScan">Find nearby</button></div>
         <div id="vicSeen" class="small muted" style="margin-top:6px"></div>
       </div>
+      <div class="card span6" style="--dot:var(--secure)">
+        <div class="cap">Secure mode code</div>
+        <p class="muted small">If the van is moved while armed you get 5 minutes to disarm before the full alarm. Disarming on the caravan display needs this code; this phone doesn't.</p>
+        <p class="small" id="secCodeInfo"></p>
+        <div class="row"><input id="secCode" type="password" inputmode="numeric" maxlength="8" placeholder="New code, 4-8 digits" autocomplete="off">
+          <button class="btn primary" id="secCodeSave">Save</button><button class="btn danger" id="secCodeDel">Remove</button></div>
+      </div>
       <div class="card span6" style="--dot:var(--accent)">
         <div class="cap">Caravan level</div>
         <p class="muted small">Bubble level with wheel and jockey heights. Connects to the van over Bluetooth, so it works at sites without internet.</p>
@@ -530,17 +537,20 @@ function render() {
 
 // Secure mode (anti-theft). sec: m 0 off / 1 arming / 2 armed / 3 alarm, c cause,
 // sn sensitivity, ok sensor working, al seconds to armed, ti/tl tilt, tu/ul turn, sh/sl shake.
+// m 4 = movement detected: 5 minute entry delay (al counts down) before the alarm.
 const SEC_CAUSE = ["", "the van tilted (jacked up or hitched?)", "the van turned (being towed?)",
-  "the van is shaking like it's on the road", "the movement sensor stopped answering"];
+  "the van is shaking (on the road?)", "the movement sensor stopped answering"];
 function renderSecure() {
   const x = S.sec || { m:0, ok:false, sn:1 }, card = $("#secCard");
-  const col = ["var(--muted)", "var(--warn)", "var(--secure)", "var(--crit)"][x.m] || "var(--muted)";
+  const col = ["var(--muted)", "var(--warn)", "var(--secure)", "var(--crit)", "var(--warn)"][x.m] || "var(--muted)";
   card.style.setProperty("--c", col);
   card.classList.toggle("on", x.m > 0);
-  card.classList.toggle("alarm", x.m === 3);
-  $("#secIco").innerHTML = `<svg class="ico"><use href="#${x.m === 3 ? "i-shield" : x.m ? "i-lock" : "i-unlock"}"/></svg>`;
-  $("#secTitle").textContent = ["Secure mode off", `Arming in ${x.al || 0} s`, "Secure mode armed", "THEFT ALARM"][x.m];
-  $("#secSub").textContent = x.m === 3 ? `Set off because ${SEC_CAUSE[x.c] || "of movement"}${x.since ? " at " + localTime(x.since) : ""}.`
+  card.classList.toggle("alarm", x.m >= 3);
+  $("#secIco").innerHTML = `<svg class="ico"><use href="#${x.m >= 3 ? "i-shield" : x.m ? "i-lock" : "i-unlock"}"/></svg>`;
+  const left = `${Math.floor((x.al || 0) / 60)}:${String((x.al || 0) % 60).padStart(2, "0")}`;
+  $("#secTitle").textContent = ["Secure mode off", `Arming in ${x.al || 0} s`, "Secure mode armed", "THEFT ALARM", `Movement! Alarm in ${left}`][x.m];
+  $("#secSub").textContent = x.m === 4 ? `Because ${SEC_CAUSE[x.c] || "of movement"}${x.since ? " at " + localTime(x.since) : ""}. If it's you, disarm now.`
+    : x.m === 3 ? `Set off because ${SEC_CAUSE[x.c] || "of movement"}${x.since ? " at " + localTime(x.since) : ""}.`
     : x.m === 2 ? `Watching for jacking, hitching and towing. Now: tilt ${x.ti.toFixed(1)}° of ${x.tl}°, turned ${x.tu}° of ${x.ul}°, shaking ${x.sh} of ${x.sl} s.`
     : x.m === 1 ? "Time to leave: it arms when the countdown ends. Wind rocking the van is ignored."
     : x.ok ? "Arm it when you leave the van. Wind rocking the van is ignored." : "Needs the level sensor on the hub, and it isn't answering.";
@@ -598,6 +608,9 @@ function renderMeta() {
     if (![...sel.options].some((o) => +o.value === META.ss)) sel.add(new Option(META.ss < 60 ? `${META.ss} seconds` : `${Math.round(META.ss / 60)} min`, META.ss));
     sel.value = META.ss;
   }
+  $("#secCodeInfo").textContent = META.sc ? "A code is set." : "No code yet: anyone at the display can disarm.";
+  $("#secCodeInfo").style.color = META.sc ? "var(--secure)" : "var(--warn)";
+  $("#secCodeDel").classList.toggle("hidden", !META.sc);
   $("#rcSw").checked = !!META.rc;
   $("#rcSw").disabled = transport?.kind === "cloud";
   $("#acSel").innerHTML = META.acp.length ? META.acp.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("") : `<option value="">No presets learned</option>`;
@@ -636,7 +649,7 @@ function onMessage(msg) {
   lastMsg = Date.now();
   switch (msg.t) {
     case "state": S = msg; render(); break;
-    case "meta": Object.assign(META, msg); renderMeta(); break;
+    case "meta": Object.assign(META, msg); renderMeta(); if (msg.sc !== undefined && S) render(); break;
     case "hello": Object.assign(META, msg.meta); RULES = msg.rules; renderMeta(); renderRules(); break;
     case "rules": RULES = msg.rules; renderRules(); break;
     case "err": toast(msg.msg); break;
@@ -756,8 +769,11 @@ function demoTransport() {
     if (x.m === 1) { x.al = Math.max(0, 10 - secT); if (!x.al) { x.m = 2; secT = 0; } }
     else if (x.m === 2) {
       x.ti = +(0.2 + 0.15 * Math.abs(Math.sin(secT))).toFixed(1); x.tu = secT > 20 ? Math.min(25, (secT - 20) * 5) : 1; x.sh = secT > 20 ? secT - 20 : 0;
-      if (x.tu > x.ul) { x.m = 3; x.c = 2; x.since = Math.floor(Date.now() / 1000);
-        st.alerts.unshift({ id:14, sev:3, ack:false, since:x.since, msg:"Theft alarm: van turned (being towed?)" }); }
+      if (x.tu > x.ul) { x.m = 4; x.c = 2; x.al = 30; x.since = Math.floor(Date.now() / 1000);  // demo: 30 s instead of 5 min
+        st.alerts.unshift({ id:14, sev:1, ack:false, since:x.since, msg:"Theft alarm: movement - disarm within 5 min" }); }
+    } else if (x.m === 4) {
+      x.al = Math.max(0, x.al - 1);
+      if (!x.al) { x.m = 3; st.alerts[0] = { id:14, sev:3, ack:false, since:x.since, msg:"Theft alarm: van turned (being towed?)" }; }
     }
   };
   const mainsTick = () => {
@@ -793,6 +809,7 @@ function demoTransport() {
       onMessage(st); return;
     }
     else if (c.c === "heater_set") { st.htr.ln = c.link; onMessage(st); }
+    else if (c.c === "secure_code") { onMessage({ t:"meta", sc: !!c.code }); }
     else if (c.c === "secure") {
       const x = st.sec;
       if (c.sens !== undefined) x.sn = c.sens;
@@ -850,10 +867,16 @@ async function loadHeaterCfg() {
 document.querySelector('nav button[data-tab="setup"]').addEventListener("click", loadHeaterCfg);
 $("#secBtn").onclick = () => {
   const x = S?.sec || { m:0 };
-  if (x.m) { if (confirm(x.m === 3 ? "Turn the theft alarm off?" : "Turn secure mode off?")) send({ c:"secure", arm:false }); }
-  else if (confirm("Arm secure mode?\n\nThe van has 60 seconds to settle, then jacking, hitching or towing sets off a Critical alert on your phone and the display. Wind rocking the van is ignored."))
+  if (x.m) { if (confirm(x.m >= 3 ? "Turn the theft alarm off?" : "Turn secure mode off?")) send({ c:"secure", arm:false }); }
+  else if (confirm("Arm secure mode?\n\nThe van has 60 seconds to settle. Then if it's jacked up, hitched or towed you get a warning and 5 minutes to disarm before the Critical alarm. Wind rocking the van is ignored."))
     send({ c:"secure", arm:true });
 };
+$("#secCodeSave").onclick = () => {
+  const v = $("#secCode").value.trim();
+  if (!/^\d{4,8}$/.test(v)) { toast("The code must be 4 to 8 digits"); return; }
+  send({ c:"secure_code", code:v }); $("#secCode").value = "";
+};
+$("#secCodeDel").onclick = () => { if (confirm("Remove the display disarm code?")) send({ c:"secure_code", code:"" }); };
 $("#secSens").onchange = (e) => send({ c:"secure", sens:+e.target.value });
 $("#ackAll").onclick = () => send({ c:"ack" });
 $("#soc100").onclick = () => { if (confirm("Set battery state of charge to 100%?")) send({ c:"soc_set", soc:100 }); };

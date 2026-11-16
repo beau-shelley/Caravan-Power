@@ -511,6 +511,11 @@ static void updateSecure() {
       icon = ICON_LOCK;
       strcpy(txt, "Armed");
       break;
+    case cv::SEC_ENTRY:  // movement: counting down to the alarm
+      col = (millis() / 500) % 2 ? col::WARN : col::ALARM;
+      icon = ICON_SHIELD;
+      snprintf(txt, sizeof(txt), "%u:%02u", x.armLeft / 60, x.armLeft % 60);
+      break;
     case cv::SEC_TRIGGERED:
       col = (millis() / 500) % 2 ? col::CRIT : col::ALARM;  // flashes
       icon = ICON_SHIELD;
@@ -530,9 +535,89 @@ static void updateSecure() {
 static void secureArm(void *) { app::cmdSecure(true); toast("Secure mode arms in 60 seconds - time to leave", col::WARN); }
 static void secureDisarm(void *) { app::cmdSecure(false); toast("Secure mode off", col::CHARGE); }
 
+// ---- disarm keypad (once a code is set on the phone)
+static lv_obj_t *gPad = nullptr, *gPadDots = nullptr, *gPadMsg = nullptr;
+static char gPadCode[9] = "";
+
+static void padClose() {
+  if (gPad) lv_obj_del(gPad);
+  gPad = nullptr;
+  gPadCode[0] = 0;
+}
+
+static void padDots() {
+  char d[24] = "";
+  size_t n = strlen(gPadCode);
+  for (size_t i = 0; i < n; i++) strcat(d, LV_SYMBOL_BULLET " ");
+  lv_label_set_text(gPadDots, n ? d : "Enter code");
+  lv_obj_set_style_text_color(gPadDots, c(n ? col::TEXT : col::MUTED), 0);
+}
+
+static void padCb(lv_event_t *e) {
+  lv_obj_t *m = lv_event_get_target(e);
+  const char *k = lv_btnmatrix_get_btn_text(m, lv_btnmatrix_get_selected_btn(m));
+  if (!k) return;
+  size_t n = strlen(gPadCode);
+  if (!strcmp(k, LV_SYMBOL_BACKSPACE)) {
+    if (n) gPadCode[n - 1] = 0;
+  } else if (!strcmp(k, LV_SYMBOL_OK)) {
+    if (n < 4) {
+      lv_label_set_text(gPadMsg, "The code is 4 to 8 digits");
+      return;
+    }
+    app::cmdSecure(false, gPadCode);  // the hub checks it; "Wrong code" comes back as a toast
+    padClose();
+    return;
+  } else if (n < 8) {
+    gPadCode[n] = k[0];
+    gPadCode[n + 1] = 0;
+  }
+  padDots();
+}
+
+static void secureKeypad(const char *title, const char *why) {
+  padClose();
+  gPad = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(gPad, SCR_W, SCR_H);
+  lv_obj_set_style_bg_color(gPad, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(gPad, LV_OPA_70, 0);
+  lv_obj_set_style_border_width(gPad, 0, 0);
+  lv_obj_set_style_radius(gPad, 0, 0);
+  lv_obj_clear_flag(gPad, LV_OBJ_FLAG_SCROLLABLE);
+  constexpr int bw = LARGE ? 420 : 380, bh = LARGE ? 540 : 450;
+  lv_obj_t *box = card(gPad, (SCR_W - bw) / 2, (SCR_H - bh) / 2, bw, bh, nullptr);
+  lv_obj_t *t = lbl(box, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, title);
+  lv_obj_align(t, LV_ALIGN_TOP_LEFT, 0, 0);
+  lv_obj_t *x = button(box, 44, 36, LV_SYMBOL_CLOSE, col::TILE, [](lv_event_t *) { padClose(); });
+  lv_obj_align(x, LV_ALIGN_TOP_RIGHT, 0, -4);
+  gPadMsg = lbl(box, &lv_font_montserrat_14, col::MUTED, why);
+  lv_obj_set_width(gPadMsg, bw - 2 * CARD_PAD);
+  lv_label_set_long_mode(gPadMsg, LV_LABEL_LONG_WRAP);
+  lv_obj_align(gPadMsg, LV_ALIGN_TOP_LEFT, 0, 36);
+  gPadDots = lbl(box, &lv_font_montserrat_28, col::MUTED, "");
+  lv_obj_align(gPadDots, LV_ALIGN_TOP_MID, 0, 84);
+  static const char *keys[] = {"1", "2", "3", "\n", "4", "5", "6", "\n", "7", "8", "9", "\n",
+                               LV_SYMBOL_BACKSPACE, "0", LV_SYMBOL_OK, ""};
+  lv_obj_t *m = lv_btnmatrix_create(box);
+  lv_btnmatrix_set_map(m, keys);
+  lv_obj_set_size(m, bw - 2 * CARD_PAD, bh - 2 * CARD_PAD - 128);
+  lv_obj_align(m, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_opa(m, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(m, 0, 0);
+  lv_obj_set_style_pad_all(m, 0, 0);
+  lv_obj_set_style_pad_gap(m, 10, 0);
+  lv_obj_set_style_bg_color(m, c(col::TILE), LV_PART_ITEMS);
+  lv_obj_set_style_text_color(m, c(col::TEXT), LV_PART_ITEMS);
+  lv_obj_set_style_text_font(m, &lv_font_montserrat_28, LV_PART_ITEMS);
+  lv_obj_set_style_radius(m, 12, LV_PART_ITEMS);
+  lv_obj_set_style_shadow_width(m, 0, LV_PART_ITEMS);
+  lv_obj_add_event_cb(m, padCb, LV_EVENT_VALUE_CHANGED, nullptr);
+  padDots();
+}
+
 void secureButton() {
   const cv::Secure &x = app::state.sec;
-  static char msg[220];
+  static char msg[320];
   if (!app::linkUp) {
     toast("Hub not connected", col::WARN);
   } else if (x.mode == cv::SEC_OFF) {
@@ -542,12 +627,24 @@ void secureButton() {
     }
     snprintf(msg, sizeof(msg),
              "Sounds the alarm and alerts your phone if the van is jacked up, hitched or towed. "
-             "Wind rocking the van is ignored.\n\nYou have 60 seconds to leave. Sensitivity: %s (change it on the phone).",
-             cv::secureSensText(x.sens));
+             "Wind rocking the van is ignored. If it moves, you get 5 minutes to disarm%s.\n\n"
+             "You have 60 seconds to leave. Sensitivity: %s (change it on the phone).",
+             app::meta.secCodeSet ? " with your code" : "", cv::secureSensText(x.sens));
     confirm("Arm secure mode?", msg, secureArm);
-  } else if (x.mode == cv::SEC_TRIGGERED) {
-    snprintf(msg, sizeof(msg), "ALARM: %s.\n\nTurn secure mode off?", cv::secureCauseText(x.cause));
-    confirm("Theft alarm", msg, secureDisarm);
+  } else if (app::meta.secCodeSet) {
+    // Disarming here takes the code; the phone needs none (it has its own lock screen).
+    if (x.mode == cv::SEC_ENTRY)
+      snprintf(msg, sizeof(msg), "Movement: %s. The alarm goes off in %u:%02u.", cv::secureCauseText(x.cause),
+               x.armLeft / 60, x.armLeft % 60);
+    else if (x.mode == cv::SEC_TRIGGERED)
+      snprintf(msg, sizeof(msg), "ALARM: %s.", cv::secureCauseText(x.cause));
+    else
+      snprintf(msg, sizeof(msg), "Enter your code to turn secure mode off.");
+    secureKeypad("Disarm", msg);
+  } else if (x.mode == cv::SEC_ENTRY || x.mode == cv::SEC_TRIGGERED) {
+    snprintf(msg, sizeof(msg), "%s: %s.\n\nTurn secure mode off?\n(Set a disarm code on the phone so only you can do this.)",
+             x.mode == cv::SEC_ENTRY ? "Movement" : "ALARM", cv::secureCauseText(x.cause));
+    confirm(x.mode == cv::SEC_ENTRY ? "Movement detected" : "Theft alarm", msg, secureDisarm);
   } else {
     snprintf(msg, sizeof(msg), "%s. Movement now: tilt %.1f of %.1f deg, turned %.0f of %.0f deg, shaking %u of %u s.\n\nTurn secure mode off?",
              x.mode == cv::SEC_ARMING ? "Arming" : "Armed", x.tilt, x.tiltLim, x.turn, x.turnLim, x.shake, x.shakeLim);
