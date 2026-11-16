@@ -922,6 +922,8 @@ static void testTheftGuard() {
     CHECK(s2.sec.mode == SEC_ARMING && s2.sec.armLeft == 42 && s2.sec.sens == SENS_HIGH && s2.sec.shake == 3);
     NEAR(s2.sec.tilt, 0.4f, 0.01f);
   }
+}
+
 static void testBleTag() {
   // Victron solar readout: flags + manufacturer data (the advert from testVictronBle).
   const uint8_t vic[] = {0x02, 0x01, 0x06, 0x17, 0xFF, 0xE1, 0x02, 0x10, 0x60, 0xA0, 0xA0, 0x01, 0x2B,
