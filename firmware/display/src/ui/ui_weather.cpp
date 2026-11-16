@@ -54,7 +54,8 @@ void buildForecast(lv_obj_t *box, int w, int h, const char *note, bool bubble) {
   lv_obj_t *ic = lbl(box, &wx_icons_48, iconColor(wx.code, wx.isDay), glyph(cv::wxIcon(wx.code, wx.isDay)));
   lv_obj_set_pos(ic, 0, top);
   lv_obj_t *t = lbl(box, &lv_font_montserrat_48, col::TEXT, "");
-  setText(t, "%.0f\xC2\xB0", wx.temp);
+  setText(t, "%d\xC2\xB0", (int)lroundf(wx.temp));
+  lv_obj_set_style_text_color(t, c(tempColor(cv::TEMP_OUTSIDE, wx.temp)), 0);
   lv_obj_set_pos(t, 80, top - 4);
   lv_obj_t *d = lbl(box, &lv_font_montserrat_20, col::TEXT, cv::wxText(wx.code));
   lv_obj_set_pos(d, 200, top + 4);
@@ -91,7 +92,9 @@ void buildForecast(lv_obj_t *box, int w, int h, const char *note, bool bubble) {
     lv_obj_t *di = lbl(col_, &wx_icons_48, iconColor(dy.code, true), glyph(cv::wxIcon(dy.code, true)));
     lv_obj_align(di, LV_ALIGN_TOP_MID, 0, y0 + yIcon);
     lv_obj_t *hl = lbl(col_, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "");
-    setText(hl, "%.0f\xC2\xB0 / %.0f\xC2\xB0", dy.tMax, dy.tMin);
+    lv_label_set_recolor(hl, true);
+    setText(hl, "#%06x %d\xC2\xB0# / #%06x %d\xC2\xB0#", (unsigned)tempColor(cv::TEMP_OUTSIDE, dy.tMax),
+            (int)lroundf(dy.tMax), (unsigned)tempColor(cv::TEMP_OUTSIDE, dy.tMin), (int)lroundf(dy.tMin));
     lv_obj_align(hl, LV_ALIGN_TOP_MID, 0, y0 + yHl);
     if (blockH < 132) continue;
     lv_obj_t *rn = lbl(col_, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, dy.rainProb >= 50 ? col::WATER : col::MUTED, "");
@@ -159,9 +162,12 @@ void updateWeather() {
   lv_obj_clear_flag(wxBox, LV_OBJ_FLAG_HIDDEN);
   setText(wxIcon, "%s", glyph(cv::wxIcon(w.code, w.isDay)));
   lv_obj_set_style_text_color(wxIcon, c(iconColor(w.code, w.isDay)), 0);
-  setText(wxTemp, "%.0f\xC2\xB0", w.temp);
-  setText(wxSub, LV_SYMBOL_UP "%.0f\xC2\xB0 " LV_SYMBOL_DOWN "%.0f\xC2\xB0\nRain %u%%", w.day[0].tMax, w.day[0].tMin,
-          w.day[0].rainProb);
+  setText(wxTemp, "%d\xC2\xB0", (int)lroundf(w.temp));
+  lv_obj_set_style_text_color(wxTemp, c(tempColor(cv::TEMP_OUTSIDE, w.temp)), 0);
+  lv_label_set_recolor(wxSub, true);
+  setText(wxSub, LV_SYMBOL_UP "#%06x %d\xC2\xB0# " LV_SYMBOL_DOWN "#%06x %d\xC2\xB0#\nRain %u%%",
+          (unsigned)tempColor(cv::TEMP_OUTSIDE, w.day[0].tMax), (int)lroundf(w.day[0].tMax),
+          (unsigned)tempColor(cv::TEMP_OUTSIDE, w.day[0].tMin), (int)lroundf(w.day[0].tMin), w.day[0].rainProb);
   if (wxOverlay && w.updated != wxShownUpdated) openOverlay(nullptr);  // refresh if open
 }
 

@@ -95,3 +95,21 @@ fun Stat(label: String, value: String, modifier: Modifier = Modifier, valueColor
         Text(value, style = MaterialTheme.typography.titleMedium, color = valueColor)
     }
 }
+
+// Temperature colour blended between stops (same as the touchscreen and web page).
+// Air: blue at 10 C and below, neutral 17-23, amber 27, strong red 30+.
+// Fridge (index 2): blue at 0 (freezing), neutral 2-5 (safe), amber 6.5, red 8+.
+fun tempColor(index: Int, c: Double, neutral: Color): Color {
+    val stops = if (index == 2)
+        listOf(0.0 to Accent.water, 2.0 to neutral, 5.0 to neutral, 6.5 to Accent.warn, 8.0 to Accent.alarm)
+    else
+        listOf(10.0 to Accent.water, 17.0 to neutral, 23.0 to neutral, 27.0 to Accent.warn, 30.0 to Accent.alarm)
+    if (c <= stops.first().first) return stops.first().second
+    for (k in 1 until stops.size) {
+        val (t1, c1) = stops[k]
+        if (c > t1) continue
+        val (t0, c0) = stops[k - 1]
+        return androidx.compose.ui.graphics.lerp(c0, c1, ((c - t0) / (t1 - t0)).toFloat())
+    }
+    return stops.last().second
+}

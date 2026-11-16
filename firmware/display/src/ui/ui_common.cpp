@@ -179,12 +179,29 @@ void confirm(const char *title, const char *msg, void (*onYes)(void *), void *ud
   lv_obj_add_event_cb(m, confirmCb, LV_EVENT_VALUE_CHANGED, new ConfirmCtx{onYes, ud});
 }
 
+// Temperature text colour, blended smoothly between stops. Air: blue at 10 C
+// and below, neutral 17-23 C, amber at 27 C, strong red at 30 C and above.
+// Fridge: blue at 0 C (freezing), neutral 2-5 C (safe), amber 6.5 C, red 8 C.
+struct TempStop { float t; uint32_t rgb; };
+static uint32_t blend(const TempStop *s, int n, float t) {
+  if (t <= s[0].t) return s[0].rgb;
+  for (int i = 1; i < n; i++) {
+    if (t > s[i].t) continue;
+    float f = (t - s[i - 1].t) / (s[i].t - s[i - 1].t);
+    uint32_t a = s[i - 1].rgb, b = s[i].rgb, out = 0;
+    for (int sh = 0; sh <= 16; sh += 8) {
+      float ca = (a >> sh) & 0xFF, cb = (b >> sh) & 0xFF;
+      out |= (uint32_t)(ca + (cb - ca) * f + 0.5f) << sh;
+    }
+    return out;
+  }
+  return s[n - 1].rgb;
+}
+
 uint32_t tempColor(int role, float t) {
-  if (role == cv::TEMP_FRIDGE) return t <= 4.5f ? col::CHARGE : t <= 6.5f ? col::WARN : col::ALARM;
-  if (t < 10) return col::WATER;
-  if (t <= 27) return col::CHARGE;
-  if (t <= 33) return col::WARN;
-  return col::ALARM;
+  static const TempStop air[] = {{10, col::WATER}, {17, col::TEXT}, {23, col::TEXT}, {27, col::WARN}, {30, col::ALARM}};
+  static const TempStop fridge[] = {{0, col::WATER}, {2, col::TEXT}, {5, col::TEXT}, {6.5f, col::WARN}, {8, col::ALARM}};
+  return role == cv::TEMP_FRIDGE ? blend(fridge, 5, t) : blend(air, 5, t);
 }
 
 uint32_t socColor(float soc) { return soc >= 50 ? col::CHARGE : soc >= 25 ? col::WARN : col::ALARM; }

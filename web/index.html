@@ -325,8 +325,21 @@ let transport = null, lastMsg = 0;
 
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200); }
 function fmtDur(m) { if (m < 0) return "idle"; if (m >= 5940) return "99h+"; return m >= 60 ? `${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m` : `${m}m`; }
-function tempColor(i, c) { if (i === 2) return c <= 4.5 ? "var(--charge)" : c <= 6.5 ? "var(--warn)" : "var(--alarm)";
-  return c < 10 ? "var(--water)" : c <= 27 ? "var(--charge)" : c <= 33 ? "var(--warn)" : "var(--alarm)"; }
+// Temperature colour blended between stops (same as the touchscreen). Air: blue at
+// 10 C and below, neutral 17-23, amber 27, strong red 30+. Fridge (i === 2): blue
+// at 0 (freezing), neutral 2-5 (safe), amber 6.5, red 8+. Uses the theme colours.
+const T_AIR = [[10, "--water"], [17, "--text"], [23, "--text"], [27, "--warn"], [30, "--alarm"]];
+const T_FRIDGE = [[0, "--water"], [2, "--text"], [5, "--text"], [6.5, "--warn"], [8, "--alarm"]];
+function tempColor(i, c) {
+  const s = i === 2 ? T_FRIDGE : T_AIR;
+  if (c <= s[0][0]) return `var(${s[0][1]})`;
+  for (let k = 1; k < s.length; k++) {
+    if (c > s[k][0]) continue;
+    const f = Math.round((c - s[k - 1][0]) / (s[k][0] - s[k - 1][0]) * 100);
+    return `color-mix(in srgb, var(${s[k][1]}) ${f}%, var(${s[k - 1][1]}))`;
+  }
+  return `var(${s[s.length - 1][1]})`;
+}
 function socColor(s) { return s >= 50 ? "var(--charge)" : s >= 25 ? "var(--warn)" : "var(--alarm)"; }
 function localTime(ts) { if (!ts) return "--"; return new Date(ts * 1000).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }); }
 
@@ -346,10 +359,10 @@ function renderWeather() {
   if (!w || !w.ok) { $("#locInfo").textContent = "No location set yet - the forecast appears once one is set."; return; }
   $("#wxPlace").textContent = `${w.pl || ""}${w.pl ? " · " : ""}${LOC_SRC[w.src] || ""} location`;
   $("#locInfo").textContent = `Current: ${w.pl || "unnamed spot"} (${LOC_SRC[w.src]}).`;
-  $("#wx").innerHTML = `<div class="now"><span class="ico">${wxIcon(w.c, w.day)}</span><div><div class="big">${Math.round(w.t)}°</div>
+  $("#wx").innerHTML = `<div class="now"><span class="ico">${wxIcon(w.c, w.day)}</span><div><div class="big" style="color:${tempColor(1, w.t)}">${Math.round(w.t)}°</div>
       <div class="muted small">${WX_TEXT[w.c] || ""} · wind ${Math.round(w.w)} km/h, gusts ${Math.round(w.g)}</div></div></div>` +
     w.d.map(([c, wd, mx, mn, rp, mm, g], i) => `<div class="day"><b>${i === 0 ? "Today" : DAYS[wd] || "--"}</b><div class="ico" style="font-size:26px">${wxIcon(c)}</div>
-      <div><b>${Math.round(mx)}°</b> / ${Math.round(mn)}°</div><div style="color:${rp >= 50 ? "var(--water)" : "var(--muted)"}">${rp}% · ${mm.toFixed(0)} mm</div>
+      <div><b style="color:${tempColor(1, mx)}">${Math.round(mx)}°</b> / <span style="color:${tempColor(1, mn)}">${Math.round(mn)}°</span></div><div style="color:${rp >= 50 ? "var(--water)" : "var(--muted)"}">${rp}% · ${mm.toFixed(0)} mm</div>
       <div style="color:${g >= 50 ? "var(--warn)" : "var(--muted)"}">gusts ${Math.round(g)}</div></div>`).join("");
 }
 

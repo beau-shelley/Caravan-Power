@@ -72,7 +72,8 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
         if (s.wx.ok) {
             SectionCard("Weather${if (s.wx.place.isNotBlank()) " · ${s.wx.place}" else ""}", Accent.climate) {
                 Row(Modifier.fillMaxWidth()) {
-                    Stat("Now", "${fmtDeg(s.wx.tempC)} °C", Modifier.weight(1f))
+                    Stat("Now", "${fmtDeg(s.wx.tempC)} °C", Modifier.weight(1f),
+                        valueColor = tempColor(1, s.wx.tempC, MaterialTheme.colorScheme.onSurface))
                     Stat("Wind", "${s.wx.windKmh.toInt()} km/h", Modifier.weight(1f))
                     Stat("Gusts", "${s.wx.gustKmh.toInt()} km/h", Modifier.weight(1f))
                 }
@@ -167,7 +168,8 @@ private fun TempsCard(s: HubState, meta: Meta) {
             s.tmp.forEachIndexed { i, t ->
                 Column(Modifier.weight(1f)) {
                     Text(meta.tempNames.getOrElse(i) { "Temp ${i + 1}" }, style = MaterialTheme.typography.labelSmall, color = Accent.muted)
-                    Text(if (t.on) "${fmtDeg(t.c)}°" else "–", fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (t.on) "${fmtDeg(t.c)}°" else "–", fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
+                        color = if (t.on) tempColor(i, t.c, MaterialTheme.colorScheme.onSurface) else Accent.muted)
                     if (t.on) Text("${fmtDeg(t.lo)}° / ${fmtDeg(t.hi)}°", style = MaterialTheme.typography.bodySmall, color = Accent.muted)
                 }
             }
