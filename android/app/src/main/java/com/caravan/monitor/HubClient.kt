@@ -33,6 +33,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * 2. WebSocket ws://<hub>:81/ and send {"c":"auth","tok":...}
  * 3. Send {"c":"hello"} for names + alert rules; the hub then pushes state every second.
  *
+ * Away from the van (hub not found) and with the cloud set up in Setup, it goes
+ * through the cloud MQTT broker instead (see docs/CLOUD_SETUP.md): the hub's
+ * retained state/meta/rules topics, commands on .../cmd, replies on .../resp.
+ * While on the cloud it keeps checking for the hub, and goes direct again as
+ * soon as the phone is back on the van's Wi-Fi.
+ *
  * The connection is held open while anything uses it: the app on screen, or
  * the background alert service.
  */
@@ -62,6 +68,8 @@ class HubClient(
     val replies: SharedFlow<JSONObject> = _replies
 
     @Volatile private var ws: WebSocket? = null
+    @Volatile private var mqtt: MqttWs? = null
+    @Volatile private var cloudBase = ""
     @Volatile private var lastMsgMs = 0L
     private val users = AtomicInteger(0)
     private var loop: Job? = null
@@ -87,8 +95,10 @@ class HubClient(
     }
 
     fun send(cmd: JSONObject): Boolean {
-        val w = ws ?: return false
-        return w.send(cmd.toString())
+        ws?.let { return it.send(cmd.toString()) }
+        val m = mqtt ?: return false
+        if (!cmd.has("rid")) cmd.put("rid", java.lang.Long.toHexString(System.nanoTime() and 0xFFFFFF))
+        return m.publish(cloudBase + "cmd", cmd.toString())
     }
 
     fun send(c: String, vararg kv: Pair<String, Any>): Boolean {
@@ -98,7 +108,7 @@ class HubClient(
     }
 
     /** Base http URL of the hub the app is talking to, for opening its web page. */
-    fun baseUrl(): String? = _status.value.host.takeIf { it.isNotEmpty() }?.let { "http://$it/" }
+    fun baseUrl(): String? = _status.value.takeIf { !it.cloud }?.host?.takeIf { it.isNotEmpty() }?.let { "http://$it/" }
 
     private fun start() {
         loop?.cancel()
@@ -110,6 +120,8 @@ class HubClient(
         loop = null
         ws?.close(1000, null)
         ws = null
+        mqtt?.close()
+        mqtt = null
         _status.value = ConnStatus(Conn.IDLE)
     }
 
@@ -128,6 +140,11 @@ class HubClient(
             }
             when (result) {
                 null -> {
+                    if (s.cloudOn) {
+                        runCloud(s)
+                        backoff = 2_000L
+                        continue
+                    }
                     _status.value = ConnStatus(Conn.OFFLINE, detail = "Hub not found. Are you on the caravan's Wi-Fi?")
                 }
                 is TokenResult.AuthFailed -> {
@@ -220,6 +237,88 @@ class HubClient(
             socket.cancel()
             if (ws === socket) ws = null
             if (_status.value.conn == Conn.CONNECTED) _status.value = ConnStatus(Conn.OFFLINE, t.host, "Lost connection, retrying")
+        }
+    }
+
+    /** Through the cloud broker until the link drops or the hub turns up on this Wi-Fi. */
+    private suspend fun runCloud(s: Settings) {
+        val base = "caravan/${s.cloudDevice.ifBlank { "caravan" }}/"
+        val closed = CompletableDeferred<String>()
+        val acked = CompletableDeferred<Int>()
+        var hubOnline: Boolean? = null
+        fun connected() = ConnStatus(Conn.CONNECTED, "cloud",
+            if (hubOnline == false) "Through the cloud, but the caravan is offline" else "Through the cloud", cloud = true)
+        _status.value = ConnStatus(Conn.CONNECTING, "cloud", "Away from the van: connecting through the cloud", cloud = true)
+        val client = MqttWs(http, object : MqttWs.Listener {
+            override fun onConnAck(rc: Int) { acked.complete(rc) }
+            override fun onClosed(why: String) { closed.complete(why) }
+            override fun onMessage(topic: String, payload: String) {
+                if (!topic.startsWith(base)) return
+                val sub = topic.substring(base.length)
+                if (sub == "online") {
+                    hubOnline = payload.trim() == "1"
+                    if (acked.isCompleted) _status.value = connected()
+                    return
+                }
+                if (sub == "cmd" || sub == "event") return
+                val o = try { JSONObject(payload) } catch (e: Exception) { return }
+                lastMsgMs = SystemClock.elapsedRealtime()
+                when (sub) {
+                    "state" -> {
+                        val st = HubState.parse(o)
+                        _state.value = st
+                        notifier.onLocalState(st, _rules.value, _meta.value)
+                    }
+                    "meta" -> _meta.value = Meta.parse(o)
+                    "rules" -> _rules.value = Rule.parseList(o.optJSONArray("rules"))
+                    "resp" -> when (o.optString("t")) {
+                        "hello" -> {
+                            o.optJSONObject("meta")?.let { _meta.value = Meta.parse(it) }
+                            _rules.value = Rule.parseList(o.optJSONArray("rules"))
+                        }
+                        "state" -> _state.value = HubState.parse(o)
+                        else -> _replies.tryEmit(o)
+                    }
+                }
+            }
+        })
+        client.connect(s.cloudUrl, "app-" + java.lang.Long.toHexString(System.nanoTime() and 0xFFFFFFF), s.cloudUser, s.cloudPass)
+        try {
+            val rc = withTimeoutOrNull(15_000) { kotlinx.coroutines.selects.select<Int> {
+                acked.onAwait { it }
+                closed.onAwait { -1 }
+            } }
+            if (rc != 0) {
+                _status.value = when (rc) {
+                    4, 5 -> ConnStatus(Conn.AUTH_FAILED, "cloud", "The cloud refused the login. Check the cloud username and password.", cloud = true)
+                    else -> ConnStatus(Conn.OFFLINE, "cloud", "Hub not found here, and the cloud can't be reached", cloud = true)
+                }
+                delay(if (rc == 4 || rc == 5) 30_000 else 10_000)
+                return
+            }
+            cloudBase = base
+            mqtt = client
+            lastMsgMs = SystemClock.elapsedRealtime()
+            client.subscribe(base + "#")
+            _status.value = connected()
+            var lastPing = SystemClock.elapsedRealtime()
+            var lastLocalCheck = lastPing
+            while (!closed.isCompleted && scope.isActive) {
+                withTimeoutOrNull(5_000) { closed.await() }
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastPing > 25_000) { client.ping(); lastPing = now }
+                // Back on the van's Wi-Fi? Go direct (quicker, and works without internet).
+                if (now - lastLocalCheck > 30_000) {
+                    lastLocalCheck = now
+                    val h = s.host.ifBlank { prefs.lastHost }
+                    if (h.isNotBlank() && fetchToken(h, s) is TokenResult.Ok) break
+                }
+            }
+        } finally {
+            if (mqtt === client) mqtt = null
+            client.close()
+            if (_status.value.cloud && _status.value.conn == Conn.CONNECTED)
+                _status.value = ConnStatus(Conn.OFFLINE, "cloud", "Lost the cloud connection, retrying", cloud = true)
         }
     }
 

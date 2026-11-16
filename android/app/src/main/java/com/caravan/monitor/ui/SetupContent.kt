@@ -64,6 +64,10 @@ fun SetupContent(
     var ntfyServer by remember(saved) { mutableStateOf(saved.ntfyServer) }
     var ntfyTopic by remember(saved) { mutableStateOf(saved.ntfyTopic) }
     var ntfyToken by remember(saved) { mutableStateOf(saved.ntfyToken) }
+    var cloudHost by remember(saved) { mutableStateOf(saved.cloudHost) }
+    var cloudUser by remember(saved) { mutableStateOf(saved.cloudUser) }
+    var cloudPass by remember(saved) { mutableStateOf(saved.cloudPass) }
+    var cloudDevice by remember(saved) { mutableStateOf(saved.cloudDevice) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -74,7 +78,7 @@ fun SetupContent(
         SectionCard("Hub connection", Accent.water) {
             Text(
                 when (status.conn) {
-                    Conn.CONNECTED -> "Connected to ${status.host}"
+                    Conn.CONNECTED -> if (status.cloud) status.detail else "Connected to ${status.host}"
                     else -> status.detail.ifBlank { "Not connected" }
                 },
                 color = if (connected) Accent.battery else Accent.warn,
@@ -91,6 +95,30 @@ fun SetupContent(
                 style = MaterialTheme.typography.bodySmall, color = Accent.muted)
             Spacer(Modifier.height(8.dp))
             Button(onClick = { onSaveSettings(saved.copy(host = host, user = user, pass = pass), true) }) { Text("Save and connect") }
+        }
+
+        SectionCard("Away from the van (cloud)", Accent.solar) {
+            Text("When the hub isn't on this Wi-Fi, the app goes through your cloud MQTT broker instead, " +
+                "so you can see the van and arm it from anywhere the van has internet. Back on the van's Wi-Fi it " +
+                "goes direct again by itself. Use the caravan-dash login, not the hub's.",
+                style = MaterialTheme.typography.bodySmall, color = Accent.muted)
+            OutlinedTextField(cloudHost, { cloudHost = it }, label = { Text("Broker address") }, singleLine = true,
+                placeholder = { Text("xxxx.emqxsl.com") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(cloudUser, { cloudUser = it }, label = { Text("Cloud username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(cloudPass, { cloudPass = it }, label = { Text("Cloud password") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(cloudDevice, { cloudDevice = it }, label = { Text("Device id") }, singleLine = true,
+                supportingText = { Text("DEVICE_ID in the hub's secrets.h, normally caravan") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    onSaveSettings(saved.copy(cloudHost = cloudHost, cloudUser = cloudUser, cloudPass = cloudPass,
+                        cloudDevice = cloudDevice.ifBlank { "caravan" }), true)
+                }) { Text("Save") }
+                if (saved.cloudOn) OutlinedButton(onClick = { onSaveSettings(saved.copy(cloudHost = "", cloudPass = ""), true) }) { Text("Turn off") }
+            }
         }
 
         SectionCard("Alerts on this phone", Accent.warn) {

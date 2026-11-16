@@ -6,6 +6,8 @@
 #include <PubSubClient.h>
 #include <WebServer.h>
 #include <WebSocketsServer.h>
+#include <ping/ping_sock.h>
+#include <lwip/ip_addr.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_random.h>
@@ -49,7 +51,79 @@ void Net::begin() {
 
 bool Net::timeValid() const { return time(nullptr) > 1700000000; }
 
+// ---- watchdog
+static volatile int gPingReplies = 0;
+static void onPingOk(esp_ping_handle_t, void *) { gPingReplies++; }
+
+void Net::watchdog() {
+  uint32_t now = millis();
+  if (ping_) {  // a ping round started last time: done yet?
+    if ((int32_t)(now - pingDoneMs_) < 0) return;
+    esp_ping_stop((esp_ping_handle_t)ping_);
+    esp_ping_delete_session((esp_ping_handle_t)ping_);
+    ping_ = nullptr;
+    if (gPingReplies > 0 || !lastPingOkMs_) {
+      lastPingOkMs_ = now;
+      return;
+    }
+    uint32_t dead = now - lastPingOkMs_;
+    Serial.printf("[net] router not answering for %lu s (heap %u, min %u)\n", (unsigned long)(dead / 1000),
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
+    if (dead < 90000) return;
+    if (!rejoinedMs_ || now - rejoinedMs_ > 600000) {
+      Serial.println("[net] network jammed - rejoining Wi-Fi");
+      rejoinedMs_ = now;
+      lastPingOkMs_ = now;
+      WiFi.disconnect(false);
+      delay(200);
+      WiFi.begin(WIFI_SSID, WIFI_PASS);
+    } else {
+      Serial.println("[net] network still jammed after rejoining - restarting");
+      delay(100);
+      ESP.restart();
+    }
+    return;
+  }
+  if ((int32_t)(now - nextPingMs_) < 0) return;
+  nextPingMs_ = now + 30000;
+  if (WiFi.status() != WL_CONNECTED) {
+    lastPingOkMs_ = now;  // Net::loop() handles plain disconnects
+    return;
+  }
+  IPAddress gw = WiFi.gatewayIP();
+  if (gw == IPAddress(0, 0, 0, 0)) return;
+  esp_ping_config_t cfg = ESP_PING_DEFAULT_CONFIG();
+  cfg.target_addr.type = IPADDR_TYPE_V4;
+  cfg.target_addr.u_addr.ip4.addr = (uint32_t)gw;
+  cfg.count = 3;
+  cfg.interval_ms = 500;
+  cfg.timeout_ms = 1000;
+  cfg.task_stack_size = 3072;
+  esp_ping_callbacks_t cbs = {};
+  cbs.on_ping_success = onPingOk;
+  esp_ping_handle_t h = nullptr;
+  gPingReplies = 0;
+  if (esp_ping_new_session(&cfg, &cbs, &h) != ESP_OK) return;
+  esp_ping_start(h);
+  ping_ = h;
+  pingDoneMs_ = now + 4000;
+}
+
 void Net::loop(cv::State &s) {
+  // The web server, WebSockets and MQTT all run on the net task: if it hasn't
+  // looped for 2 minutes it's stuck (e.g. a socket write that never returns).
+  if (netAliveMs_ && millis() - netAliveMs_ > 120000) {
+    Serial.printf("[net] net task stuck for 2 min (heap %u, min %u) - restarting\n", (unsigned)ESP.getFreeHeap(),
+                  (unsigned)ESP.getMinFreeHeap());
+    delay(100);
+    ESP.restart();
+  }
+  static uint32_t nextHeapLog = 0;
+  if ((int32_t)(millis() - nextHeapLog) >= 0) {
+    nextHeapLog = millis() + 30000;
+    Serial.printf("[sys] heap %u free, min %u, largest %u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
+                  (unsigned)ESP.getMaxAllocHeap());
+  }
   static bool was = false;
   static uint32_t lastTry = 0;
   bool up = WiFi.status() == WL_CONNECTED;
@@ -205,6 +279,10 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) 
       }
       return;
     }
+    if (strcmp(in["c"] | "", "auth") == 0) {  // already in (no web login set)
+      gWs.sendTXT(num, "{\"t\":\"auth\",\"ok\":true}");
+      return;
+    }
     JsonDocument reply;
     handleCommand(in.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
     if (!reply.isNull()) {
@@ -220,11 +298,15 @@ void LocalWeb::begin() {
 
   gHttp.on("/", HTTP_GET, [] {
     if (!checkAuth()) return;
-    File f = LittleFS.open("/index.html", "r");
+    // Gzipped copy from `pio run -t uploadfs` (copy_web.py); streamFile adds
+    // Content-Encoding: gzip for a .gz name. Older uploads have the plain file.
+    File f = LittleFS.open("/index.html.gz", "r");
+    if (!f) f = LittleFS.open("/index.html", "r");
     if (!f) {
       gHttp.send(500, "text/plain", "index.html missing - run: pio run -t uploadfs");
       return;
     }
+    gHttp.sendHeader("Cache-Control", "no-cache");
     gHttp.streamFile(f, "text/html");
     f.close();
   });

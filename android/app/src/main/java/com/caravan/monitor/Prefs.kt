@@ -35,6 +35,10 @@ class Prefs(context: Context) {
         ntfyServer = sp.getString("ntfyServer", "https://ntfy.sh") ?: "https://ntfy.sh",
         ntfyTopic = sp.getString("ntfyTopic", "") ?: "",
         ntfyToken = sp.getString("ntfyToken", "") ?: "",
+        cloudHost = sp.getString("cloudHost", "") ?: "",
+        cloudUser = sp.getString("cloudUser", "caravan-dash") ?: "caravan-dash",
+        cloudPass = sp.getString("cloudPass", "") ?: "",
+        cloudDevice = sp.getString("cloudDevice", "caravan") ?: "caravan",
     )
 
     fun update(s: Settings) {
@@ -46,6 +50,10 @@ class Prefs(context: Context) {
             .putString("ntfyServer", s.ntfyServer.trim().trimEnd('/'))
             .putString("ntfyTopic", s.ntfyTopic.trim())
             .putString("ntfyToken", s.ntfyToken.trim())
+            .putString("cloudHost", s.cloudHost.trim())
+            .putString("cloudUser", s.cloudUser.trim())
+            .putString("cloudPass", s.cloudPass)
+            .putString("cloudDevice", s.cloudDevice.trim().ifBlank { "caravan" })
             .apply()
         _settings.value = load()
     }

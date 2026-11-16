@@ -26,7 +26,7 @@ The system works fully without any of this. The touchscreen and the local web pa
    #define MQTT_PASS "…"
    ```
 
-The hub trusts the ISRG Root X1 (Let's Encrypt) certificate, which HiveMQ Cloud and ntfy.sh use (see `root_ca.h`). If you use a different broker with a different CA, replace that certificate.
+The hub trusts ISRG Root X1 (Let's Encrypt: ntfy.sh, HiveMQ Cloud) and DigiCert Global Root G2 (EMQX Cloud Serverless), see `root_ca.h`. If you use a different broker with a different CA, replace that certificate.
 
 Any MQTT broker with TLS and WebSockets works: Mosquitto on a VPS, EMQX Cloud, or a Home Assistant add-on reached through Nabu Casa.
 

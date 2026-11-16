@@ -118,7 +118,7 @@ val ALERTING = HubState(
 )
 
 val SETTINGS = Settings(host = "", user = "admin", pass = "secret", backgroundAlerts = true,
-    ntfyServer = "https://ntfy.sh", ntfyTopic = "caravan-alerts-8f3k2")
+    ntfyServer = "https://ntfy.sh", ntfyTopic = "caravan-alerts-8f3k2", cloudHost = "a1b2c3.ala.asia-southeast1.emqxsl.com", cloudPass = "secret")
 
 // ---------------------------------------------------------------- theme
 
@@ -245,6 +245,11 @@ fun main() {
         alerts = listOf(ActiveAlert(14, Severity.CRIT, false, 0, 2.0, "Theft alarm: van turned (being towed?)")))
     shot("11-home-theft-alarm", 840) {
         AppScaffold(0, {}, 1) { HomeContent(theft, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
+    }
+    shot("13-home-away-cloud", 840) {
+        AppScaffold(0, {}, 0) {
+            HomeContent(calm, META, RULES, ConnStatus(Conn.CONNECTED, "cloud", "Through the cloud", cloud = true), nop, { _, _ -> }, nop, nop)
+        }
     }
     shot("6-home-not-connected", 915) {
         AppScaffold(0, {}, 0) {

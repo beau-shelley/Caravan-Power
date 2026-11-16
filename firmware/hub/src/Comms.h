@@ -87,6 +87,17 @@ class Net {
   void begin();
   void loop(cv::State &s);
   bool timeValid() const;
+  // Network watchdog, run from the net task: pings the router every 30 s. If
+  // Wi-Fi says it's connected but nothing gets through for 90 s, it rejoins
+  // Wi-Fi, and if that doesn't help, restarts the hub (secure mode re-arms itself).
+  void watchdog();
+  // Heartbeat from the net task; loop() restarts the hub if it stops (a wedged web server).
+  void netAlive() { netAliveMs_ = millis(); }
+
+ private:
+  volatile uint32_t netAliveMs_ = 0;
+  uint32_t nextPingMs_ = 30000, lastPingOkMs_ = 0, rejoinedMs_ = 0, pingDoneMs_ = 0;
+  void *ping_ = nullptr;  // esp_ping_handle_t while a ping round runs
 };
 
 extern DisplayLink gLink;

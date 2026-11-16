@@ -338,7 +338,8 @@ data class UpdateInfo(
 
 /** How the app is getting on with the hub (shown in the UI). */
 enum class Conn { IDLE, SEARCHING, CONNECTING, CONNECTED, AUTH_FAILED, OFFLINE }
-data class ConnStatus(val conn: Conn = Conn.IDLE, val host: String = "", val detail: String = "")
+/** [cloud]: going through the cloud broker (away from the van) rather than straight to the hub. */
+data class ConnStatus(val conn: Conn = Conn.IDLE, val host: String = "", val detail: String = "", val cloud: Boolean = false)
 
 /** The phone-side settings. Everything about the van itself lives on the hub. */
 data class Settings(
@@ -349,4 +350,18 @@ data class Settings(
     val ntfyServer: String = "https://ntfy.sh",
     val ntfyTopic: String = "",
     val ntfyToken: String = "",
-)
+    // Away from the van: the cloud MQTT broker (HiveMQ Cloud). Blank host = off.
+    val cloudHost: String = "",     // broker address, e.g. abc123.ala.us-east-1.emqxsl.com (or a full wss:// URL)
+    val cloudUser: String = "caravan-dash",
+    val cloudPass: String = "",
+    val cloudDevice: String = "caravan",  // DEVICE_ID in the hub's secrets.h
+) {
+    val cloudOn get() = cloudHost.isNotBlank() && cloudPass.isNotEmpty()
+    val cloudUrl get() = cloudHost.trim().let { h ->
+        if (h.startsWith("wss://") || h.startsWith("ws://")) h else {
+            val host = h.removePrefix("https://").trimEnd('/')
+            // Secure-WebSocket port: EMQX Serverless uses 8084, HiveMQ Cloud 8884.
+            if (host.contains(':')) "wss://$host/mqtt" else "wss://$host:${if (host.contains("emqx")) 8084 else 8884}/mqtt"
+        }
+    }
+}

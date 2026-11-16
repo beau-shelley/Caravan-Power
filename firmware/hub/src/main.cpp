@@ -701,6 +701,8 @@ static void netTask(void *) {
     gWeb.loop(gState);
     gCloud.loop(gState);
     gWeather.loop(gState);
+    gNet.watchdog();
+    gNet.netAlive();
     {
       StateLock l;
       gState.cloud = gCloud.connected();

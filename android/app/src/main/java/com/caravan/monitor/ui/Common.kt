@@ -76,11 +76,13 @@ fun SectionCard(
     }
 }
 
-/** Thin strip showing whether the app is talking to the hub. Hidden while connected. */
+/** Thin strip showing whether the app is talking to the hub. Hidden while connected direct;
+ *  through the cloud it says so, since updates are slower (every 15 s) and some controls may be off. */
 @Composable
 fun ConnectionStrip(st: ConnStatus, onOpenSetup: (() -> Unit)? = null) {
-    if (st.conn == Conn.CONNECTED) return
+    if (st.conn == Conn.CONNECTED && !st.cloud) return
     val (color, text) = when (st.conn) {
+        Conn.CONNECTED -> (if (st.detail.contains("offline")) Accent.warn else Accent.water) to "Away from the van · ${st.detail.replaceFirstChar { it.lowercase() }}"
         Conn.AUTH_FAILED -> Accent.alarm to "${st.detail}. Check the login in Setup."
         Conn.SEARCHING, Conn.CONNECTING, Conn.IDLE -> Accent.muted to (st.detail.ifBlank { "Connecting…" })
         else -> Accent.warn to st.detail.ifBlank { "Not connected" }
@@ -91,7 +93,7 @@ fun ConnectionStrip(st: ConnStatus, onOpenSetup: (() -> Unit)? = null) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text, color = color, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        if (onOpenSetup != null && st.conn != Conn.CONNECTING && st.conn != Conn.SEARCHING) {
+        if (onOpenSetup != null && st.conn != Conn.CONNECTING && st.conn != Conn.SEARCHING && st.conn != Conn.CONNECTED) {
             TextButton(onClick = onOpenSetup) { Text("Setup") }
         }
     }
