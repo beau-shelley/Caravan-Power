@@ -9,12 +9,16 @@ import org.json.JSONObject
 data class Battery(
     val on: Boolean, val v: Double, val a: Double, val soc: Double, val ttgMin: Int,
     val solarA: Double, val chargerA: Double, val loadA: Double,
+    // Mains chargers (2 x 60 A): no sensor, the hub infers them from what the
+    // BMPRO and Victrons don't explain. acOn = bulk mains charging detected.
+    val acA: Double = 0.0, val acOn: Boolean = false,
 )
 
 data class Solar(val on: Boolean, val w: Double, val yieldKwh: Double, val peakW: Double, val err: Int)
 data class Temp(val on: Boolean, val c: Double, val lo: Double, val hi: Double, val batt: Int)
 data class Tank(val on: Boolean, val pct: Double)
 data class Pump(val on: Boolean, val lockout: Boolean, val runSec: Int)
+data class Gas(val on: Boolean = false, val pct: Double = 0.0)
 data class ActiveAlert(val id: Int, val sev: Int, val ack: Boolean, val since: Long, val value: Double, val msg: String)
 data class Weather(val ok: Boolean, val place: String, val tempC: Double, val windKmh: Double, val gustKmh: Double, val code: Int)
 data class Net(val wifi: Boolean, val cloud: Boolean, val ip: String)
@@ -29,18 +33,21 @@ data class HubState(
     val alerts: List<ActiveAlert>,
     val wx: Weather,
     val net: Net,
+    val gas: Gas = Gas(),
 ) {
     companion object {
         fun parse(o: JSONObject): HubState {
             val b = o.optJSONObject("bat") ?: JSONObject()
             val w = o.optJSONObject("wx") ?: JSONObject()
             val n = o.optJSONObject("net") ?: JSONObject()
+            val g = o.optJSONObject("gas") ?: JSONObject()
             return HubState(
                 ts = o.optLong("ts"),
                 bat = Battery(
                     on = b.optBoolean("on"), v = b.optDouble("v", 0.0), a = b.optDouble("a", 0.0),
                     soc = b.optDouble("soc", 0.0), ttgMin = b.optInt("ttg", -1),
                     solarA = b.optDouble("sa", 0.0), chargerA = b.optDouble("ca", 0.0), loadA = b.optDouble("load", 0.0),
+                    acA = b.optDouble("aca", 0.0), acOn = b.optBoolean("acon"),
                 ),
                 sol = o.optJSONArray("sol").objects().map {
                     Solar(it.optBoolean("on"), it.optDouble("w", 0.0), it.optDouble("yt", 0.0), it.optDouble("mx", 0.0), it.optInt("err"))
@@ -57,6 +64,7 @@ data class HubState(
                 wx = Weather(w.optBoolean("ok"), w.optString("pl"), w.optDouble("t", 0.0), w.optDouble("w", 0.0),
                     w.optDouble("g", 0.0), w.optInt("c", -1)),
                 net = Net(n.optBoolean("wifi"), n.optBoolean("cloud"), n.optString("ip")),
+                gas = Gas(g.optBoolean("on"), g.optDouble("p", 0.0)),
             )
         }
     }
@@ -66,7 +74,7 @@ data class Meta(
     val solarNames: List<String> = listOf("Solar 1", "Solar 2"),
     val tempNames: List<String> = listOf("Inside", "Outside", "Fridge"),
     val tankNames: List<String> = listOf("Tank 1", "Tank 2", "Tank 3"),
-    val pumpNames: List<String> = listOf("Pump 1", "Pump 2"),
+    val pumpNames: List<String> = listOf("Internal", "External"),
     val remoteControl: Boolean = true,
     val fw: String = "",
     /** Touchscreen dim timeout in seconds (0 = never), or -1 if the hub firmware doesn't support it yet. */
@@ -109,6 +117,7 @@ object Metrics {
         Metric("tank3", "Tank 3", "%", 5.0),
         Metric("wx_gust", "Forecast gusts", "km/h", 5.0),
         Metric("wx_rain", "Forecast rain chance", "%", 10.0),
+        Metric("gas", "Gas bottle", "%", 5.0),
     )
 
     fun byKey(key: String): Metric = all.firstOrNull { it.key == key } ?: all[0]
@@ -194,3 +203,18 @@ fun JSONArray?.objects(): List<JSONObject> =
 
 fun JSONArray?.strings(): List<String> =
     if (this == null) emptyList() else (0 until length()).map { optString(it) }
+
+/** How the app is getting on with the hub (shown in the UI). */
+enum class Conn { IDLE, SEARCHING, CONNECTING, CONNECTED, AUTH_FAILED, OFFLINE }
+data class ConnStatus(val conn: Conn = Conn.IDLE, val host: String = "", val detail: String = "")
+
+/** The phone-side settings. Everything about the van itself lives on the hub. */
+data class Settings(
+    val host: String = "",          // blank = find the hub automatically
+    val user: String = "admin",
+    val pass: String = "",
+    val backgroundAlerts: Boolean = true,
+    val ntfyServer: String = "https://ntfy.sh",
+    val ntfyTopic: String = "",
+    val ntfyToken: String = "",
+)

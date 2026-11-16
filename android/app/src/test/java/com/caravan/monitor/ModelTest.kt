@@ -33,6 +33,13 @@ class ModelTest {
         assertEquals("Bright", s.wx.place)
     }
 
+    @Test fun parsesMainsCharging() {
+        val s = HubState.parse(JSONObject("""{"t":"state","bat":{"on":true,"a":105,"sa":20,"ca":0,"aca":97.5,"acon":true}}"""))
+        assertTrue(s.bat.acOn)
+        assertEquals(97.5, s.bat.acA, 0.0)
+        assertFalse(HubState.parse(JSONObject(stateJson)).bat.acOn)
+    }
+
     @Test fun emptyStateDoesNotCrash() {
         val s = HubState.parse(JSONObject("{\"t\":\"state\"}"))
         assertFalse(s.bat.on)

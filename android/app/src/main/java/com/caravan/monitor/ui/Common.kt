@@ -1,5 +1,9 @@
 package com.caravan.monitor.ui
 
+// Building blocks shared by every screen. Nothing in the ui/*Content.kt files
+// or here touches Android APIs or the hub connection, so the same code renders
+// the screenshots in android/screenshots/ on a desktop JVM.
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,30 +19,40 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.caravan.monitor.ActiveAlert
-import com.caravan.monitor.CaravanApp
-import com.caravan.monitor.HubClient
+import com.caravan.monitor.Conn
+import com.caravan.monitor.ConnStatus
 import com.caravan.monitor.Severity
+import java.util.Locale
 
 @Composable
 fun SectionCard(title: String, color: Color, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        colors = CardDefaults.cardColors(containerColor = Surfaces.card),
         shape = RoundedCornerShape(16.dp),
     ) {
         Column(Modifier.padding(16.dp)) {
@@ -52,28 +67,26 @@ fun SectionCard(title: String, color: Color, modifier: Modifier = Modifier, cont
     }
 }
 
-/** Thin strip showing whether the app is talking to the hub. */
+/** Thin strip showing whether the app is talking to the hub. Hidden while connected. */
 @Composable
-fun ConnectionStrip(onOpenSetup: (() -> Unit)? = null) {
-    val st by CaravanApp.instance.hub.status.collectAsStateWithLifecycle()
-    if (st.conn == HubClient.Conn.CONNECTED) return
+fun ConnectionStrip(st: ConnStatus, onOpenSetup: (() -> Unit)? = null) {
+    if (st.conn == Conn.CONNECTED) return
     val (color, text) = when (st.conn) {
-        HubClient.Conn.AUTH_FAILED -> Accent.alarm to "${st.detail}. Check the login in Setup."
-        HubClient.Conn.SEARCHING, HubClient.Conn.CONNECTING, HubClient.Conn.IDLE -> Accent.muted to (st.detail.ifBlank { "Connecting…" })
+        Conn.AUTH_FAILED -> Accent.alarm to "${st.detail}. Check the login in Setup."
+        Conn.SEARCHING, Conn.CONNECTING, Conn.IDLE -> Accent.muted to (st.detail.ifBlank { "Connecting…" })
         else -> Accent.warn to st.detail.ifBlank { "Not connected" }
     }
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = 0.15f)).padding(horizontal = 14.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = 0.15f))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text, color = color, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        if (onOpenSetup != null && st.conn != HubClient.Conn.CONNECTING && st.conn != HubClient.Conn.SEARCHING) {
+        if (onOpenSetup != null && st.conn != Conn.CONNECTING && st.conn != Conn.SEARCHING) {
             TextButton(onClick = onOpenSetup) { Text("Setup") }
         }
     }
 }
-
-fun sevColor(sev: Int) = when (sev) { Severity.ALARM -> Accent.alarm; Severity.WARN -> Accent.warn; else -> Accent.water }
 
 @Composable
 fun AlertRow(a: ActiveAlert, title: String?) {
@@ -95,3 +108,52 @@ fun Stat(label: String, value: String, modifier: Modifier = Modifier, valueColor
         Text(value, style = MaterialTheme.typography.titleMedium, color = valueColor)
     }
 }
+
+/** Horizontal level bar, 0..1. */
+@Composable
+fun Bar(fraction: Double, color: Color, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(Surfaces.track)) {
+        Box(Modifier.fillMaxHeight().fillMaxWidth(fraction.toFloat().coerceIn(0f, 1f)).clip(RoundedCornerShape(4.dp)).background(color))
+    }
+}
+
+@Composable
+fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+    }
+}
+
+@Composable
+fun Field(label: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Accent.muted)
+        content()
+    }
+}
+
+@Composable
+fun <T> Picker(value: String, options: List<Pair<T, String>>, onPick: (T) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(value, modifier = Modifier.weight(1f))
+            Icon(Icons.Filled.ArrowDropDown, null)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            options.forEach { (k, label) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { open = false; onPick(k) })
+            }
+        }
+    }
+}
+
+@Composable
+fun Hint(text: String) = Text(text, style = MaterialTheme.typography.bodySmall, color = Accent.muted)
+
+fun fmt1(v: Double) = String.format(Locale.US, "%.1f", v)
+fun fmt2(v: Double) = String.format(Locale.US, "%.2f", v)
+// Temperatures are shown as whole degrees (rounded; never "-0").
+fun fmtDeg(v: Double) = Math.round(v).toInt().toString()
+fun signed(v: Double) = (if (v > 0) "+" else "") + fmt1(v)

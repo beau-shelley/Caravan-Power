@@ -5,7 +5,8 @@ touchscreen for setup and sends alerts as phone notifications.
 
 ## What it does
 
-- **Home:** battery, solar, water tanks, temperatures, pumps (tap to switch), weather.
+- **Home:** battery, mains charging (while bulk charging), solar, water tanks, temperatures,
+  gas bottle, Internal/External pumps (tap to switch), weather.
 - **Alerts:** active alerts with *Acknowledge*, and the hub's alert rules: add, edit,
   delete, switch on/off, restore defaults. Same rules as the touchscreen and web page.
 - **Setup:** hub login, background alerts, ntfy, touchscreen sleep time, remote control.
@@ -57,3 +58,24 @@ cd android
 - Level page over Bluetooth (use `web/level.html` for now).
 - Remote dashboard over MQTT.
 - Inverter and aircon controls (hidden for now, like on the touchscreen).
+
+## Screenshots
+
+`android/screenshots/` draws the app's real screens with demo data, on a normal
+computer (no Android SDK, emulator or phone needed):
+
+```
+cd android/screenshots
+./gradlew run        # writes out/*.png
+```
+
+The screen code that doesn't touch Android lives in `ui/*Content.kt`,
+`ui/Common.kt`, `ui/Colors.kt` and `ui/AppScaffold.kt`, and the renderer compiles
+those files directly. `ui/Screens.kt` wires them to the hub on the phone. The
+font is Inter instead of Android's Roboto, so spacing can differ slightly.
+
+| Home (mains charging) | Home (alerts) | Alerts and rules |
+|---|---|---|
+| ![](screenshots/img/1-home-mains-charging.png) | ![](screenshots/img/2-home-alerts.png) | ![](screenshots/img/3-alerts-and-rules.png) |
+| **Edit a rule** | **Setup** | **Hub not found** |
+| ![](screenshots/img/4-edit-rule.png) | ![](screenshots/img/5-setup.png) | ![](screenshots/img/6-home-not-connected.png) |
