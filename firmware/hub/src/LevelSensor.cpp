@@ -81,7 +81,9 @@ bool LevelSensor::begin() {
     regWrite(addr_, 0x19, 9);     // 100 Hz sample rate
   }
   Serial.printf("[level] MPU-6050 %s\n", ok_ ? "found" : "NOT FOUND (levelling disabled)");
-  if (ok_) startBle();
+#if HUB_LEVEL_BLE
+  if (ok_) startBle();  // phone level page over Bluetooth (off by default: costs RAM, the Wi-Fi page does the same)
+#endif
   return ok_;
 }
 
