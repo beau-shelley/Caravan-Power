@@ -13,10 +13,12 @@
 #define WEB_USER "admin"
 #define WEB_PASS "changeme"
 
-// Cloud MQTT broker (e.g. HiveMQ Cloud free tier). TLS on 8883.
+// Cloud MQTT broker (EMQX Cloud Serverless, free). TLS on 8883.
+// Address = the deployment's "Address" on its Overview page. Leave the
+// xxxxxxxx placeholder to run without the cloud.
 // Starlink uses CGNAT, so the hub connects OUT to the broker; nothing is
 // exposed to the internet and no port forwarding is needed.
-#define MQTT_HOST "xxxxxxxx.s1.eu.hivemq.cloud"
+#define MQTT_HOST "xxxxxxxx.ala.asia-southeast1.emqxsl.com"
 #define MQTT_PORT 8883
 #define MQTT_USER "caravan-hub"
 #define MQTT_PASS "changeme"
