@@ -6,6 +6,9 @@
 #include <PubSubClient.h>
 #include <WebServer.h>
 #include <WebSocketsServer.h>
+#include <lwip/sockets.h>
+#include <ping/ping_sock.h>
+#include <lwip/ip_addr.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_random.h>
@@ -19,6 +22,13 @@
 #else
 #warning "src/secrets.h missing - copy secrets.example.h and fill it in"
 #include "secrets.example.h"
+#endif
+
+// The van-visit (Bluetooth survey) build runs on the van's Starlink Wi-Fi, so
+// it must not leave the dashboard / app open without a login.
+#ifdef HUB_BLE_SURVEY
+static_assert(sizeof(WEB_USER) > 1 && sizeof(WEB_PASS) > 1,
+              "hub-esp32-survey: set WEB_USER and WEB_PASS in src/secrets.h (the bench build may leave them empty)");
 #endif
 
 namespace hub {
@@ -42,12 +52,94 @@ void Net::begin() {
 
 bool Net::timeValid() const { return time(nullptr) > 1700000000; }
 
+// ---- watchdog
+static volatile int gPingReplies = 0;
+static void onPingOk(esp_ping_handle_t, void *) { gPingReplies++; }
+
+void Net::watchdog() {
+  uint32_t now = millis();
+  if (ping_) {  // a ping round started last time: done yet?
+    if ((int32_t)(now - pingDoneMs_) < 0) return;
+    esp_ping_stop((esp_ping_handle_t)ping_);
+    esp_ping_delete_session((esp_ping_handle_t)ping_);
+    ping_ = nullptr;
+    if (gPingReplies > 0 || !lastPingOkMs_) {
+      lastPingOkMs_ = now;
+      return;
+    }
+    uint32_t dead = now - lastPingOkMs_;
+    Serial.printf("[net] router not answering for %lu s (heap %u, min %u)\n", (unsigned long)(dead / 1000),
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
+    if (dead < 90000) return;
+    if (!rejoinedMs_ || now - rejoinedMs_ > 600000) {
+      Serial.println("[net] network jammed - rejoining Wi-Fi");
+      rejoinedMs_ = now;
+      lastPingOkMs_ = now;
+      WiFi.disconnect(false);
+      delay(200);
+      WiFi.begin(WIFI_SSID, WIFI_PASS);
+    } else {
+      Serial.println("[net] network still jammed after rejoining - restarting");
+      delay(100);
+      ESP.restart();
+    }
+    return;
+  }
+  if ((int32_t)(now - nextPingMs_) < 0) return;
+  nextPingMs_ = now + 30000;
+  if (WiFi.status() != WL_CONNECTED) {
+    lastPingOkMs_ = now;  // Net::loop() handles plain disconnects
+    return;
+  }
+  IPAddress gw = WiFi.gatewayIP();
+  if (gw == IPAddress(0, 0, 0, 0)) return;
+  esp_ping_config_t cfg = ESP_PING_DEFAULT_CONFIG();
+  cfg.target_addr.type = IPADDR_TYPE_V4;
+  cfg.target_addr.u_addr.ip4.addr = (uint32_t)gw;
+  cfg.count = 3;
+  cfg.interval_ms = 500;
+  cfg.timeout_ms = 1000;
+  cfg.task_stack_size = 3072;
+  esp_ping_callbacks_t cbs = {};
+  cbs.on_ping_success = onPingOk;
+  esp_ping_handle_t h = nullptr;
+  gPingReplies = 0;
+  if (esp_ping_new_session(&cfg, &cbs, &h) != ESP_OK) return;
+  esp_ping_start(h);
+  ping_ = h;
+  pingDoneMs_ = now + 4000;
+}
+
 void Net::loop(cv::State &s) {
+  // The web server, WebSockets and MQTT all run on the net task: if it hasn't
+  // looped for 2 minutes it's stuck (e.g. a socket write that never returns).
+  if (netAliveMs_ && millis() - netAliveMs_ > 120000) {
+    Serial.printf("[net] net task stuck for 2 min (heap %u, min %u) - restarting\n", (unsigned)ESP.getFreeHeap(),
+                  (unsigned)ESP.getMinFreeHeap());
+    delay(100);
+    ESP.restart();
+  }
+  static uint32_t nextHeapLog = 0;
+  if ((int32_t)(millis() - nextHeapLog) >= 0) {
+    nextHeapLog = millis() + 30000;
+    Serial.printf("[sys] heap %u free, min %u, largest %u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
+                  (unsigned)ESP.getMaxAllocHeap());
+    // Unused stack per task (bytes never touched): what each could give back.
+    static const char *kTasks[] = {"net", "push", "heater", "bmpro", "nimble_host", "loopTask", "ble_scan"};
+    char line[160];
+    int n = snprintf(line, sizeof(line), "[sys] stack unused:");
+    for (const char *t : kTasks) {
+      TaskHandle_t h = xTaskGetHandle(t);
+      if (h && n < (int)sizeof(line)) n += snprintf(line + n, sizeof(line) - n, " %s %u", t, (unsigned)uxTaskGetStackHighWaterMark(h));
+    }
+    Serial.println(line);
+  }
   static bool was = false;
   static uint32_t lastTry = 0;
   bool up = WiFi.status() == WL_CONNECTED;
   if (up && !was) {
-    Serial.printf("[net] Wi-Fi up, IP %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("[net] Wi-Fi up, IP %s (heap %u free, largest %u)\n", WiFi.localIP().toString().c_str(),
+                  (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     MDNS.begin(HOSTNAME);
     MDNS.addService("http", "tcp", 80);
   }
@@ -76,13 +168,20 @@ void Net::loop(cv::State &s) {
 // Half duplex: the hub is bus master. It sends a state frame every second and
 // a tiny poll frame every 250 ms; the display only transmits right after it
 // receives a frame, so the two never talk over each other.
-void DisplayLink::begin(HardwareSerial &ser, int rx, int tx, int de) {
+// DE (driver enable, active high) and /RE (receiver enable, active low) can
+// be bridged on one pin or wired to two; either way HIGH = transmit, LOW = listen.
+void DisplayLink::txEnable(bool on) {
+  if (de_ >= 0) digitalWrite(de_, on ? HIGH : LOW);
+  if (re_ >= 0) digitalWrite(re_, on ? HIGH : LOW);
+}
+
+void DisplayLink::begin(HardwareSerial &ser, int rx, int tx, int de, int re) {
   ser_ = &ser;
   de_ = de;
-  if (de_ >= 0) {
-    pinMode(de_, OUTPUT);
-    digitalWrite(de_, LOW);
-  }
+  re_ = re;
+  if (de_ >= 0) pinMode(de_, OUTPUT);
+  if (re_ >= 0) pinMode(re_, OUTPUT);
+  txEnable(false);
   ser_->setRxBufferSize(4096);
   ser_->setTxBufferSize(2048);
   ser_->begin(115200, SERIAL_8N1, rx, tx);
@@ -91,11 +190,11 @@ void DisplayLink::begin(HardwareSerial &ser, int rx, int tx, int de) {
 void DisplayLink::write(const char *buf, size_t n) {
   char tr[5];
   cv::linkTrailer(buf, n, tr);
-  if (de_ >= 0) digitalWrite(de_, HIGH);
+  txEnable(true);
   ser_->write((const uint8_t *)buf, n);
   ser_->write((const uint8_t *)tr, 4);
   ser_->flush();  // wait until the last bit is out before releasing the bus
-  if (de_ >= 0) digitalWrite(de_, LOW);
+  txEnable(false);
 }
 
 void DisplayLink::send(JsonDocument &doc) {
@@ -155,7 +254,28 @@ void DisplayLink::loop(const cv::State &s) {
 
 // ================================================================ local web
 static WebServer gHttp(80);
-static WebSocketsServer gWs(81);
+// A socket write to a phone that isn't reading (asleep, walked off, Wi-Fi busy
+// sharing the radio with Bluetooth) blocks inside WiFiClient::write() for
+// seconds at a time; with 1 s pushes to several clients the net task never
+// caught up and everything jammed. So the periodic push only goes to clients
+// whose socket can take data right now; one that can't for 10 s is dropped
+// (the phone reconnects by itself).
+class HubWs : public WebSocketsServer {
+ public:
+  using WebSocketsServer::WebSocketsServer;
+  bool writable(uint8_t n) {
+    if (n >= WEBSOCKETS_SERVER_CLIENT_MAX || !_clients[n].tcp) return false;
+    int fd = _clients[n].tcp->fd();
+    if (fd < 0) return false;
+    fd_set w;
+    FD_ZERO(&w);
+    FD_SET(fd, &w);
+    timeval tv = {0, 0};
+    return select(fd + 1, nullptr, &w, nullptr, &tv) > 0;
+  }
+};
+static HubWs gWs(81);
+static uint32_t gWsStuckSinceMs[WEBSOCKETS_SERVER_CLIENT_MAX] = {};
 static char gWsToken[33] = {0};
 static bool gWsAuthed[WEBSOCKETS_SERVER_CLIENT_MAX] = {};
 
@@ -191,6 +311,10 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) 
       }
       return;
     }
+    if (strcmp(in["c"] | "", "auth") == 0) {  // already in (no web login set)
+      gWs.sendTXT(num, "{\"t\":\"auth\",\"ok\":true}");
+      return;
+    }
     JsonDocument reply;
     handleCommand(in.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
     if (!reply.isNull()) {
@@ -206,11 +330,15 @@ void LocalWeb::begin() {
 
   gHttp.on("/", HTTP_GET, [] {
     if (!checkAuth()) return;
-    File f = LittleFS.open("/index.html", "r");
+    // Gzipped copy from `pio run -t uploadfs` (copy_web.py); streamFile adds
+    // Content-Encoding: gzip for a .gz name. Older uploads have the plain file.
+    File f = LittleFS.open("/index.html.gz", "r");
+    if (!f) f = LittleFS.open("/index.html", "r");
     if (!f) {
       gHttp.send(500, "text/plain", "index.html missing - run: pio run -t uploadfs");
       return;
     }
+    gHttp.sendHeader("Cache-Control", "no-cache");
     gHttp.streamFile(f, "text/html");
     f.close();
   });
@@ -277,8 +405,23 @@ void LocalWeb::begin() {
 void LocalWeb::broadcast(JsonDocument &doc) {
   String out;
   serializeJson(doc, out);
-  for (uint8_t i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++)
-    if (gWsAuthed[i] && gWs.clientIsConnected(i)) gWs.sendTXT(i, out);
+  for (uint8_t i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) {
+    if (!gWsAuthed[i] || !gWs.clientIsConnected(i)) {
+      gWsStuckSinceMs[i] = 0;
+      continue;
+    }
+    if (!gWs.writable(i)) {  // not draining: skip this round
+      if (!gWsStuckSinceMs[i]) gWsStuckSinceMs[i] = millis() | 1;
+      else if (millis() - gWsStuckSinceMs[i] > 10000) {
+        Serial.printf("[web] client %u not reading for 10 s - dropping it\n", i);
+        gWs.disconnect(i);
+        gWsStuckSinceMs[i] = 0;
+      }
+      continue;
+    }
+    gWsStuckSinceMs[i] = 0;
+    gWs.sendTXT(i, out);
+  }
 }
 
 void LocalWeb::loop(const cv::State &s) {
@@ -357,6 +500,16 @@ void Cloud::queueEvent(JsonDocument &doc) {
 void Cloud::loop(const cv::State &s) {
   if (strlen(MQTT_HOST) == 0 || strstr(MQTT_HOST, "xxxxxxxx")) return;
   if (WiFi.status() != WL_CONNECTED) return;
+  if (pauseReq_) {  // a push alert needs the RAM
+    if (gMqtt.connected()) {
+      Serial.println("[cloud] pausing so a push alert can go out");
+      gMqtt.disconnect();
+      gTls.stop();
+    }
+    if ((int32_t)(millis() - pauseUntilMs_) < 0) return;
+    pauseReq_ = false;
+    nextTryMs_ = 0;
+  }
   if (!gMqtt.connected()) {
     if ((int32_t)(millis() - nextTryMs_) < 0) return;
     String will = gBase + "online";
@@ -413,6 +566,8 @@ struct PushMsg {
 };
 static QueueHandle_t gPushQ;
 
+static constexpr uint32_t kPushHeapNeed = 30000;
+
 static void pushTask(void *) {
   PushMsg m;
   for (;;) {
@@ -421,6 +576,13 @@ static void pushTask(void *) {
       if (WiFi.status() != WL_CONNECTED) {
         vTaskDelay(pdMS_TO_TICKS(10000));
         continue;
+      }
+      // HTTPS needs ~35 KB in one go. If the cloud link holds it, ask it to
+      // step aside (it comes back by itself) and wait up to 5 s for the RAM.
+      if (ESP.getMaxAllocHeap() < kPushHeapNeed) {
+        gCloud.pauseFor(30000);
+        for (int i = 0; i < 50 && ESP.getMaxAllocHeap() < kPushHeapNeed; i++) vTaskDelay(pdMS_TO_TICKS(100));
+        Serial.printf("[push] largest free block %u before sending\n", (unsigned)ESP.getMaxAllocHeap());
       }
       WiFiClientSecure tls;
       tls.setCACert(ROOT_CA_PEM);
@@ -454,6 +616,9 @@ void Notifier::push(const char *title, const char *msg, uint8_t sev, bool cleare
   if (cleared) {
     m.prio = 2;
     strcpy(m.tags, "white_check_mark");
+  } else if (sev >= cv::SEV_CRIT) {
+    m.prio = 5;
+    strcpy(m.tags, "sos,rotating_light");
   } else if (sev == cv::SEV_ALARM) {
     m.prio = 5;  // "urgent": breaks through Do Not Disturb on most phones
     strcpy(m.tags, "rotating_light");

@@ -9,7 +9,9 @@ namespace hub {
 class LevelSensor {
  public:
   bool begin();                    // false if no MPU-6050 found
-  void loop(cv::State &s);         // 100 Hz sampling, filtering, calibration
+  // 100 Hz sampling, filtering, calibration; also feeds secure mode.
+  // publish=false: don't write the level into the state (fake-data build).
+  void loop(cv::State &s, bool publish = true);
   // Calibration takes ~2 s of averaging; results are saved to config.
   void startZero();                // van is on known-level ground
   void startLearnFront();          // front (jockey) lifted a little
@@ -26,6 +28,7 @@ class LevelSensor {
   uint32_t lastSampleMs_ = 0, lastBleMs_ = 0, lastRetryMs_ = 0;
   float fx_ = 0, fy_ = 0, fz_ = 0;  // low-pass filtered accel
   bool primed_ = false;
+  cv::Vec3 gyro_;  // deg/s, from the last read
   enum CalMode : uint8_t { CAL_NONE, CAL_ZERO, CAL_FRONT } calMode_ = CAL_NONE;
   double sx_ = 0, sy_ = 0, sz_ = 0;
   uint16_t calN_ = 0;

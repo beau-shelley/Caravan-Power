@@ -24,7 +24,13 @@ void cmd(const char *c);
 void cmdPump(int i, bool on);
 void cmdInverter(bool on);
 void cmdAircon(int preset);  // -1 = off
-void cmdRule(const cv::Rule &r);
+// Diesel heater: {"c":"heater", key: value}, e.g. ("temp", 22), ("level", 6).
+void cmdHeaterOn(bool on);
+void cmdHeaterSet(const char *key, int value);
+void cmdHeaterMode(bool level);
+// Secure mode (anti-theft): {"c":"secure","arm":true|false,"code":"1234"}.
+// Disarming here needs the code once one is set on the phone (meta.secCodeSet).
+void cmdSecure(bool arm, const char *code = nullptr);
 
 // Hook for replies the UI cares about (errors, learn status, ...)
 using ReplyHandler = void (*)(JsonObjectConst msg);

@@ -23,7 +23,7 @@ void handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply);
 // ---------------------------------------------------------------- RS485 link
 class DisplayLink {
  public:
-  void begin(HardwareSerial &ser, int rx, int tx, int de);
+  void begin(HardwareSerial &ser, int rx, int tx, int de, int re = -1);
   void loop(const cv::State &s);
   void send(JsonDocument &doc);
   void requestStateSoon() { nextStateMs_ = 0; }
@@ -35,6 +35,8 @@ class DisplayLink {
  private:
   HardwareSerial *ser_ = nullptr;
   int de_ = -1;
+  int re_ = -1;  // separate /RE pin, driven together with DE (-1 = bridged to DE or auto)
+  void txEnable(bool on);
   uint32_t nextStateMs_ = 0, nextPollMs_ = 0, lastRxMs_ = 0;
   volatile bool configDirty_ = false;
   String pending_;
@@ -64,8 +66,14 @@ class Cloud {
   void publishStateSoon() { nextStateMs_ = 0; }
   void publishMetaSoon() { metaDirty_ = true; }
   bool connected();
+  // Push alerts come first: with the classic ESP32's RAM, an alert's HTTPS
+  // send and the cloud link's TLS session don't fit together. The push task
+  // asks the cloud link to step aside for a while; it reconnects afterwards.
+  void pauseFor(uint32_t ms) { pauseUntilMs_ = millis() + ms; pauseReq_ = true; }
 
  private:
+  volatile bool pauseReq_ = false;
+  volatile uint32_t pauseUntilMs_ = 0;
   uint32_t nextStateMs_ = 0, nextTryMs_ = 0;
   bool metaDirty_ = true;
   uint32_t backoffMs_ = 2000;
@@ -85,6 +93,17 @@ class Net {
   void begin();
   void loop(cv::State &s);
   bool timeValid() const;
+  // Network watchdog, run from the net task: pings the router every 30 s. If
+  // Wi-Fi says it's connected but nothing gets through for 90 s, it rejoins
+  // Wi-Fi, and if that doesn't help, restarts the hub (secure mode re-arms itself).
+  void watchdog();
+  // Heartbeat from the net task; loop() restarts the hub if it stops (a wedged web server).
+  void netAlive() { netAliveMs_ = millis(); }
+
+ private:
+  volatile uint32_t netAliveMs_ = 0;
+  uint32_t nextPingMs_ = 30000, lastPingOkMs_ = 0, rejoinedMs_ = 0, pingDoneMs_ = 0;
+  void *ping_ = nullptr;  // esp_ping_handle_t while a ping round runs
 };
 
 extern DisplayLink gLink;

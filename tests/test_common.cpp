@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <string>
 
+#include "AcCharge.h"
+#include "AirHeater.h"
 #include "AlertEngine.h"
 #include "CaravanModel.h"
 #include "LinkCodec.h"
@@ -12,6 +14,7 @@
 #include "VictronBle.h"
 #include "BleSensors.h"
 #include "Leveling.h"
+#include "TheftGuard.h"
 #include "Weather.h"
 
 static int failures = 0, checks = 0;
@@ -144,6 +147,94 @@ static void testAlerts() {
   CHECK(s.alertCount == 0);
 }
 
+// Stepped rule: 30 % warning -> 15 % alarm -> 5 % critical. Each step fires
+// once; drifting around inside a step doesn't re-fire; recovering re-arms.
+static void testAlertLevels() {
+  State s;
+  s.bat.online = true;
+  s.bat.source = BAT_SRC_SHUNT;
+  s.bat.soc = 50;
+  RuleSet rs;
+  Rule r;
+  strcpy(r.name, "Battery charge low");
+  r.metric = M_BAT_SOC;
+  r.cmp = CMP_LT;
+  r.threshold = 30;
+  r.hysteresis = 5;
+  r.delaySec = 0;
+  r.sev = SEV_WARN;
+  r.action = ACT_PUMPS_OFF;
+  r.levelCount = 2;
+  r.levels[0] = {15, SEV_ALARM};
+  r.levels[1] = {5, SEV_CRIT};
+  rs.upsert(r);
+
+  struct Log { int raised = 0, cleared = 0; uint8_t lastSev = 0; float lastThr = 0; Action lastAct = ACT_NONE; } log;
+  auto cb = [](const AlertEngine::Event &ev, void *ctx) {
+    Log *l = (Log *)ctx;
+    if (ev.type == AlertEngine::RAISED) {
+      l->raised++;
+      l->lastSev = ev.rule.sev;
+      l->lastThr = ev.rule.threshold;
+      l->lastAct = ev.rule.action;
+    } else {
+      l->cleared++;
+    }
+  };
+  AlertEngine e;
+  uint32_t t = 0;
+  auto step = [&](float soc) { s.bat.soc = soc; e.evaluate(s, rs, t += 1000, 0, cb, &log); };
+
+  step(50);
+  CHECK(log.raised == 0);
+  step(29);
+  CHECK(log.raised == 1 && log.lastSev == SEV_WARN && log.lastAct == ACT_NONE);
+  step(28); step(31); step(29); step(20);  // inside the band: no repeat
+  CHECK(log.raised == 1);
+  step(14);
+  CHECK(log.raised == 2 && log.lastSev == SEV_ALARM && log.lastThr == 15);
+  CHECK(s.alertCount == 1 && s.alerts[0].sev == SEV_ALARM && !s.alerts[0].acked);
+  CHECK(strstr(s.alerts[0].msg, "< 15") != nullptr);
+  step(12); step(16);
+  CHECK(log.raised == 2);
+  step(4);
+  CHECK(log.raised == 3 && log.lastSev == SEV_CRIT && log.lastAct == ACT_PUMPS_OFF);
+  CHECK(e.anyUnackedAlarm());
+  step(8);  // recovered past 5 + 5? no: still critical
+  CHECK(s.alerts[0].sev == SEV_CRIT);
+  step(11); // >= 5 + 5: drops back to the alarm step, silently
+  CHECK(log.raised == 3 && s.alerts[0].sev == SEV_ALARM && log.cleared == 0);
+  step(4);  // falls again: critical re-fires
+  CHECK(log.raised == 4 && log.lastSev == SEV_CRIT);
+  step(36); // recovered past everything: one CLEARED
+  CHECK(log.cleared == 1 && s.alertCount == 0);
+
+  // Dropping straight past several steps fires once, at the deepest.
+  step(3);
+  CHECK(log.raised == 5 && log.lastSev == SEV_CRIT);
+
+  // JSON round trip keeps the levels; invalid (not deeper) levels are dropped.
+  JsonDocument d;
+  ruleToJson(rs.rules[0], d.to<JsonObject>());
+  CHECK(d["lv"].size() == 2 && d["lv"][1]["sev"] == 3);
+  Rule back;
+  CHECK(ruleFromJson(back, d.as<JsonObjectConst>()));
+  CHECK(back.levelCount == 2 && back.levels[0].threshold == 15 && back.levels[1].sev == SEV_CRIT);
+  d["lv"][1]["thr"] = 20;  // shallower than 15: dropped
+  ruleFromJson(back, d.as<JsonObjectConst>());
+  CHECK(back.levelCount == 1);
+  JsonDocument plain;
+  ruleToJson(Rule(), plain.to<JsonObject>());
+  CHECK(!plain["lv"].is<JsonArrayConst>());  // no levels: old format unchanged
+
+  RuleSet defs;
+  loadDefaultRules(defs);
+  bool found = false;
+  for (int i = 0; i < defs.count; i++)
+    if (defs.rules[i].metric == M_BAT_SOC) found = defs.rules[i].levelCount == 2;
+  CHECK(found);
+}
+
 static void testJsonRoundTrip() {
   State s;
   s.ts = 1762560000;
@@ -198,19 +289,27 @@ static void testJsonRoundTrip() {
   rulesFromJson(rs2, rd2.as<JsonArrayConst>());
   CHECK(rs2.count == rs.count);
   CHECK(rs2.rules[1].action == ACT_INVERTER_OFF);
-  CHECK(rs2.rules[6].metric == M_TEMP_FRIDGE && rs2.rules[6].delaySec == 1200);
+  CHECK(rs2.rules[5].metric == M_TEMP_FRIDGE && rs2.rules[5].delaySec == 1200);
+  CHECK(rs2.rules[3].levelCount == 2 && rs2.rules[3].levels[1].sev == SEV_CRIT);
   CHECK(strcmp(rs2.rules[0].name, rs.rules[0].name) == 0);
 
   Meta m;
   m.acPresetCount = 2;
   strcpy(m.acPresetName[0], "Cool 22");
   strcpy(m.acPresetName[1], "Heat 20");
+  m.screenSleepSec = 0;  // "never" must survive the round trip
   JsonDocument md;
   metaToJson(m, md.to<JsonObject>());
   Meta m2;
   metaFromJson(m2, md.as<JsonObjectConst>());
   CHECK(m2.acPresetCount == 2 && strcmp(m2.acPresetName[1], "Heat 20") == 0);
   CHECK(strcmp(m2.tankName[2], "Grey") == 0);
+  CHECK(m2.screenSleepSec == 0);
+  Meta m3;  // an older hub that doesn't send "ss" keeps the default
+  JsonDocument old;
+  deserializeJson(old, R"({"t":"meta","rc":true})");
+  metaFromJson(m3, old.as<JsonObjectConst>());
+  CHECK(m3.screenSleepSec == 300);
 }
 
 static void testSoc() {
@@ -480,13 +579,361 @@ static void testWeather() {
   CHECK(!strcmp(gp, "/v1/search?count=6&language=en&countryCode=AU&name=Port%20Macquarie%27s"));
 }
 
+static void testAcCharge() {
+  State s;
+  s.bat.online = true;
+  s.bat.solarA = 20;   // Victrons
+  s.bat.chargerA = 5;  // BMPRO
+  AcChargeDetector d;
+  uint32_t t = 0;
+  auto run = [&](float netA, float loadA, uint32_t ms) {
+    s.bat.a = netA;
+    for (uint32_t end = t + ms; t < end; t += 100) d.update(s, t, loadA);
+  };
+  // Solar + BMPRO explain everything: no mains.
+  run(15, 10, 120000);
+  CHECK(!s.bat.acOn);
+  NEAR(s.bat.acA, 0, 0.01);
+  NEAR(s.bat.chargeA, 25, 0.01);
+  NEAR(s.bat.loadA, 10, 0.01);
+  // Chargers plugged in: +100 A into the battery that nothing explains.
+  run(115, 10, 10000);
+  CHECK(!s.bat.acOn);  // not yet: needs 20 s
+  run(115, 10, 15000);
+  CHECK(s.bat.acOn);
+  run(115, 10, 30000);  // let the smoothing settle
+  NEAR(s.bat.acA, 100, 0.5);
+  NEAR(s.bat.chargeA, 125, 0.5);
+  // A short dip (aircon compressor start) doesn't hide it.
+  run(15, 110, 5000);
+  CHECK(s.bat.acOn);
+  run(115, 10, 10000);
+  // Float: chargers drop to 2 A -> hides only after 60 s below 4 A.
+  run(17, 10, 30000);
+  CHECK(s.bat.acOn);
+  run(17, 10, 75000);  // ~30 s to smooth below 4 A, then 60 s hold
+  CHECK(!s.bat.acOn);
+  NEAR(s.bat.acA, 0, 0.01);
+  // No load measurement: loads assumed 0, so AC is a floor (100 - 10 = 90).
+  run(115, -1, 60000);
+  CHECK(s.bat.acOn);
+  NEAR(s.bat.acA, 90, 0.5);
+  NEAR(s.bat.loadA, 0, 0.5);
+  // Battery offline: everything resets.
+  s.bat.online = false;
+  d.update(s, t, -1);
+  CHECK(!s.bat.acOn);
+  // JSON round trip
+  s.bat.online = true;
+  s.bat.acOn = true;
+  s.bat.acA = 87.3f;
+  JsonDocument doc;
+  stateToJson(s, doc.to<JsonObject>());
+  State r;
+  stateFromJson(r, doc.as<JsonObjectConst>());
+  CHECK(r.bat.acOn);
+  NEAR(r.bat.acA, 87.3f, 0.05);
+}
+
+static void testHeater() {
+  // Command frames: factory passkey 1234 -> 0C 22, checksum = sum of bytes 2..6.
+  uint8_t f[airheater::CMD_LEN];
+  airheater::encode(airheater::CMD_POWER, 1, 1234, f);
+  const uint8_t on[] = {0xAA, 0x55, 0x0C, 0x22, 0x03, 0x01, 0x00, 0x32};
+  CHECK(memcmp(f, on, 8) == 0);
+  airheater::encode(airheater::CMD_SETPOINT, 22, 1234, f);
+  CHECK(f[4] == 4 && f[5] == 22 && f[7] == (uint8_t)(0x0C + 0x22 + 4 + 22));
+
+  // Client command parsing and range checks
+  JsonDocument d;
+  HeaterCmd c;
+  const char *why = nullptr;
+  deserializeJson(d, R"({"c":"heater","temp":23})");
+  CHECK(heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why) && c.temp == 23 && c.on < 0);
+  deserializeJson(d, R"({"c":"heater","temp":40})");
+  CHECK(!heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why));
+  deserializeJson(d, R"({"c":"heater","level":0})");
+  CHECK(!heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why));
+  deserializeJson(d, R"({"c":"heater"})");
+  CHECK(!heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why));
+  deserializeJson(d, R"({"c":"heater","on":true,"mode":"level","level":7})");
+  CHECK(heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why) && c.on == 1 && c.mode == HTR_MODE_LEVEL && c.level == 7);
+
+  // Frames for a command: mode first, set point, then on/off.
+  Heater cur;
+  uint8_t fr[4][airheater::CMD_LEN];
+  CHECK(airheater::framesFor(c, cur, 1234, fr, 4) == 3);
+  CHECK(fr[0][4] == airheater::CMD_MODE && fr[0][5] == airheater::WIRE_LEVEL);
+  CHECK(fr[1][4] == airheater::CMD_SETPOINT && fr[1][5] == 7);
+  CHECK(fr[2][4] == airheater::CMD_POWER && fr[2][5] == 1);
+  HeaterCmd lvlOnly;
+  lvlOnly.level = 4;  // in thermostat mode: switches to level mode first
+  CHECK(airheater::framesFor(lvlOnly, cur, 1234, fr, 4) == 2 && fr[0][4] == airheater::CMD_MODE);
+
+  // Status frame: running, thermostat 22 C, 12.8 V, case 142 C, cabin 19 C
+  const uint8_t st[] = {0xAA, 0x55, 0x0C, 0x01, 0x00, 0x03, 0x00, 0x00, 0x02, 22, 4,
+                        128, 0, 142, 0, 19, 0, 0, 0, 0};
+  Heater h;
+  CHECK(airheater::decode(st, sizeof(st), h));
+  CHECK(h.phase == HTR_RUNNING && h.mode == HTR_MODE_TEMP && h.setC == 22 && h.level == 5);
+  NEAR(h.supplyV, 12.8f, 0.01f);
+  NEAR(h.bodyC, 142, 0.01f);
+  NEAR(h.cabinC, 19, 0.01f);
+  uint8_t cool[sizeof(st)];
+  memcpy(cool, st, sizeof(st));
+  cool[5] = 4;
+  cool[15] = 0xFE;  // -2 C
+  cool[16] = 0xFF;
+  CHECK(airheater::decode(cool, sizeof(cool), h) && h.phase == HTR_COOLING);
+  NEAR(h.cabinC, -2, 0.01f);
+  const uint8_t enc[] = {0xAA, 0x66, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18};
+  CHECK(!airheater::decode(enc, sizeof(enc), h));  // encrypted variant: not decoded yet
+
+  // JSON: absent until a heater is set up; full status only over Bluetooth.
+  State s;
+  JsonDocument out;
+  stateToJson(s, out.to<JsonObject>());
+  CHECK(out["htr"].isNull());
+  s.htr = h;
+  s.htr.link = HTR_LINK_BLE;
+  s.htr.online = true;
+  s.htr.err = 2;
+  out.clear();
+  stateToJson(s, out.to<JsonObject>());
+  State r;
+  stateFromJson(r, out.as<JsonObjectConst>());
+  CHECK(r.htr.link == HTR_LINK_BLE && r.htr.online && r.htr.phase == HTR_COOLING && r.htr.err == 2);
+  NEAR(r.htr.cabinC, -2, 0.05f);
+  s.htr.link = HTR_LINK_RF;
+  out.clear();
+  stateToJson(s, out.to<JsonObject>());
+  CHECK(out["htr"]["cab"].isNull() && out["htr"]["ln"] == 2);
+
+  // Simulator: lights, runs up to the set point, refuses a restart while cooling.
+  HeaterSim sim;
+  Heater x;
+  x.link = HTR_LINK_BLE;
+  HeaterCmd go;
+  go.on = 1;
+  go.temp = 22;
+  CHECK(sim.apply(x, go, &why) && x.phase == HTR_STARTING && x.setC == 22);
+  CHECK(sim.currentA(x) > 5);  // glow plug
+  for (int i = 0; i < 45; i++) sim.tick(x, 1, 12, 12.9f);
+  CHECK(x.phase == HTR_RUNNING && x.bodyC > 60);
+  for (int i = 0; i < 600; i++) sim.tick(x, 1, 12, 12.9f);
+  CHECK(x.cabinC > 20 && x.cabinC < 23.5f);
+  HeaterCmd stop;
+  stop.on = 0;
+  CHECK(sim.apply(x, stop, &why) && x.phase == HTR_COOLING);
+  CHECK(!sim.apply(x, go, &why));
+  for (int i = 0; i < 31; i++) sim.tick(x, 1, 12, 12.9f);
+  CHECK(x.phase == HTR_OFF && sim.currentA(x) == 0);
+}
+
+
+// ---------------------------------------------------------------- secure mode
+// Rotate a vector: the sensor can be mounted at any angle.
+static Vec3 mount(const Vec3 &v) {
+  const float a = 0.5f, b = 1.1f;  // ~29 deg about x, then ~63 deg about z
+  Vec3 r{v.x, v.y * std::cos(a) - v.z * std::sin(a), v.y * std::sin(a) + v.z * std::cos(a)};
+  return {r.x * std::cos(b) - r.y * std::sin(b), r.x * std::sin(b) + r.y * std::cos(b), r.z};
+}
+
+// Arms at t=0, runs `calmSec` of calm (exit delay), then `motion` for
+// `sec` seconds. Returns seconds into the motion when it went off, or -1.
+static float runGuard(uint8_t sens, uint8_t motion, float sec, bool rotated = false, uint8_t *cause = nullptr,
+                      float calmSec = 70, bool instant = false) {
+  TheftGuard g;
+  MotionSim sim;
+  g.setSensitivity(sens);
+  uint32_t ms = 1000;
+  Vec3 a, w;
+  g.sample(rotated ? mount(Vec3{0, 0, 1}) : Vec3{0, 0, 1}, Vec3{}, ms);
+  if (instant) g.armNow(ms);
+  else g.arm(ms);
+  for (float t = 0; t < calmSec; t += 0.01f) {
+    ms += 10;
+    sim.at(SIM_CALM, t, a, w);
+    g.sample(rotated ? mount(a) : a, rotated ? mount(w) : w, ms);
+    g.tick(ms, true);
+  }
+  if (g.mode() != SEC_ARMED) return -2;
+  for (float t = 0; t < sec; t += 0.01f) {
+    ms += 10;
+    sim.at(motion, t, a, w);
+    g.sample(rotated ? mount(a) : a, rotated ? mount(w) : w, ms);
+    g.tick(ms, true);
+    if (g.mode() != SEC_ARMED) {  // movement: the entry delay has started
+      if (cause) *cause = g.cause();
+      return t;
+    }
+  }
+  return -1;
+}
+
+static void testTheftGuard() {
+  // Arming: exit delay, then armed.
+  {
+    TheftGuard g;
+    g.sample(Vec3{0, 0, 1}, Vec3{}, 100);
+    g.arm(100);
+    CHECK(g.mode() == SEC_ARMING);
+    Secure s;
+    g.fill(s, 100);
+    CHECK(s.armLeft == 60);
+    uint32_t ms = 100;
+    for (int i = 0; i < 5900; i++) {
+      ms += 10;
+      g.sample(Vec3{0, 0, 1}, Vec3{0.5f, 0, 0}, ms);
+      g.tick(ms, true);
+    }
+    CHECK(g.mode() == SEC_ARMING);
+    for (int i = 0; i < 200; i++) {
+      ms += 10;
+      g.sample(Vec3{0, 0, 1}, Vec3{0.5f, 0, 0}, ms);
+      g.tick(ms, true);
+    }
+    CHECK(g.mode() == SEC_ARMED);
+    // Sensor stops: alarm after 5 s.
+    for (int i = 0; i < 4; i++) g.tick(ms += 1000, false);
+    if (g.mode() != SEC_ARMED) printf("  mode %d cause %d\n", g.mode(), g.cause());
+    CHECK(g.mode() == SEC_ARMED);
+    for (int i = 0; i < 3; i++) g.tick(ms += 1000, false);
+    CHECK(g.mode() == SEC_ENTRY);
+    CHECK(g.cause() == SEC_SENSOR);
+    // 5 minutes to disarm, then the full alarm.
+    g.tick(ms += 1000, false);
+    Secure st;
+    g.fill(st, ms);
+    CHECK(st.armLeft > 290 && st.armLeft <= 300);
+    g.tick(ms += 290000, false);
+    CHECK(g.mode() == SEC_ENTRY);
+    g.tick(ms += 12000, false);
+    CHECK(g.mode() == SEC_TRIGGERED);
+    g.disarm();
+    CHECK(g.mode() == SEC_OFF);
+  }
+  // Armed from the phone: no exit delay.
+  {
+    TheftGuard g;
+    g.sample(Vec3{0, 0, 1}, Vec3{}, 100);
+    g.armNow(100);
+    CHECK(g.mode() == SEC_ARMED);
+    Secure s;
+    g.fill(s, 100);
+    CHECK(s.armLeft == 0);
+  }
+  for (uint8_t sens = SENS_LOW; sens <= SENS_HIGH; sens++) {
+    CHECK(runGuard(sens, SIM_WIND, 600, false, nullptr, 0, true) == -1);
+    CHECK(runGuard(sens, SIM_WIND, 600, true, nullptr, 0, true) == -1);
+    CHECK(runGuard(sens, SIM_CALM, 600, true, nullptr, 0, true) == -1);
+  }
+  {
+    uint8_t c = 0;
+    float tj = runGuard(SENS_MEDIUM, SIM_JACK, 120, true, &c, 0, true);
+    CHECK(tj > 5 && tj < 35 && c == SEC_TILT);
+    float tt = runGuard(SENS_MEDIUM, SIM_TOW, 120, true, &c, 0, true);
+    CHECK(tt > 0 && tt < 40);
+  }
+  // Ten minutes of gusty wind never sets it off, at any sensitivity.
+  for (uint8_t sens = SENS_LOW; sens <= SENS_HIGH; sens++) {
+    CHECK(runGuard(sens, SIM_WIND, 600) == -1);
+    CHECK(runGuard(sens, SIM_WIND, 600, true) == -1);
+    CHECK(runGuard(sens, SIM_CALM, 600) == -1);  // gyro bias doesn't add up to a "turn"
+  }
+  // Winding the jockey wheel up: tilt, within about half a minute.
+  uint8_t cause = 0;
+  float t = runGuard(SENS_MEDIUM, SIM_JACK, 120, false, &cause);
+  CHECK(t > 5 && t < 35);
+  CHECK(cause == SEC_TILT);
+  t = runGuard(SENS_MEDIUM, SIM_JACK, 120, true, &cause);
+  CHECK(t > 5 && t < 35);
+  CHECK(runGuard(SENS_LOW, SIM_JACK, 120) > 0);  // 4 deg is past even the low limit
+  // Towed away: caught on the turn out of the site.
+  cause = 0;
+  t = runGuard(SENS_MEDIUM, SIM_TOW, 120, false, &cause);
+  CHECK(t > 8 && t < 30);
+  CHECK(cause == SEC_TURN || cause == SEC_SHAKE);
+  CHECK(runGuard(SENS_MEDIUM, SIM_TOW, 120, true) > 0);
+  CHECK(runGuard(SENS_LOW, SIM_TOW, 120) > 0);
+  printf("  secure: jack caught after %.0f s, tow after %.0f s\n", runGuard(SENS_MEDIUM, SIM_JACK, 120),
+         runGuard(SENS_MEDIUM, SIM_TOW, 120));
+
+  // Resumed after a restart against the saved resting tilt: a van moved
+  // while the hub was off is caught.
+  {
+    TheftGuard g;
+    uint32_t ms = 10;
+    float p = 3.0f / 57.29578f;
+    g.sample(Vec3{std::sin(p), 0, std::cos(p)}, Vec3{}, ms);
+    g.resume(Vec3{0, 0, 1}, ms);
+    for (int i = 0; i < 2500 && g.mode() != SEC_ENTRY; i++) {
+      ms += 10;
+      g.sample(Vec3{std::sin(p), 0, std::cos(p)}, Vec3{}, ms);
+      g.tick(ms, true);
+    }
+    CHECK(g.mode() == SEC_ENTRY);
+    CHECK(g.cause() == SEC_TILT);
+  }
+
+  // Through the alert engine: a Critical alert while triggered, cleared on disarm.
+  {
+    RuleSet rs;
+    loadDefaultRules(rs);
+    CHECK(!ensureTheftRule(rs));  // already there
+    RuleSet empty;
+    CHECK(ensureTheftRule(empty));
+    CHECK(empty.count == 1 && empty.rules[0].sev == SEV_WARN && empty.rules[0].levelSev(1) == SEV_CRIT);
+    State s;
+    AlertEngine e;
+    e.evaluate(s, rs, 1000, 0);
+    int before = s.alertCount;
+    s.sec.mode = SEC_ENTRY;  // movement: a warning, 5 minutes to disarm
+    s.sec.cause = SEC_TURN;
+    e.evaluate(s, rs, 2000, 0);
+    CHECK(s.alertCount == before + 1);
+    bool warned = false;
+    for (int i = 0; i < s.alertCount; i++)
+      warned |= s.alerts[i].sev == SEV_WARN && std::string(s.alerts[i].msg) == "Theft alarm: movement - disarm within 5 min";
+    CHECK(warned);
+    s.sec.mode = SEC_TRIGGERED;  // not disarmed in time: critical
+    e.evaluate(s, rs, 3000, 0);
+    CHECK(s.alertCount == before + 1);
+    CHECK(s.alerts[0].sev == SEV_CRIT);
+    CHECK(std::string(s.alerts[0].msg) == "Theft alarm: van turned (being towed?)");
+    s.sec.mode = SEC_OFF;
+    s.sec.cause = SEC_NONE;
+    e.evaluate(s, rs, 4000, 0);
+    CHECK(s.alertCount == before);
+  }
+  // JSON round trip.
+  {
+    State s, s2;
+    s.sec.mode = SEC_ARMING;
+    s.sec.armLeft = 42;
+    s.sec.sens = SENS_HIGH;
+    s.sec.tilt = 0.4f;
+    s.sec.tiltLim = 1.2f;
+    s.sec.shake = 3;
+    JsonDocument d;
+    stateToJson(s, d.to<JsonObject>());
+    stateFromJson(s2, d.as<JsonObjectConst>());
+    CHECK(s2.sec.mode == SEC_ARMING && s2.sec.armLeft == 42 && s2.sec.sens == SENS_HIGH && s2.sec.shake == 3);
+    NEAR(s2.sec.tilt, 0.4f, 0.01f);
+  }
+}
+
 int main() {
+  testTheftGuard();
+  testHeater();
+  testAcCharge();
   testWeather();
   testLeveling();
   testBleSensors();
   testVictronBle();
   testVeDirect();
   testAlerts();
+  testAlertLevels();
   testJsonRoundTrip();
   testSoc();
   testLink();

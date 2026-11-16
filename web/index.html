@@ -17,16 +17,16 @@
 :root {
   --bg:#0b1220; --card:#131c2e; --tile:#1a2438; --border:#1e293b;
   --text:#e2e8f0; --muted:#94a3b8; --dim:#475569;
-  --solar:#fbbf24; --charge:#34d399; --load:#f87171; --water:#38bdf8;
-  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444;
+  --solar:#fbbf24; --charge:#34d399; --load:#f87171; --water:#38bdf8; --gas:#fb923c;
+  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444; --mains:#60a5fa; --crit:#d946ef; --heat:#fb923c; --secure:#22c55e;
   --radius:16px;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     --bg:#eef2f7; --card:#ffffff; --tile:#f1f5f9; --border:#dbe3ee;
     --text:#0f172a; --muted:#475569; --dim:#94a3b8;
-    --solar:#d97706; --charge:#059669; --load:#dc2626; --water:#0284c7;
-    --climate:#7c3aed; --accent:#0891b2;
+    --solar:#d97706; --charge:#059669; --load:#dc2626; --water:#0284c7; --gas:#ea580c;
+    --climate:#7c3aed; --accent:#0891b2; --mains:#2563eb; --crit:#c026d3; --heat:#ea580c; --secure:#16a34a;
   }
 }
 * { box-sizing:border-box; }
@@ -65,14 +65,24 @@ main { padding:12px 16px 40px; max-width:1200px; margin:0 auto; }
 .tanks { display:flex; gap:18px; justify-content:space-around; }
 .tank { text-align:center; }
 .tank .tb { width:44px; height:110px; border-radius:10px; background:var(--tile); position:relative; overflow:hidden; margin:0 auto 6px; }
+#gas { flex:0 0 46%; } #gas .tb { width:76px; height:96px; border-radius:22px 22px 14px 14px; }
+#gas .shroud { display:block; width:44px; height:18px; margin:0 auto -4px; border:5px solid var(--tile); border-bottom:0; border-radius:9px 9px 0 0; box-sizing:border-box; }
 .tank .tb i { position:absolute; left:0; right:0; bottom:0; background:var(--water); transition:height .6s; }
 .temps .t { display:flex; justify-content:space-between; align-items:baseline; padding:4px 0; }
 .ctrls { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.gasrow { display:flex; gap:14px; align-items:stretch; } .gasrow .ctrls { flex:1; grid-template-columns:1fr; }
+.gasrow.wide .ctrls { grid-template-columns:1fr 1fr; }
 .tog { border:1px solid var(--border); background:var(--tile); color:var(--text); border-radius:14px;
   padding:12px; text-align:left; font:inherit; cursor:pointer; min-height:70px; }
 .tog b { display:block; font-weight:600; } .tog span { font-size:12px; color:var(--muted); }
 .tog.on { border-color:var(--c, var(--accent)); background:color-mix(in srgb, var(--c, var(--accent)) 22%, var(--tile)); }
 .tog:disabled { opacity:.5; cursor:not-allowed; }
+.ico { width:1.1em; height:1.1em; vertical-align:-.18em; fill:currentColor; }
+.cap .ico { width:14px; height:14px; color:var(--dot, var(--accent)); }
+.cap:has(.ico)::before { display:none; }
+.tog b .ico { color:var(--c, var(--water)); margin-right:6px; }
+.lvls { grid-column:1/-1; display:grid; gap:8px; }
+.lvl { display:grid; grid-template-columns:minmax(0,1fr) minmax(8.5em,1fr) auto; gap:8px; align-items:end; }
 .alerts { display:flex; flex-direction:column; gap:8px; }
 .alert { border-left:4px solid var(--c); background:color-mix(in srgb, var(--c) 14%, var(--card)); padding:10px 12px; border-radius:10px; }
 .btn { border:0; background:var(--tile); color:var(--text); padding:8px 14px; border-radius:10px; font:inherit; cursor:pointer; }
@@ -81,6 +91,21 @@ main { padding:12px 16px 40px; max-width:1200px; margin:0 auto; }
 table { width:100%; border-collapse:collapse; }
 td, th { text-align:left; padding:8px 6px; border-bottom:1px solid var(--border); font-size:14px; }
 th { color:var(--muted); font-weight:500; font-size:12px; }
+.rules { display:flex; flex-direction:column; gap:8px; }
+.rule { display:flex; align-items:center; gap:12px; background:var(--tile); border-radius:12px; padding:10px 12px; }
+.rule .what { flex:1; min-width:0; }
+.rule .what b { display:block; }
+.rule .muted { overflow-wrap:anywhere; }
+.rule.off .what b, .rule.off .what .muted { color:var(--dim); }
+.rule .acts { display:flex; gap:6px; flex:none; }
+.rule .btn { background:var(--card); }
+.sw { position:relative; width:46px; height:28px; flex:none; }
+.sw input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; z-index:1; }
+.sw i { position:absolute; inset:0; border-radius:14px; background:var(--border); transition:background .2s; pointer-events:none; }
+.sw i::after { content:""; position:absolute; left:3px; top:3px; width:22px; height:22px; border-radius:50%; background:#fff; transition:transform .2s; }
+.sw input:checked + i { background:var(--charge); }
+.sw input:checked + i::after { transform:translateX(18px); }
+.sw input:focus-visible + i { outline:2px solid var(--accent); outline-offset:2px; }
 input, select { background:var(--tile); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:7px 9px; font:inherit; width:100%; }
 label { font-size:12px; color:var(--muted); display:block; }
 .form { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); }
@@ -94,6 +119,45 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
 .wx .day { background:var(--tile); border-radius:12px; padding:8px; text-align:center; font-size:13px; }
 @media (max-width: 700px) { .wx { grid-template-columns:repeat(4, 1fr); } .wx .now { grid-column:1 / -1; }
   .wx .day { font-size:11px; padding:6px 3px; } }
+/* Secure mode (anti-theft) */
+.sec { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:12px; --c:var(--muted); }
+.sec .lock { width:52px; height:52px; border-radius:14px; display:grid; place-items:center; flex:none;
+  background:color-mix(in srgb, var(--c) 18%, var(--tile)); color:var(--c); }
+.sec .lock .ico { width:24px; height:24px; }
+.sec .what { flex:1; min-width:180px; }
+.sec .what b { font-size:17px; color:var(--c); }
+.sec .ctl { display:flex; gap:10px; align-items:center; }
+.sec .ctl select { width:auto; min-height:48px; }
+@media (max-width: 520px) { .sec .ctl { width:100%; } .sec .ctl select { flex:1; min-width:0; } }
+.sec .armBtn { min-width:120px; min-height:48px; font-size:16px; font-weight:600; }
+.sec.on { border-color:var(--c); }
+.sec .slide { position:relative; flex-basis:100%; height:56px; border-radius:28px; background:var(--tile);
+  touch-action:none; user-select:none; -webkit-user-select:none; overflow:hidden; --x:0px; }
+.sec .slide .fill { position:absolute; left:0; top:0; bottom:0; width:calc(var(--x) + 56px); border-radius:28px;
+  background:color-mix(in srgb, var(--secure) 30%, transparent); }
+.sec .slide .lbl { position:absolute; inset:0 0 0 56px; display:grid; place-items:center; color:var(--muted); font-weight:600; pointer-events:none; }
+.sec .slide .thumb { position:absolute; left:0; top:0; width:56px; height:56px; border-radius:50%; background:var(--secure);
+  display:grid; place-items:center; color:#fff; transform:translateX(var(--x)); cursor:grab; }
+.sec .slide .thumb .ico { width:24px; height:24px; }
+.sec .slide.back .thumb, .sec .slide.back .fill { transition:transform .25s, width .25s; }
+.sec .slide.off { opacity:.5; }
+.sec .slide.off .thumb { background:var(--muted); cursor:default; }
+.sec.alarm { animation:secFlash 1s steps(2) infinite; }
+@keyframes secFlash { 50% { border-color:var(--alarm); } }
+/* Diesel heater card */
+.htr { display:grid; grid-template-columns:auto 1fr; gap:14px 16px; align-items:center; }
+.htr .pwr { width:76px; height:76px; border-radius:50%; border:2px solid var(--border); background:var(--tile); color:var(--muted);
+  font:inherit; font-size:30px; cursor:pointer; display:grid; place-items:center; }
+.htr .pwr.on { border-color:var(--c); color:var(--c); background:color-mix(in srgb, var(--c) 22%, var(--tile)); }
+.htr .pwr:disabled, .htr .dim { opacity:.5; }
+.htr .set { display:flex; align-items:center; gap:10px; grid-column:1/-1; }
+.htr .set .btn { width:56px; height:48px; font-size:24px; padding:0; }
+.htr .set .v { flex:1; text-align:center; font-size:40px; font-weight:600; line-height:1; }
+.htr .set .v small { font-size:13px; color:var(--muted); font-weight:400; margin-left:4px; }
+.seg { display:grid; grid-template-columns:1fr 1fr; gap:6px; grid-column:1/-1; }
+.seg button { border:1px solid var(--border); background:var(--tile); color:var(--muted); border-radius:10px; padding:8px; font:inherit; cursor:pointer; }
+.seg button.on { border-color:var(--heat); color:var(--heat); background:color-mix(in srgb, var(--heat) 18%, var(--tile)); }
+.htr .reads { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--card); border:1px solid var(--accent);
   padding:10px 16px; border-radius:12px; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90vw; }
 #toast.show { opacity:1; }
@@ -105,6 +169,17 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Same icons as the touchscreen and the Android app: Font Awesome 6 "droplet" (water) and "faucet-drip" (pumps).
+       Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com, icons CC BY 4.0. -->
+  <symbol id="i-drop" viewBox="0 0 384 512"><path d="M192 512C86 512 0 426 0 320C0 228.8 130.2 57.7 166.6 11.7C172.6 4.2 181.5 0 191.1 0h1.8c9.6 0 18.5 4.2 24.5 11.7C253.8 57.7 384 228.8 384 320c0 106-86 192-192 192zM96 336c0-8.8-7.2-16-16-16s-16 7.2-16 16c0 61.9 50.1 112 112 112c8.8 0 16-7.2 16-16s-7.2-16-16-16c-44.2 0-80-35.8-80-80z"/></symbol>
+  <symbol id="i-tap" viewBox="0 0 512 512"><path d="M224 0c17.7 0 32 14.3 32 32V44l96-12c17.7 0 32 14.3 32 32s-14.3 32-32 32L256 84l-31-3.9-1-.1-1 .1L192 84 96 96C78.3 96 64 81.7 64 64s14.3-32 32-32l96 12V32c0-17.7 14.3-32 32-32zM0 224c0-17.7 14.3-32 32-32h96l22.6-22.6c6-6 14.1-9.4 22.6-9.4H192V116.2l32-4 32 4V160h18.7c8.5 0 16.6 3.4 22.6 9.4L320 192h32c88.4 0 160 71.6 160 160c0 17.7-14.3 32-32 32H416c-17.7 0-32-14.3-32-32s-14.3-32-32-32H315.9c-20.2 29-53.9 48-91.9 48s-71.7-19-91.9-48H32c-17.7 0-32-14.3-32-32V224zM436.8 423.4c1.9-4.5 6.3-7.4 11.2-7.4s9.2 2.9 11.2 7.4l18.2 42.4c1.8 4.1 2.7 8.6 2.7 13.1V480c0 17.7-14.3 32-32 32s-32-14.3-32-32v-1.2c0-4.5 .9-8.9 2.7-13.1l18.2-42.4z"/></symbol>
+  <!-- Font Awesome 6 "lock", "lock-open" and "shield-halved" (secure mode, same as the touchscreen) -->
+  <symbol id="i-lock" viewBox="0 0 448 512"><path d="M144 144v48H304V144c0-44.2-35.8-80-80-80s-80 35.8-80 80zM80 192V144C80 64.5 144.5 0 224 0s144 64.5 144 144v48h16c35.3 0 64 28.7 64 64V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V256c0-35.3 28.7-64 64-64H80z"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 576 512"><path d="M352 144c0-44.2 35.8-80 80-80s80 35.8 80 80v48c0 17.7 14.3 32 32 32s32-14.3 32-32V144C576 64.5 511.5 0 432 0S288 64.5 288 144v48H64c-35.3 0-64 28.7-64 64V448c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V256c0-35.3-28.7-64-64-64H352V144z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 512 512"><path d="M256 0c4.6 0 9.2 1 13.4 2.9L457.7 82.8c22 9.3 38.4 31 38.3 57.2c-.5 99.2-41.3 280.7-213.6 363.2c-16.7 8-36.1 8-52.8 0C57.3 420.7 16.5 239.2 16 140c-.1-26.2 16.3-47.9 38.3-57.2L242.7 2.9C246.8 1 251.4 0 256 0zm0 66.8V444.8C394 378 431.1 230.1 432 141.4L256 66.8l0 0z"/></symbol>
+  <symbol id="i-pwr" viewBox="0 0 512 512"><path d="M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32V256c0 17.7 14.3 32 32 32s32-14.3 32-32V32zM143.5 120.6c13.6-11.3 15.4-31.5 4.1-45.1s-31.5-15.4-45.1-4.1C49.7 115.4 16 181.8 16 256c0 132.5 107.5 240 240 240s240-107.5 240-240c0-74.2-33.8-140.6-86.6-184.6c-13.6-11.3-33.8-9.4-45.1 4.1s-9.4 33.8 4.1 45.1c38.9 32.3 63.5 81 63.5 135.4c0 97.2-78.8 176-176 176s-176-78.8-176-176c0-54.4 24.7-103.1 63.5-135.4z"/></symbol>
+</svg>
 <header>
   <h1>⚡ Caravan Power</h1>
   <span class="sp"></span>
@@ -120,6 +195,17 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
   <!-- ======================= OVERVIEW ======================= -->
   <section id="tab-overview">
     <div id="alertBox" class="alerts" style="margin-bottom:12px"></div>
+    <!-- Secure mode (anti-theft): uses the hub's level sensor -->
+    <div class="card sec" id="secCard">
+      <div class="lock" id="secIco"><svg class="ico"><use href="#i-unlock"/></svg></div>
+      <div class="what"><b id="secTitle">Secure mode off</b><div class="muted small" id="secSub">Arm it when you leave the van.</div></div>
+      <div class="ctl"><select id="secSens" aria-label="Sensitivity">
+        <option value="0">Low (windy sites)</option><option value="1">Medium</option><option value="2">High</option></select>
+      <button class="btn primary armBtn hidden" id="secBtn">Disarm</button></div>
+      <!-- Slide to arm: the thumb has to be dragged the whole width, so a stray tap can't arm it -->
+      <div class="slide" id="secSlide"><div class="fill"></div><span class="lbl">Slide to arm &rsaquo;&rsaquo;</span>
+        <div class="thumb"><svg class="ico"><use href="#i-lock"/></svg></div></div>
+    </div>
     <div class="grid">
       <div class="card span12 hidden" id="wxCard" style="--dot:var(--water)">
         <div class="cap">Weather <span id="wxPlace" class="muted" style="text-transform:none; letter-spacing:0"></span></div>
@@ -157,14 +243,22 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <div class="cap">Temperature</div>
         <div id="temps"></div>
       </div>
-      <div class="card span4" style="--dot:var(--water)">
-        <div class="cap">Water</div>
+      <!-- Diesel heater: only shown once one is set up (Setup tab) -->
+      <div class="card span8 hidden" id="htrCard" style="--dot:var(--heat)">
+        <div class="row between"><div class="cap">Diesel heater</div><span id="htrChip" class="chip"></span></div>
+        <div class="htr" id="htr"></div>
+      </div>
+      <div class="card span4" id="waterCard" style="--dot:var(--water)">
+        <div class="cap"><svg class="ico"><use href="#i-drop"/></svg>Water</div>
         <div id="tanks" class="tanks"></div>
       </div>
-      <div class="card span4">
-        <div class="cap">Controls</div>
-        <div class="ctrls" id="ctrls"></div>
-        <div class="row" style="margin-top:10px">
+      <div class="card span4" id="gasCard" style="--dot:var(--gas)">
+        <div class="cap" id="ctrlCap">Gas &amp; pumps</div>
+        <div class="gasrow" id="gasRow">
+          <div class="tank" id="gas"></div>
+          <div class="ctrls" id="ctrls"></div>
+        </div>
+        <div class="row hidden" id="acRow" style="margin-top:10px">
           <select id="acSel" aria-label="Aircon preset"></select>
           <button class="btn" id="acGo">Send</button>
         </div>
@@ -176,18 +270,27 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
   <!-- ======================= RULES ======================= -->
   <section id="tab-rules" class="hidden">
     <div class="card" style="--dot:var(--warn)">
-      <div class="row between"><div class="cap">Alert rules</div>
+      <div class="row between" style="flex-wrap:wrap"><div class="cap">Alert rules</div>
         <div class="row"><button class="btn" id="ackAll">Acknowledge alerts</button><button class="btn primary" id="newRule">+ New rule</button></div></div>
-      <p class="muted small">Alerts are pushed to your phone via ntfy (if enabled per rule). An optional action can shed load automatically.</p>
-      <div style="overflow-x:auto"><table id="rulesTbl"><thead><tr>
-        <th>On</th><th>Name</th><th>Condition</th><th>Delay</th><th>Severity</th><th>Push</th><th>Action</th><th></th>
-      </tr></thead><tbody></tbody></table></div>
+      <p class="muted small">Rules are set up here; the caravan display only shows them. Alerts are pushed to your phone via ntfy (if enabled per rule). An optional action can shed load automatically.</p>
+      <div id="rulesList" class="rules"></div>
+      <div class="row" style="margin-top:14px; justify-content:flex-end"><button class="btn danger" id="rulesReset">Reset to default rules</button></div>
     </div>
   </section>
 
   <!-- ======================= SETUP ======================= -->
   <section id="tab-setup" class="hidden">
     <div class="grid">
+      <div class="card span6" style="--dot:var(--accent)">
+        <div class="cap">Caravan display</div>
+        <div class="row between" style="padding:6px 0"><label for="dispSleep" style="font-size:15px; color:var(--text)">Screen dims after</label>
+          <select id="dispSleep" style="width:140px"><option value="10">10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option>
+            <option value="60">1 min</option><option value="300">5 min</option><option value="900">15 min</option><option value="1800">30 min</option>
+            <option value="3600">1 hour</option><option value="0">Never</option></select></div>
+        <p class="muted small" style="margin:2px 0 6px">It dims right down when idle. The first touch only wakes it, so you can't press a button by accident.</p>
+        <div class="row between" style="padding:6px 0"><span>Allow control from the cloud dashboard<br><span class="muted small">Only changeable on the caravan Wi-Fi or the display.</span></span>
+          <label class="sw"><input type="checkbox" id="rcSw" aria-label="Allow remote control"><i></i></label></div>
+      </div>
       <div class="card span6">
         <div class="cap">Cloud connection (this browser)</div>
         <div class="form">
@@ -206,6 +309,13 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <div class="row" style="margin-top:8px"><button class="btn" id="vicScan">Find nearby</button></div>
         <div id="vicSeen" class="small muted" style="margin-top:6px"></div>
       </div>
+      <div class="card span6" style="--dot:var(--secure)">
+        <div class="cap">Secure mode code</div>
+        <p class="muted small">If the van is moved while armed you get 5 minutes to disarm before the full alarm. Disarming on the caravan display needs this code; this phone doesn't.</p>
+        <p class="small" id="secCodeInfo"></p>
+        <div class="row"><input id="secCode" type="password" inputmode="numeric" maxlength="8" placeholder="New code, 4-8 digits" autocomplete="off">
+          <button class="btn primary" id="secCodeSave">Save</button><button class="btn danger" id="secCodeDel">Remove</button></div>
+      </div>
       <div class="card span6" style="--dot:var(--accent)">
         <div class="cap">Caravan level</div>
         <p class="muted small">Bubble level with wheel and jockey heights. Connects to the van over Bluetooth, so it works at sites without internet.</p>
@@ -213,7 +323,7 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
       </div>
       <div class="card span6" style="--dot:var(--water)">
         <div class="cap">Weather location</div>
-        <p class="muted small" id="locInfo">Use your phone's location or search for a town. (Also on the touchscreen: Settings → Weather location, and the phone level page.)</p>
+        <p class="muted small" id="locInfo">Use your phone's location or search for a town. (The phone level page also offers this once the van is level.)</p>
         <div class="row"><button class="btn" id="locPhone">Use this phone's location</button></div>
         <div class="row" style="margin-top:8px"><input id="locQuery" placeholder="Town, e.g. Mudgee"><button class="btn" id="locSearch">Search</button></div>
         <div id="locResults" style="margin-top:6px"></div>
@@ -235,6 +345,19 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <p class="muted small">Sync the shunt state of charge when you know the battery is full.</p>
         <button class="btn" id="soc100">Set state of charge to 100%</button>
       </div>
+      <div class="card span12" style="--dot:var(--heat)">
+        <div class="cap">Diesel heater</div>
+        <p class="muted small">Bluetooth works with heaters that use the <i>AirHeaterBLE</i> app (the hub uses the same protocol). Close the app on your phone first: the heater takes one Bluetooth connection at a time. Use <i>Find nearby</i> to get its address. The 433 MHz option needs a CC1101 module in the hub box and isn't built yet.</p>
+        <div class="form" style="align-items:end">
+          <div><label>Connection</label><select id="htLink"><option value="0">No heater</option><option value="1">Bluetooth (AirHeaterBLE)</option><option value="2">433 MHz remote (not built yet)</option></select></div>
+          <div><label>Bluetooth address</label><input id="htAddr" placeholder="aa:bb:cc:dd:ee:ff" autocomplete="off" spellcheck="false"></div>
+          <div><label>Passkey (from the app)</label><input id="htPass" inputmode="numeric" maxlength="4" placeholder="1234"></div>
+          <div><button class="btn primary" id="htSave">Save</button></div>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="htScan">Find nearby</button><button class="btn" id="htLogBtn">Show log</button></div>
+        <div id="htSeen" class="small" style="margin-top:6px"></div>
+        <pre id="htLog" class="hidden"></pre>
+      </div>
       <div class="card span12">
         <div class="cap">BMPRO OdysseyLink (Bluetooth)</div>
         <p class="muted small">Enter the OdysseyLink's Bluetooth address and press Connect; the hub remembers it. With <code>bmproExplorer</code> on, every frame is logged here &ndash; switch pumps in the Odyssey app and watch what changes.</p>
@@ -251,17 +374,22 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
     <h3 style="margin-top:0">Alert rule</h3>
     <div class="form">
       <div style="grid-column:1/-1"><label>Name</label><input name="name" maxlength="27" required></div>
-      <div><label>Measurement</label><select name="m"></select></div>
+      <div style="grid-column:1/-1"><label>Measurement</label><select name="m"></select></div>
       <div><label>Condition</label><select name="cmp"><option value="&lt;">below</option><option value="&gt;">above</option></select></div>
       <div><label>Threshold</label><input name="thr" type="number" step="any" required></div>
       <div><label>Hysteresis (to clear)</label><input name="hys" type="number" step="any" min="0" value="0"></div>
       <div><label>Delay (seconds)</label><input name="dly" type="number" min="0" max="65535" value="0"></div>
-      <div><label>Severity</label><select name="sev"><option value="0">Info</option><option value="1">Warning</option><option value="2">Alarm</option></select></div>
+      <div><label>Severity</label><select name="sev"></select></div>
       <div><label>Push to phone</label><select name="ntf"><option value="1">Yes</option><option value="0">No</option></select></div>
       <div><label>Automatic action</label><select name="act">
-        <option value="none">None</option><option value="aircon_off">Turn aircon off</option>
-        <option value="inverter_off">Turn inverter off</option><option value="pumps_off">Turn pumps off</option></select></div>
+        <option value="none">None</option><option value="aircon_off" data-feat="aircon">Turn aircon off</option>
+        <option value="inverter_off" data-feat="inverter">Turn inverter off</option><option value="pumps_off">Turn pumps off</option></select></div>
       <div><label>Enabled</label><select name="en"><option value="1">Yes</option><option value="0">No</option></select></div>
+      <div class="lvls">
+        <label style="margin-top:4px">Further levels: each alerts once, when the reading gets that much worse (e.g. 30 % warning, then 15 % alarm, then 5 % critical)</label>
+        <div id="lvlRows" class="lvls"></div>
+        <div><button type="button" class="btn" id="addLvl">+ Add a level</button></div>
+      </div>
     </div>
     <div class="row" style="margin-top:14px; justify-content:flex-end">
       <button class="btn" value="cancel" formnovalidate>Cancel</button>
@@ -280,18 +408,43 @@ const METRICS = [
   ["load_a","Load current","A"],["charge_a","Charge current","A"],["solar_w","Solar total","W"],
   ["solar1_w","Solar 1","W"],["solar2_w","Solar 2","W"],["temp_in","Inside temp","°C"],
   ["temp_out","Outside temp","°C"],["temp_fridge","Fridge temp","°C"],["tank1","Tank 1","%"],
-  ["tank2","Tank 2","%"],["tank3","Tank 3","%"]];
+  ["tank2","Tank 2","%"],["tank3","Tank 3","%"],["gas","Gas bottle","%"],["theft","Theft alarm",""]];
 const CS = {0:"Off",2:"Fault",3:"Bulk",4:"Absorption",5:"Float",7:"Equalise",245:"Starting",247:"Auto EQ",252:"Ext control"};
-const SEV = ["Info","Warning","Alarm"], SEVC = ["var(--accent)","var(--warn)","var(--alarm)"];
+const SEV = ["Info","Warning","Alarm","Critical"], SEVC = ["var(--accent)","var(--warn)","var(--alarm)","var(--crit)"];
+const SEV_OPTS = SEV.map((n, i) => `<option value="${i}">${n}</option>`).join("");
+const MAX_EXTRA_LEVELS = 2;
 
-let S = null, META = { sol:["Roof","Portable"], tmp:["Inside","Outside","Fridge"], tank:["Fresh 1","Fresh 2","Grey"],
-  pump:["Main pump","Aux pump"], acp:[], rc:true }, RULES = [];
+// Inverter and aircon control are switched off for now (to be added later).
+// Matches FEATURE_INVERTER_CONTROL / FEATURE_AIRCON_CONTROL in the display's ui.h.
+const FEATURES = { inverter:false, aircon:false };
+
+let S = null, META = { sol:["Roof","Portable"], tmp:["Inside","Outside","Fridge"], tank:["Tank 1","Tank 2","Grey"],
+  pump:["Internal","External"], acp:[], rc:true }, RULES = [];
 let transport = null, lastMsg = 0;
 
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200); }
 function fmtDur(m) { if (m < 0) return "idle"; if (m >= 5940) return "99h+"; return m >= 60 ? `${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m` : `${m}m`; }
-function tempColor(i, c) { if (i === 2) return c <= 4.5 ? "var(--charge)" : c <= 6.5 ? "var(--warn)" : "var(--alarm)";
-  return c < 10 ? "var(--water)" : c <= 27 ? "var(--charge)" : c <= 33 ? "var(--warn)" : "var(--alarm)"; }
+// Temperature colour blended between stops (same as the touchscreen). Air: blue at
+// 10 C and below, neutral 17-23, amber 27, strong red 30+. Fridge (i === 2): blue
+// at 0 (freezing), neutral 2-5 (safe), amber 6.5, red 8+. Uses the theme colours.
+const T_AIR = [[10, "--water"], [17, "--text"], [23, "--text"], [27, "--warn"], [30, "--alarm"]];
+const T_FRIDGE = [[0, "--water"], [2, "--text"], [5, "--text"], [6.5, "--warn"], [8, "--alarm"]];
+function tempColor(i, c) {
+  const s = i === 2 ? T_FRIDGE : T_AIR;
+  if (c <= s[0][0]) return `var(${s[0][1]})`;
+  for (let k = 1; k < s.length; k++) {
+    if (c > s[k][0]) continue;
+    const f = Math.round((c - s[k - 1][0]) / (s[k][0] - s[k - 1][0]) * 100);
+    return `color-mix(in srgb, var(${s[k][1]}) ${f}%, var(${s[k - 1][1]}))`;
+  }
+  return `var(${s[s.length - 1][1]})`;
+}
+// Diesel heater (same wording as the touchscreen, CaravanModel.cpp)
+const HTR_PHASE = ["Off", "Heating up", "Running", "Cooling down"];
+const HTR_ERR = { 1:"Didn't start (E-01)", 2:"Out of fuel (E-02)", 3:"Supply voltage fault (E-03)", 4:"Outlet sensor fault (E-04)",
+  5:"Inlet sensor fault (E-05)", 6:"Fuel pump fault (E-06)", 7:"Fan fault (E-07)", 8:"Glow plug fault (E-08)", 9:"Overheated (E-09)",
+  10:"Overheat sensor fault (E-10)" };
+let htrPend = null;  // a tapped set point shows straight away; the hub's status catches up
 function socColor(s) { return s >= 50 ? "var(--charge)" : s >= 25 ? "var(--warn)" : "var(--alarm)"; }
 function localTime(ts) { if (!ts) return "--"; return new Date(ts * 1000).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }); }
 
@@ -311,10 +464,10 @@ function renderWeather() {
   if (!w || !w.ok) { $("#locInfo").textContent = "No location set yet - the forecast appears once one is set."; return; }
   $("#wxPlace").textContent = `${w.pl || ""}${w.pl ? " · " : ""}${LOC_SRC[w.src] || ""} location`;
   $("#locInfo").textContent = `Current: ${w.pl || "unnamed spot"} (${LOC_SRC[w.src]}).`;
-  $("#wx").innerHTML = `<div class="now"><span class="ico">${wxIcon(w.c, w.day)}</span><div><div class="big">${Math.round(w.t)}°</div>
+  $("#wx").innerHTML = `<div class="now"><span class="ico">${wxIcon(w.c, w.day)}</span><div><div class="big" style="color:${tempColor(1, w.t)}">${Math.round(w.t)}°</div>
       <div class="muted small">${WX_TEXT[w.c] || ""} · wind ${Math.round(w.w)} km/h, gusts ${Math.round(w.g)}</div></div></div>` +
     w.d.map(([c, wd, mx, mn, rp, mm, g], i) => `<div class="day"><b>${i === 0 ? "Today" : DAYS[wd] || "--"}</b><div class="ico" style="font-size:26px">${wxIcon(c)}</div>
-      <div><b>${Math.round(mx)}°</b> / ${Math.round(mn)}°</div><div style="color:${rp >= 50 ? "var(--water)" : "var(--muted)"}">${rp}% · ${mm.toFixed(0)} mm</div>
+      <div><b style="color:${tempColor(1, mx)}">${Math.round(mx)}°</b> / <span style="color:${tempColor(1, mn)}">${Math.round(mn)}°</span></div><div style="color:${rp >= 50 ? "var(--water)" : "var(--muted)"}">${rp}% · ${mm.toFixed(0)} mm</div>
       <div style="color:${g >= 50 ? "var(--warn)" : "var(--muted)"}">gusts ${Math.round(g)}</div></div>`).join("");
 }
 
@@ -335,11 +488,20 @@ function render() {
   const solW = S.sol.reduce((a, x) => a + (x.on ? x.w : 0), 0);
   $("#solW").textContent = `${Math.round(solW)} W`;
   $("#solA").textContent = `${b.sa.toFixed(1)} A`;
-  $("#chgA").textContent = `${b.chg.toFixed(1)} A`;
-  $("#chgSub").textContent = b.ca > 0.5 ? `mains ${b.ca.toFixed(1)} A` : "solar only";
+  $("#chgA").textContent = `${b.chg >= 99.95 ? Math.round(b.chg) : b.chg.toFixed(1)} A`;
+  // Mains (2 x 60 A chargers) has no sensor: the hub infers it from what the
+  // BMPRO + Victrons don't explain, and sets acon only while bulk charging.
+  const mains = b.on && b.acon;
+  $("#chgSub").textContent = mains ? `mains ${Math.round(b.aca || 0)} A` : b.ca > 0.5 ? `BMPRO ${b.ca.toFixed(1)} A` : "solar only";
   $("#loadA").textContent = `${b.load.toFixed(1)} A`;
   $("#loadW").textContent = `${Math.round(b.load * (b.v || 12.8))} W`;
-  $("#mppts").innerHTML = S.sol.map((m, i) => `
+  $("#mppts").innerHTML = (mains ? `
+    <div class="row mppt between" style="padding:6px 0">
+      <div style="width:110px"><b style="color:var(--mains)">⚡ Mains</b><br><span class="chip" style="color:var(--mains)">Bulk</span></div>
+      <div class="bar"><i style="width:${Math.min(100, (b.aca || 0) / 1.2)}%; background:var(--mains)"></i></div>
+      <div style="width:150px; text-align:right"><b style="color:var(--mains)">${Math.round(b.aca || 0)} A</b><br>
+        <span class="muted small">${Math.round((b.aca || 0) * (b.v || 13.6))} W · estimated</span></div>
+    </div>` : "") + S.sol.map((m, i) => `
     <div class="row mppt between" style="padding:6px 0">
       <div style="width:110px"><b>${esc(META.sol[i])}</b><br><span class="chip" style="color:${m.err ? "var(--alarm)" : "var(--solar)"}">${m.on ? (m.err ? "Error " + m.err : CS[m.cs] || "Unknown") : "Offline"}</span></div>
       <div class="bar"><i style="width:${m.on ? Math.min(100, m.w / 7) : 0}%"></i></div>
@@ -349,8 +511,11 @@ function render() {
 
   $("#temps").innerHTML = S.tmp.map((t, i) => `
     <div class="t"><span class="muted">${esc(META.tmp[i])}</span>
-      <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? t.c.toFixed(1) + "°" : "--"}</span>
-      <span class="muted small">${t.on ? `&nbsp;↓${t.lo.toFixed(1)} ↑${t.hi.toFixed(1)}` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
+      <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? Math.round(t.c) + "°" : "--"}</span>
+      <span class="muted small">${t.on ? `&nbsp;↓${Math.round(t.lo)}° ↑${Math.round(t.hi)}°` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
+
+  renderHeater();
+  renderSecure();
 
   $("#tanks").innerHTML = S.tank.map((t, i) => {
     const bad = i === 2 ? t.p > 85 : t.p < 15, warn = i === 2 ? t.p > 70 : t.p < 30;
@@ -358,26 +523,114 @@ function render() {
     return `<div class="tank"><div class="tb"><i style="height:${t.on ? t.p : 0}%; background:${c}"></i></div>
       <b>${t.on ? Math.round(t.p) + "%" : "--"}</b><div class="muted small">${esc(META.tank[i])}</div></div>`; }).join("");
 
+  // Gas bottle (BMPRO SmartSense via the OdysseyLink)
+  const g = S.gas || { on:false, p:0 }, gc = !g.on ? "var(--dim)" : g.p < 10 ? "var(--alarm)" : g.p < 25 ? "var(--warn)" : "var(--gas)";
+  $("#gas").innerHTML = `<span class="shroud"></span><div class="tb"><i style="height:${g.on ? g.p : 0}%; background:${gc}"></i></div>
+    <b>${g.on ? Math.round(g.p) + "%" : "--"}</b><div class="muted small">Gas</div>`;
+  $("#gasRow").classList.toggle("wide", FEATURES.inverter || FEATURES.aircon);
+  $("#ctrlCap").textContent = FEATURES.inverter || FEATURES.aircon ? "Gas & controls" : "Gas & pumps";
+
   const rc = transport?.kind !== "cloud" || META.rc;
   const acName = S.ac.on && S.ac.pre >= 0 ? (META.acp[S.ac.pre] || "On") : "Off";
   $("#ctrls").innerHTML = [
     ...S.pump.map((p, i) => `<button class="tog ${p.on ? "on" : ""}" style="--c:${p.lk ? "var(--warn)" : "var(--water)"}" data-act="pump" data-i="${i}" ${rc ? "" : "disabled"}>
-      <b>${esc(META.pump[i])}</b><span>${p.lk ? "Locked - tank empty" : p.on ? `Running ${Math.floor(p.rt / 60)}m` : "Off"}</span></button>`),
-    `<button class="tog ${S.inv.on ? "on" : ""}" style="--c:var(--solar)" data-act="inv" ${rc ? "" : "disabled"}><b>Inverter</b><span>${S.inv.on ? (S.inv.ac ? "On · 240 V present" : "On") : "Off"}</span></button>`,
-    `<button class="tog ${S.ac.on ? "on" : ""}" style="--c:var(--climate)" data-act="ac" ${rc ? "" : "disabled"}><b>Aircon</b><span>${esc(acName)}</span></button>`
+      <b><svg class="ico"><use href="#i-tap"/></svg>${esc(META.pump[i])}</b><span>${p.lk ? "Locked - tank empty" : p.on ? `Running ${Math.floor(p.rt / 60)}m` : "Off"}</span></button>`),
+    FEATURES.inverter ? `<button class="tog ${S.inv.on ? "on" : ""}" style="--c:var(--solar)" data-act="inv" ${rc ? "" : "disabled"}><b>Inverter</b><span>${S.inv.on ? (S.inv.ac ? "On · 240 V present" : "On") : "Off"}</span></button>` : "",
+    FEATURES.aircon ? `<button class="tog ${S.ac.on ? "on" : ""}" style="--c:var(--climate)" data-act="ac" ${rc ? "" : "disabled"}><b>Aircon</b><span>${esc(acName)}</span></button>` : ""
   ].join("");
   $("#rcNote").textContent = rc ? "" : "Remote control is switched off on the caravan display.";
 
-  $("#alertBox").innerHTML = (S.alerts || []).map((a) => `
+  // Acknowledged alerts are hidden, same as on the touchscreen.
+  $("#alertBox").innerHTML = (S.alerts || []).filter((a) => !a.ack).map((a) => `
     <div class="alert" style="--c:${SEVC[a.sev]}"><b>${esc(a.msg)}</b>
-      <span class="muted small">&nbsp; ${SEV[a.sev]}${a.since ? " since " + localTime(a.since) : ""}${a.ack ? " · acknowledged" : ""}</span></div>`).join("");
+      <span class="muted small">&nbsp; ${SEV[a.sev]}${a.since ? " since " + localTime(a.since) : ""}</span></div>`).join("");
 
   const age = Math.round((Date.now() - lastMsg) / 1000);
   $("#updated").textContent = S.ts ? `Updated ${localTime(S.ts)}` : `Updated ${age}s ago`;
 }
 
+// Secure mode (anti-theft). sec: m 0 off / 1 arming / 2 armed / 3 alarm, c cause,
+// sn sensitivity, ok sensor working, al seconds to armed, ti/tl tilt, tu/ul turn, sh/sl shake.
+// m 4 = movement detected: 5 minute entry delay (al counts down) before the alarm.
+const SEC_CAUSE = ["", "the van tilted (jacked up or hitched?)", "the van turned (being towed?)",
+  "the van is shaking (on the road?)", "the movement sensor stopped answering"];
+function renderSecure() {
+  const x = S.sec || { m:0, ok:false, sn:1 }, card = $("#secCard");
+  const col = ["var(--muted)", "var(--warn)", "var(--secure)", "var(--crit)", "var(--warn)"][x.m] || "var(--muted)";
+  card.style.setProperty("--c", col);
+  card.classList.toggle("on", x.m > 0);
+  card.classList.toggle("alarm", x.m >= 3);
+  $("#secIco").innerHTML = `<svg class="ico"><use href="#${x.m >= 3 ? "i-shield" : x.m ? "i-lock" : "i-unlock"}"/></svg>`;
+  const left = `${Math.floor((x.al || 0) / 60)}:${String((x.al || 0) % 60).padStart(2, "0")}`;
+  $("#secTitle").textContent = ["Secure mode off", `Arming in ${x.al || 0} s`, "Secure mode armed", "THEFT ALARM", `Movement! Alarm in ${left}`][x.m];
+  $("#secSub").textContent = x.m === 4 ? `Because ${SEC_CAUSE[x.c] || "of movement"}${x.since ? " at " + localTime(x.since) : ""}. If it's you, disarm now.`
+    : x.m === 3 ? `Set off because ${SEC_CAUSE[x.c] || "of movement"}${x.since ? " at " + localTime(x.since) : ""}.`
+    : x.m === 2 ? `Watching for jacking, hitching and towing. Now: tilt ${x.ti.toFixed(1)}° of ${x.tl}°, turned ${x.tu}° of ${x.ul}°, shaking ${x.sh} of ${x.sl} s.`
+    : x.m === 1 ? "Time to leave: it arms when the countdown ends. Wind rocking the van is ignored."
+    : x.ok ? "Arm it when you leave the van. Wind rocking the van is ignored." : "Needs the level sensor on the hub, and it isn't answering.";
+  const btn = $("#secBtn");
+  btn.classList.toggle("hidden", !x.m);
+  btn.style.background = "var(--tile)";
+  btn.style.color = "var(--text)";
+  const slide = $("#secSlide");
+  slide.classList.toggle("hidden", !!x.m);
+  slide.classList.toggle("off", !x.ok);
+  slide.querySelector(".lbl").innerHTML = x.ok ? "Slide to arm &rsaquo;&rsaquo;" : "Level sensor not answering";
+  const sel = $("#secSens");
+  sel.classList.toggle("hidden", !!x.m);
+  if (document.activeElement !== sel) sel.value = x.sn ?? 1;
+  sel.disabled = transport?.kind === "cloud" && !META.rc;
+}
+
+function renderHeater() {
+  const h = S.htr, show = !!h && h.ln > 0;
+  $("#htrCard").classList.toggle("hidden", !show);
+  for (const id of ["#waterCard", "#gasCard"]) { $(id).classList.toggle("span4", !show); $(id).classList.toggle("span6", show); }
+  if (!show) return;
+  const ble = h.ln === 1, rf = h.ln === 2, lost = ble && !h.on, st = ble && h.on, fault = st && h.err > 0;
+  const running = h.ph === 1 || h.ph === 2, lit = running || h.ph === 3;
+  const tone = lost ? "var(--dim)" : fault ? "var(--alarm)" : h.ph === 2 ? "var(--heat)" : h.ph === 1 ? "var(--warn)" : h.ph === 3 ? "var(--water)" : "var(--muted)";
+  const chip = $("#htrChip");
+  chip.textContent = lost ? "Not connected" : fault ? "Fault" : HTR_PHASE[h.ph] || "Off";
+  chip.style.color = tone; chip.style.background = `color-mix(in srgb, ${tone} 22%, var(--card))`;
+  const sub = lost ? "Looking for the heater over Bluetooth" : fault ? HTR_ERR[h.err] || "Heater fault"
+    : rf ? (running ? "Start sent by remote" : "Stop sent by remote")
+    : h.ph === 1 ? "Glow plug on, lighting" : h.ph === 3 ? "Fan runs on to cool it"
+    : running ? (h.md === 1 ? "Fixed power level" : "Holding the set temperature") : "Tap to start";
+  const pend = htrPend && Date.now() - htrPend.t < 4000 ? htrPend : null;
+  const lvl = h.md === 1, v = lvl ? (pend && pend.k === "level" ? pend.v : h.lv) : (pend && pend.k === "temp" ? pend.v : h.st);
+  const rc = transport?.kind !== "cloud" || META.rc, dis = rc ? "" : "disabled";
+  const pc = h.ph === 3 ? "var(--water)" : h.ph === 1 ? "var(--warn)" : "var(--heat)";
+  const read = (cap, val, col) => `<div><div class="muted small">${cap}</div><div class="mid" style="color:${col}">${val}</div></div>`;
+  $("#htr").innerHTML = `
+    <button class="pwr ${lit ? "on" : ""}" style="--c:${pc}" data-h="pwr" ${dis} aria-label="${running ? "Stop" : "Start"} the heater"><svg class="ico"><use href="#i-pwr"/></svg></button>
+    <div><div class="mid" style="color:${fault ? "var(--alarm)" : lost ? "var(--dim)" : "var(--text)"}">${lost ? "Not connected" : fault ? "Fault" : running ? "On" : "Off"}</div>
+      <div class="small" style="color:${fault ? "var(--alarm)" : "var(--muted)"}">${esc(sub)}</div></div>
+    <div class="set ${lost ? "dim" : ""}"><button class="btn" data-h="dn" ${dis} aria-label="Lower">−</button>
+      <div class="v" style="color:${lvl ? "var(--heat)" : tempColor(0, v)}">${v}${lvl ? `<small>/ 10</small>` : `°<small>set</small>`}</div>
+      <button class="btn" data-h="up" ${dis} aria-label="Higher">+</button></div>
+    <div class="seg ${lost ? "dim" : ""}"><button data-h="mt" class="${lvl ? "" : "on"}" ${dis}>Thermostat</button><button data-h="ml" class="${lvl ? "on" : ""}" ${dis}>Power level</button></div>
+    <div class="reads">${rf ? `<span class="muted small" style="grid-column:1/-1">433 MHz remote: the heater doesn't report back</span>`
+      : st ? read("Cabin", `${Math.round(h.cab)}°`, tempColor(0, h.cab)) + read("Heater", `${Math.round(h.hx)}°`, h.hx >= 60 ? "var(--heat)" : "var(--text)")
+           + read("Supply", `${h.v.toFixed(1)} V`, h.v > 0 && h.v < 11.5 ? "var(--warn)" : "var(--text)")
+      : read("Cabin", "--", "var(--dim)") + read("Heater", "--", "var(--dim)") + read("Supply", "--", "var(--dim)")}</div>`;
+}
+
 function renderMeta() {
+  $("#acRow").classList.toggle("hidden", !FEATURES.aircon);
+  // Hidden options still show if an existing rule already uses that action.
+  document.querySelectorAll("option[data-feat]").forEach((o) => { o.hidden = !FEATURES[o.dataset.feat]; });
   $("#calCard").classList.toggle("hidden", !META.tcal);  // BMPRO tanks are calibrated in the Odyssey app
+  if (META.ss !== undefined) {
+    const sel = $("#dispSleep");
+    if (![...sel.options].some((o) => +o.value === META.ss)) sel.add(new Option(META.ss < 60 ? `${META.ss} seconds` : `${Math.round(META.ss / 60)} min`, META.ss));
+    sel.value = META.ss;
+  }
+  $("#secCodeInfo").textContent = META.sc ? "A code is set." : "No code yet: anyone at the display can disarm.";
+  $("#secCodeInfo").style.color = META.sc ? "var(--secure)" : "var(--warn)";
+  $("#secCodeDel").classList.toggle("hidden", !META.sc);
+  $("#rcSw").checked = !!META.rc;
+  $("#rcSw").disabled = transport?.kind === "cloud";
   $("#acSel").innerHTML = META.acp.length ? META.acp.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("") : `<option value="">No presets learned</option>`;
   $("#vicRows").innerHTML = META.sol.map((n, i) => `
     <div class="form" style="margin-bottom:8px; align-items:end">
@@ -392,17 +645,21 @@ function renderMeta() {
   render();
 }
 
+function ruleText(r) {
+  const m = METRICS.find((x) => x[0] === r.m) || [r.m, r.m, ""];
+  const dly = r.dly >= 60 ? ` for ${Math.round(r.dly / 60)} min` : r.dly ? ` for ${r.dly} s` : "";
+  const extra = [SEV[r.sev], r.ntf ? "push" : "no push", r.act === "none" ? "" : r.act.replace("_", " ")].filter(Boolean).join(" · ");
+  const lv = (r.lv || []).map((l) => `<span style="color:${SEVC[l.sev]}">${l.thr} ${esc(m[2])} ${SEV[l.sev].toLowerCase()}</span>`).join(", ");
+  return `${esc(m[1])} ${r.cmp === ">" ? "above" : "below"} ${r.thr} ${esc(m[2])}${dly}${lv ? `, then ${lv}` : ""}<br><span class="small">${esc(extra)}</span>`;
+}
 function renderRules() {
-  $("#rulesTbl tbody").innerHTML = RULES.map((r) => {
-    const m = METRICS.find((x) => x[0] === r.m) || [r.m, r.m, ""];
-    return `<tr>
-      <td><input type="checkbox" data-rule-en="${r.id}" ${r.en ? "checked" : ""} style="width:auto"></td>
-      <td><b style="color:${SEVC[r.sev]}">${esc(r.name)}</b></td>
-      <td>${esc(m[1])} ${r.cmp === ">" ? "above" : "below"} ${r.thr} ${esc(m[2])}</td>
-      <td>${r.dly >= 60 ? Math.round(r.dly / 60) + " min" : r.dly + " s"}</td>
-      <td>${SEV[r.sev]}</td><td>${r.ntf ? "Yes" : "No"}</td><td>${r.act === "none" ? "" : esc(r.act.replace("_", " "))}</td>
-      <td style="white-space:nowrap"><button class="btn" data-rule-edit="${r.id}">Edit</button>
-        <button class="btn danger" data-rule-del="${r.id}">✕</button></td></tr>`; }).join("");
+  $("#rulesList").innerHTML = RULES.length ? RULES.map((r) => `
+    <div class="rule ${r.en ? "" : "off"}">
+      <label class="sw"><input type="checkbox" data-rule-en="${r.id}" ${r.en ? "checked" : ""} aria-label="${esc(r.name)} on/off"><i></i></label>
+      <div class="what"><b style="color:${r.en ? SEVC[r.sev] : ""}">${esc(r.name)}</b><span class="muted">${ruleText(r)}</span></div>
+      <div class="acts"><button class="btn" data-rule-edit="${r.id}">Edit</button>
+        <button class="btn danger" data-rule-del="${r.id}" aria-label="Delete ${esc(r.name)}">✕</button></div>
+    </div>`).join("") : `<span class="muted">No rules yet - add one or reset to the defaults.</span>`;
 }
 
 // ---------------------------------------------------------------- messages
@@ -410,13 +667,13 @@ function onMessage(msg) {
   lastMsg = Date.now();
   switch (msg.t) {
     case "state": S = msg; render(); break;
-    case "meta": Object.assign(META, msg); renderMeta(); break;
+    case "meta": Object.assign(META, msg); renderMeta(); if (msg.sc !== undefined && S) render(); break;
     case "hello": Object.assign(META, msg.meta); RULES = msg.rules; renderMeta(); renderRules(); break;
     case "rules": RULES = msg.rules; renderRules(); break;
     case "err": toast(msg.msg); break;
     case "sensors": renderSensors(msg.list); break;
     case "ble_sensors": $("#bleRows").innerHTML = msg.list.length ? msg.list.map((s) => `
-      <div class="row between" style="padding:6px 0"><span><b>${s.c.toFixed(1)}°</b> ${esc(s.name || s.type)}
+      <div class="row between" style="padding:6px 0"><span><b>${Math.round(s.c)}°</b> ${esc(s.name || s.type)}
         <span class="muted small">${esc(s.type)} · <code>${esc(s.addr)}</code> · ${s.rssi} dBm${s.batt >= 0 ? " · batt " + s.batt + "%" : ""}</span></span>
         <select data-bleaddr="${esc(s.addr)}" style="width:160px"><option value="-1">Not used</option>
         ${META.tmp.map((n, i) => `<option value="${i}" ${s.role === i ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`).join("")
@@ -424,6 +681,11 @@ function onMessage(msg) {
     case "victron_seen": $("#vicSeen").innerHTML = msg.list.length ? msg.list.map((d) =>
         `<div><code>${esc(d.addr)}</code> ${esc(d.type)} model ${esc(d.model)}, ${d.rssi} dBm${d.slot >= 0 ? ` &ndash; <b>decoding as ${esc(META.sol[d.slot])}</b>` : ""}</div>`).join("")
         : "No Victron broadcasts heard yet - check Instant readout is enabled."; break;
+    case "heater_seen": $("#htSeen").innerHTML = msg.list.length ? msg.list.map((d) => `
+      <div class="row between" style="padding:4px 0"><span><b>${esc(d.name || "Unnamed")}</b> <code>${esc(d.addr)}</code> <span class="muted">${d.rssi} dBm</span></span>
+        <button class="btn" data-htaddr="${esc(d.addr)}">Use</button></div>`).join("")
+      : `<span class="muted">No heater heard yet - make sure it has power and the phone app is closed, then try again in 30 s.</span>`; break;
+    case "heater_log": $("#htLog").textContent = msg.log || "(empty)"; $("#htLog").classList.remove("hidden"); break;
     case "ok": toast("Saved"); break;
     case "tank_cal": toast("Tank calibration saved"); break;
     case "event": if (msg.type === "raised") toast(`⚠ ${msg.msg}`); break;
@@ -482,25 +744,102 @@ function setConn(txt, cls) { const c = $("#conn"); c.textContent = txt; c.classN
 
 function demoTransport() {
   setConn("Demo data", "warnc");
-  const st = { t:"state", ts: Math.floor(Date.now() / 1000), bat:{ on:true, src:1, v:13.31, a:18.8, soc:78, ttg:52, sa:31.4, ca:0, chg:31.4, load:12.6 },
+  const st = { t:"state", ts: Math.floor(Date.now() / 1000), bat:{ on:true, src:1, v:13.31, a:18.8, soc:78, ttg:52, sa:31.4, ca:0, aca:0, acon:false, chg:31.4, load:12.6 },
     sol:[{ on:true, pv:-1, w:312, bv:13.31, ba:22.6, cs:3, err:0, yt:1.42, mx:498 }, { on:true, pv:-1, w:118, bv:13.3, ba:8.8, cs:4, err:0, yt:0.61, mx:205 }],
     tmp:[{ on:true, c:24.6, lo:16.2, hi:27.9 }, { on:true, c:31.2, lo:14.8, hi:33.4 }, { on:true, c:7.4, lo:2.1, hi:7.4 }],
-    tank:[{ on:true, p:72 }, { on:true, p:18 }, { on:true, p:41 }],
+    tank:[{ on:true, p:72 }, { on:true, p:18 }, { on:true, p:41 }], gas:{ on:true, p:63 },
     pump:[{ on:true, sn:true, lk:false, rt:94 }, { on:false, sn:false, lk:false, rt:0 }],
     inv:{ on:false, ac:false }, ac:{ on:true, pre:0 },
+    htr:{ ln:1, on:true, ph:2, md:0, st:22, lv:6, cab:20.4, hx:138, v:13.3, err:0 },
+    sec:{ m:0, c:0, sn:1, ok:true, since:0, ti:0, tl:2, tu:0, ul:20, sh:0, sl:45 },
     alerts:[{ id:7, sev:2, ack:false, since: Math.floor(Date.now() / 1000) - 1500, msg:"Fridge warm: 7.4°C (> 6.0)" }],
     net:{ wifi:true, cloud:true, ip:"192.168.1.42" },
     wx:{ ok:true, up: Math.floor(Date.now() / 1000) - 720, src:2, pl:"Mudgee NSW", t:27.4, c:2, day:true, w:14.2, g:31,
       d:[[2,6,29.1,14.2,10,0,38.2],[61,0,24,15.1,80,6.2,45],[95,1,22.3,12.9,95,18.4,72.4],[0,2,26.8,10.4,0,0,25.9]] } };
   setTimeout(() => {
-    onMessage({ t:"hello", meta:{ ...META, acp:["Cool 22 auto","Cool 24 low","Heat 21","Dry","Fan only"] },
+    onMessage({ t:"hello", meta:{ ...META, ss:300, acp:["Cool 22 auto","Cool 24 low","Heat 21","Dry","Fan only"] },
       rules:[{ id:1, en:true, name:"Battery low", m:"bat_v", cmp:"<", thr:12.4, hys:0.3, dly:60, sev:1, ntf:true, act:"none" },
              { id:2, en:true, name:"Battery critical", m:"bat_v", cmp:"<", thr:11.8, hys:0.6, dly:30, sev:2, ntf:true, act:"inverter_off" },
              { id:7, en:true, name:"Fridge warm", m:"temp_fridge", cmp:">", thr:6, hys:1, dly:1200, sev:2, ntf:true, act:"none" },
-             { id:11, en:true, name:"Fresh 1 low", m:"tank1", cmp:"<", thr:15, hys:5, dly:30, sev:0, ntf:true, act:"none" }] });
+             { id:4, en:true, name:"Battery charge low", m:"bat_soc", cmp:"<", thr:30, hys:3, dly:60, sev:1, ntf:true, act:"none", lv:[{ thr:15, sev:2 }, { thr:5, sev:3 }] },
+             { id:11, en:true, name:"Tank 1 low", m:"tank1", cmp:"<", thr:15, hys:5, dly:30, sev:0, ntf:true, act:"none" }] });
     onMessage(st);
   }, 50);
-  return { kind:"demo", ready: () => true, send: (c) => toast("Demo: " + JSON.stringify(c)) };
+  // Mains chargers "plugged in" for 20 s of every 40 s, so the Mains row can be
+  // seen coming and going (the hub only reports it while bulk charging).
+  let demoT = 0, htrT = 0;
+  // Pretend heater, sped up like the hub's fake-data one: 40 s to light, 30 s to cool.
+  const heaterTick = () => {
+    const h = st.htr, amb = 15, near = (v, t, k) => +(v + (t - v) * k).toFixed(1);
+    htrT++;
+    if (h.ph === 1 && htrT >= 40) { h.ph = 2; htrT = 0; }
+    if (h.ph === 3 && htrT >= 30) { h.ph = 0; htrT = 0; }
+    const out = h.md === 1 ? h.lv / 10 : Math.min(1, Math.max(0.15, (h.st - h.cab + 1) / 4));
+    h.hx = near(h.hx, h.ph === 1 ? 90 : h.ph === 2 ? 80 + 90 * out : amb, h.ph === 3 ? 0.12 : 0.08);
+    h.cab = near(h.cab, h.ph === 2 ? Math.max(amb, h.md === 1 ? amb + 4 + 1.6 * h.lv : h.st + 0.4) : amb, h.ph === 2 ? 0.02 : 0.008);
+    st.tmp[0].c = h.cab;
+  };
+  // Secure mode, sped up: armed at once (like the phone), 20 s of wind, then a "thief" tows it.
+  let secT = 0;
+  const secTick = () => {
+    const x = st.sec; if (!x.m) return;
+    secT++;
+    if (x.m === 1) { x.al = Math.max(0, 10 - secT); if (!x.al) { x.m = 2; secT = 0; } }
+    else if (x.m === 2) {
+      x.ti = +(0.2 + 0.15 * Math.abs(Math.sin(secT))).toFixed(1); x.tu = secT > 20 ? Math.min(25, (secT - 20) * 5) : 1; x.sh = secT > 20 ? secT - 20 : 0;
+      if (x.tu > x.ul) { x.m = 4; x.c = 2; x.al = 30; x.since = Math.floor(Date.now() / 1000);  // demo: 30 s instead of 5 min
+        st.alerts.unshift({ id:14, sev:1, ack:false, since:x.since, msg:"Theft alarm: movement - disarm within 5 min" }); }
+    } else if (x.m === 4) {
+      x.al = Math.max(0, x.al - 1);
+      if (!x.al) { x.m = 3; st.alerts[0] = { id:14, sev:3, ack:false, since:x.since, msg:"Theft alarm: van turned (being towed?)" }; }
+    }
+  };
+  const mainsTick = () => {
+    heaterTick();
+    secTick();
+    const on = demoT++ % 40 < 20, b = st.bat;
+    b.acon = on; b.aca = on ? 116 + Math.round(4 * Math.sin(demoT / 3)) : 0;
+    b.chg = +(b.sa + b.ca + b.aca).toFixed(1); b.a = +(b.chg - b.load).toFixed(1); b.ttg = on ? 38 : 52;
+    if (demoT > 1) onMessage(st);
+  };
+  mainsTick();
+  setInterval(mainsTick, 1000);
+  // Setup commands are applied locally so the phone setup screens can be tried out.
+  let defaults = null, nextId = 100;
+  return { kind:"demo", ready: () => true, send: (c) => {
+    defaults ??= RULES.slice();
+    if (c.c === "ack") { st.alerts.forEach((a) => a.ack = true); onMessage(st); toast("Demo: alerts acknowledged"); return; }
+    if (c.c === "rule_set") {
+      const r = { ...c.rule, id: c.rule.id || nextId++ }, i = RULES.findIndex((x) => x.id === r.id);
+      onMessage({ t:"rules", rules: i >= 0 ? RULES.map((x) => x.id === r.id ? r : x) : [...RULES, r] });
+    } else if (c.c === "rule_del") onMessage({ t:"rules", rules: RULES.filter((x) => x.id !== c.id) });
+    else if (c.c === "rules_reset") onMessage({ t:"rules", rules: defaults });
+    else if (c.c === "display_set") onMessage({ t:"meta", ss: c.sleep });
+    else if (c.c === "remote_control") onMessage({ t:"meta", rc: c.on });
+    else if (c.c === "heater") {
+      const h = st.htr;
+      if (c.on === true && h.ph === 3) { toast("Heater is still cooling down - try again in a moment"); return; }
+      if (c.mode) h.md = c.mode === "level" ? 1 : 0;
+      if (c.temp !== undefined) { h.st = c.temp; if (!c.mode) h.md = 0; }
+      if (c.level !== undefined) { h.lv = c.level; if (!c.mode) h.md = 1; }
+      if (c.on === true && h.ph !== 1 && h.ph !== 2) { h.ph = 1; h.err = 0; htrT = 0; }
+      if (c.on === false && (h.ph === 1 || h.ph === 2)) { h.ph = 3; htrT = 0; }
+      onMessage(st); return;
+    }
+    else if (c.c === "heater_set") { st.htr.ln = c.link; onMessage(st); }
+    else if (c.c === "secure_code") { onMessage({ t:"meta", sc: !!c.code }); }
+    else if (c.c === "secure") {
+      const x = st.sec;
+      if (c.sens !== undefined) x.sn = c.sens;
+      if (c.arm === true && !x.m) { x.m = 2; x.al = 0; secT = 0; }  // the phone and web page arm at once
+      if (c.arm === false) { x.m = 0; x.c = 0; x.ti = x.tu = x.sh = 0; st.alerts = st.alerts.filter((a) => a.id !== 14); }
+      onMessage(st); return;
+    }
+    else if (c.c === "heater_seen") { onMessage({ t:"heater_seen", list:[{ addr:"a4:c1:38:5e:12:9f", name:"AirHeaterBLE", rssi:-71, age:2 }] }); return; }
+    else if (c.c === "heater_log") { onMessage({ t:"heater_log", log:"Demo data: the heater is simulated" }); return; }
+    else { toast("Demo: " + JSON.stringify(c)); return; }
+    toast("Saved (demo)");
+  } };
 }
 
 // ---------------------------------------------------------------- UI wiring
@@ -516,6 +855,65 @@ $("#ctrls").addEventListener("click", (e) => {
   if (b.dataset.act === "ac") { send(S.ac.on ? { c:"aircon", off:true } : { c:"aircon", preset: +($("#acSel").value || 0) }); }
 });
 $("#acGo").onclick = () => { if ($("#acSel").value !== "") send({ c:"aircon", preset: +$("#acSel").value }); };
+$("#htr").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-h]"); if (!b || !S || !S.htr) return;
+  const h = S.htr, a = b.dataset.h, lvl = h.md === 1;
+  if (a === "pwr") send({ c:"heater", on: !(h.ph === 1 || h.ph === 2) });
+  if (a === "mt" || a === "ml") { htrPend = null; send({ c:"heater", mode: a === "ml" ? "level" : "temp" }); }
+  if (a === "up" || a === "dn") {
+    const k = lvl ? "level" : "temp", pend = htrPend && htrPend.k === k && Date.now() - htrPend.t < 4000;
+    const v = (pend ? htrPend.v : lvl ? h.lv : h.st) + (a === "up" ? 1 : -1);
+    if (lvl ? v < 1 || v > 10 : v < 8 || v > 36) return;
+    htrPend = { k, v, t: Date.now() }; send({ c:"heater", [k]: v }); renderHeater();
+  }
+});
+$("#htSave").onclick = () => {
+  const link = +$("#htLink").value, addr = $("#htAddr").value.trim().toLowerCase(), pass = +($("#htPass").value || 1234);
+  if (link === 1 && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(addr)) { toast("Bluetooth address must look like aa:bb:cc:dd:ee:ff"); return; }
+  send({ c:"heater_set", link, addr, pass });
+};
+$("#htScan").onclick = () => { send({ c:"heater_seen" }); setTimeout(() => send({ c:"heater_seen" }), 6000); };
+$("#htLogBtn").onclick = () => send({ c:"heater_log" });
+$("#htSeen").addEventListener("click", (e) => { const b = e.target.closest("button[data-htaddr]"); if (!b) return;
+  $("#htAddr").value = b.dataset.htaddr; $("#htLink").value = "1"; toast("Now press Save"); });
+// The heater's saved settings come from the hub's config (only on the caravan Wi-Fi).
+async function loadHeaterCfg() {
+  if (transport?.kind !== "local") { if (S?.htr) $("#htLink").value = S.htr.ln; return; }
+  try { const c = await (await fetch("/api/config")).json();
+    if (c.htr) { $("#htLink").value = c.htr.link; $("#htAddr").value = c.htr.addr || ""; $("#htPass").value = c.htr.pass ?? 1234; } } catch (e) {}
+}
+document.querySelector('nav button[data-tab="setup"]').addEventListener("click", loadHeaterCfg);
+$("#secBtn").onclick = () => {
+  const x = S?.sec || { m:0 };
+  if (x.m && confirm(x.m >= 3 ? "Turn the theft alarm off?" : "Turn secure mode off?")) send({ c:"secure", arm:false });
+};
+// Slide to arm: drag the lock thumb all the way to the right end; let go short of it and it springs back.
+(() => {
+  const el = $("#secSlide"), th = el.querySelector(".thumb"), lbl = el.querySelector(".lbl");
+  let start = null, x = 0;
+  const max = () => el.clientWidth - th.offsetWidth;
+  const set = (v) => { x = v; el.style.setProperty("--x", v + "px"); lbl.style.opacity = 1 - v / Math.max(1, max()); };
+  th.addEventListener("pointerdown", (e) => {
+    if (el.classList.contains("off")) return;
+    start = e.clientX - x; el.classList.remove("back"); th.setPointerCapture(e.pointerId);
+  });
+  th.addEventListener("pointermove", (e) => { if (start !== null) set(Math.min(max(), Math.max(0, e.clientX - start))); });
+  const end = () => {
+    if (start === null) return;
+    start = null;
+    if (x >= max() - 3) send({ c:"secure", arm:true });
+    el.classList.add("back"); set(0);
+  };
+  th.addEventListener("pointerup", end);
+  th.addEventListener("pointercancel", end);
+})();
+$("#secCodeSave").onclick = () => {
+  const v = $("#secCode").value.trim();
+  if (!/^\d{4,8}$/.test(v)) { toast("The code must be 4 to 8 digits"); return; }
+  send({ c:"secure_code", code:v }); $("#secCode").value = "";
+};
+$("#secCodeDel").onclick = () => { if (confirm("Remove the display disarm code?")) send({ c:"secure_code", code:"" }); };
+$("#secSens").onchange = (e) => send({ c:"secure", sens:+e.target.value });
 $("#ackAll").onclick = () => send({ c:"ack" });
 $("#soc100").onclick = () => { if (confirm("Set battery state of charge to 100%?")) send({ c:"soc_set", soc:100 }); };
 $("#calRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-cal]"); if (!b) return;
@@ -556,7 +954,7 @@ $("#vicRows").addEventListener("click", (e) => { const b = e.target.closest("but
   send({ c:"victron_set", i, key, addr: $("#vicAddr" + i).value.trim().toLowerCase(), src: 0 }); });
 function renderSensors(list) {
   $("#sensorRows").innerHTML = list.length ? list.map((s) => `
-    <div class="row between" style="padding:6px 0"><span><code>${esc(s.addr)}</code> <b>${s.c.toFixed(1)}°</b></span>
+    <div class="row between" style="padding:6px 0"><span><code>${esc(s.addr)}</code> <b>${Math.round(s.c)}°</b></span>
       <select data-addr="${esc(s.addr)}" style="width:160px"><option value="-1">Unassigned</option>
       ${META.tmp.map((n, i) => `<option value="${i}" ${s.role === i ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`).join("")
     : `<span class="muted">No DS18B20 sensors found</span>`;
@@ -565,29 +963,76 @@ $("#sensorRows").addEventListener("change", (e) => { const s = e.target; if (s.d
 $("#bmRefresh").onclick = async () => { try { $("#bmLog").textContent = await (await fetch("/api/bmpro/log")).text(); } catch (e) { $("#bmLog").textContent = "Only available on the caravan Wi-Fi"; } };
 $("#bmConnect").onclick = () => send({ c:"bmpro_connect", addr: $("#bmAddr").value.trim() });
 
+// caravan display settings (kept on the hub, so the display never has to be touched)
+$("#dispSleep").onchange = (e) => send({ c:"display_set", sleep:+e.target.value });
+$("#rcSw").onchange = (e) => send({ c:"remote_control", on:e.target.checked });
+
 // rules editor
 const dlg = $("#ruleDlg"), form = $("#ruleForm");
 form.m.innerHTML = METRICS.map(([k, l, u]) => `<option value="${k}">${l} (${u})</option>`).join("");
+form.sev.innerHTML = SEV_OPTS;
 let editing = null;
+function lvlRow(l) {
+  const d = document.createElement("div");
+  d.className = "lvl";
+  d.innerHTML = `<div><label>Then at</label><input data-lv-thr type="number" step="any" required value="${l.thr}"></div>
+    <div><label>Severity</label><select data-lv-sev>${SEV_OPTS}</select></div>
+    <button type="button" class="btn danger" data-lv-del aria-label="Remove level">✕</button>`;
+  d.querySelector("[data-lv-sev]").value = l.sev;
+  $("#lvlRows").appendChild(d);
+  $("#addLvl").hidden = $("#lvlRows").children.length >= MAX_EXTRA_LEVELS;
+}
+$("#lvlRows").addEventListener("click", (e) => { if (!e.target.closest("[data-lv-del]")) return;
+  e.target.closest(".lvl").remove(); $("#addLvl").hidden = false; });
+$("#addLvl").onclick = () => {
+  // Suggest a level a step deeper than the last one, one severity higher.
+  const rows = [...$("#lvlRows").children], below = form.cmp.value === "<";
+  const last = rows.length ? +rows[rows.length - 1].querySelector("[data-lv-thr]").value : +form.thr.value;
+  const lastSev = rows.length ? +rows[rows.length - 1].querySelector("[data-lv-sev]").value : +form.sev.value;
+  const step = Math.abs(last) >= 20 ? Math.round(Math.abs(last) / 2) : 1;
+  lvlRow({ thr: below ? last - step : last + step, sev: Math.min(3, lastSev + 1) });
+};
+function readLevels() {
+  return [...$("#lvlRows").children].map((d) => ({ thr: +d.querySelector("[data-lv-thr]").value, sev: +d.querySelector("[data-lv-sev]").value }));
+}
+// Each level must be further past the threshold than the one before it.
+function levelsError() {
+  const below = form.cmp.value === "<";
+  let prev = +form.thr.value;
+  for (const l of readLevels()) {
+    if (below ? !(l.thr < prev) : !(l.thr > prev)) return `Each level must be ${below ? "lower" : "higher"} than the one before it (${prev}).`;
+    prev = l.thr;
+  }
+  return "";
+}
 function openRule(r) {
   editing = r || { id:0, en:true, name:"", m:"bat_v", cmp:"<", thr:12, hys:0, dly:0, sev:1, ntf:true, act:"none" };
   for (const k of ["name","m","cmp","thr","hys","dly","sev","act"]) form[k].value = editing[k];
   form.ntf.value = editing.ntf ? "1" : "0"; form.en.value = editing.en ? "1" : "0";
+  $("#lvlRows").innerHTML = "";
+  $("#addLvl").hidden = false;
+  (editing.lv || []).forEach(lvlRow);
   dlg.showModal();
 }
 $("#newRule").onclick = () => openRule(null);
+$("#rulesReset").onclick = () => { if (confirm("Replace all alert rules with the defaults?")) send({ c:"rules_reset" }); };
+form.addEventListener("submit", (e) => {
+  if (e.submitter?.value !== "save") return;
+  const err = levelsError();
+  if (err) { e.preventDefault(); toast(err); }
+});
 dlg.addEventListener("close", () => {
   if (dlg.returnValue !== "save") return;
   const r = { id: editing.id, name: form.name.value, m: form.m.value, cmp: form.cmp.value, thr: +form.thr.value, hys: +form.hys.value,
-    dly: +form.dly.value, sev: +form.sev.value, ntf: form.ntf.value === "1", act: form.act.value, en: form.en.value === "1" };
+    dly: +form.dly.value, sev: +form.sev.value, ntf: form.ntf.value === "1", act: form.act.value, en: form.en.value === "1", lv: readLevels() };
   send({ c:"rule_set", rule:r });
 });
-$("#rulesTbl").addEventListener("click", (e) => {
+$("#rulesList").addEventListener("click", (e) => {
   const ed = e.target.closest("[data-rule-edit]"), del = e.target.closest("[data-rule-del]");
   if (ed) openRule(RULES.find((r) => r.id == ed.dataset.ruleEdit));
   if (del && confirm("Delete this rule?")) send({ c:"rule_del", id:+del.dataset.ruleDel });
 });
-$("#rulesTbl").addEventListener("change", (e) => { const id = e.target.dataset.ruleEn; if (!id) return;
+$("#rulesList").addEventListener("change", (e) => { const id = e.target.dataset.ruleEn; if (!id) return;
   const r = RULES.find((x) => x.id == id); if (r) send({ c:"rule_set", rule:{ ...r, en: e.target.checked } }); });
 
 // cloud settings

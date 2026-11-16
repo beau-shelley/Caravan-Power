@@ -1,5 +1,7 @@
 # Host "simulator": compiles the real display UI against LVGL and renders
-# PNG screenshots of every page with demo data.
+# PPM screenshots of every page with demo data, at the firmware's panel
+# resolution (1024x600). RES="-DDISPLAY_HOR_RES=800 -DDISPLAY_VER_RES=480"
+# renders another size (give it its own OUT=, e.g. OUT=out-800).
 #   git clone --depth 1 -b v8.3.11 https://github.com/lvgl/lvgl
 #   git clone --depth 1 -b v7.2.1  https://github.com/bblanchon/ArduinoJson
 #   make -C tests/sim LVGL=/path/lvgl ARDUINOJSON=/path/ArduinoJson
@@ -8,7 +10,7 @@ ARDUINOJSON ?= ../../../ArduinoJson
 DISP := ../../firmware/display
 COMMON := ../../firmware/lib/CaravanCommon/src
 OUT ?= out
-INC := -Ishim -I$(DISP)/include -I$(DISP)/src -I$(LVGL) -I$(LVGL)/.. -I$(COMMON) -I$(ARDUINOJSON)/src -DLV_CONF_INCLUDE_SIMPLE
+INC := $(RES) -Ishim -I$(DISP)/include -I$(DISP)/src -I$(LVGL) -I$(LVGL)/.. -I$(COMMON) -I$(ARDUINOJSON)/src -DLV_CONF_INCLUDE_SIMPLE
 LVGL_SRC := $(shell find $(LVGL)/src -name '*.c')
 LVGL_OBJ := $(patsubst $(LVGL)/%.c,obj/lvgl/%.o,$(LVGL_SRC))
 APP_C := $(wildcard $(DISP)/src/ui/*.c)

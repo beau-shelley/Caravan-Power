@@ -1,6 +1,8 @@
+#include <math.h>
 // HOME - everything important on one screen.
 //  [ Battery ring  ] [ Energy flow: solar / charger / loads + per-MPPT  ]
-//  [ Temperatures  ] [ Water tanks      ] [ Pump1 Pump2 Inverter Aircon ]
+//                      (+ a "Mains" row while the AC chargers are bulk charging)
+//  [ Temperatures  ] [ Water tanks      ] [ Gas bottle | Internal / External pumps ]
 #include "../app.h"
 #include "ui.h"
 
@@ -8,10 +10,15 @@ namespace ui {
 
 static lv_obj_t *arcSoc, *lSoc, *lVolt, *lAmps, *lTtg, *lSrc;
 static lv_obj_t *lSolarW, *lSolarA, *lChgA, *lChgSub, *lLoadA, *lLoadW;
-static lv_obj_t *mpName[cv::NUM_SOLAR], *mpChip[cv::NUM_SOLAR], *mpBar[cv::NUM_SOLAR], *mpW[cv::NUM_SOLAR];
+// Source rows: one per solar controller, plus the mains chargers (last slot),
+// which only appear while the hub detects bulk mains charging.
+constexpr int NROWS = cv::NUM_SOLAR + 1, ROW_AC = cv::NUM_SOLAR;
+static lv_obj_t *mpName[NROWS], *mpChip[NROWS], *mpBar[NROWS], *mpW[NROWS];
+static int rowsAc = -1;  // layout currently shown: 0 = solar only, 1 = with mains row
 static lv_obj_t *tName[cv::NUM_TEMPS], *tVal[cv::NUM_TEMPS];
 static lv_obj_t *tkBar[cv::NUM_TANKS], *tkPct[cv::NUM_TANKS], *tkName[cv::NUM_TANKS];
 static lv_obj_t *tilePump[cv::NUM_PUMPS], *tileInv, *tileAc;
+static lv_obj_t *gasBar, *gasPct;
 static uint32_t seenMeta = UINT32_MAX;
 
 static void pumpCb(lv_event_t *e) { togglePump((int)(intptr_t)lv_event_get_user_data(e)); }
@@ -21,23 +28,57 @@ static void goPower(lv_event_t *) { showPage(PAGE_POWER); }
 static void goWater(lv_event_t *) { showPage(PAGE_WATER); }
 static void goClimate(lv_event_t *) { showPage(PAGE_CLIMATE); }
 
+static const lv_font_t *const kBigFont = LARGE ? &lv_font_montserrat_40 : &lv_font_montserrat_28;
+
 static lv_obj_t *stat(lv_obj_t *parent, int x, const char *caption, uint32_t color, lv_obj_t **big, lv_obj_t **sub) {
-  lv_obj_t *cap = lbl(parent, &lv_font_montserrat_12, col::MUTED, caption);
+  lv_obj_t *cap = lbl(parent, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, caption);
   lv_obj_set_pos(cap, x, 24);
-  *big = lbl(parent, &lv_font_montserrat_28, color, "--");
+  *big = lbl(parent, kBigFont, color, "--");
   lv_obj_set_pos(*big, x, 42);
-  *sub = lbl(parent, &lv_font_montserrat_14, col::MUTED, "");
-  lv_obj_set_pos(*sub, x, 76);
+  *sub = lbl(parent, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, col::MUTED, "");
+  lv_obj_set_pos(*sub, x, LARGE ? 88 : 76);
   return cap;
+}
+
+// Two rows of cards. Top: battery | energy flow. Bottom: temps | water | controls.
+static constexpr int TOP_H = (INNER_H - GAP) * (LARGE ? 54 : 57) / 100, BOT_H = INNER_H - GAP - TOP_H;
+static constexpr int BOT_Y = GAP + TOP_H + GAP;
+static constexpr int BAT_W = splitW(LARGE ? 37 : 39), FLOW_W = INNER_W - GAP - BAT_W;
+
+// Places the source rows. Solar only: two roomy rows with the charge-state chip
+// under the name. With mains: three single-line rows, mains first.
+static void layoutRows(bool ac) {
+  if (rowsAc == (int)ac) return;
+  rowsAc = ac;
+  constexpr int fw = innerOf(FLOW_W), rowTop = LARGE ? 128 : 112, space = innerOf(TOP_H) - rowTop;
+  constexpr int nameW = LARGE ? 130 : 112, wattW = LARGE ? 100 : 90, chipW = LARGE ? 104 : 96;
+  for (int i = 0; i < NROWS; i++) {
+    bool show = i != ROW_AC || ac;
+    for (lv_obj_t *o : {mpName[i], mpChip[i], mpBar[i], mpW[i]})
+      show ? lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    if (!show) continue;
+    int slot = ac ? (i == ROW_AC ? 0 : i + 1) : i;
+    int y = rowTop + slot * space / (ac ? NROWS : cv::NUM_SOLAR);
+    lv_obj_set_width(mpName[i], nameW - 8);
+    lv_obj_set_pos(mpName[i], 0, y);
+    int barX = ac ? nameW + chipW : nameW;
+    if (ac) lv_obj_set_pos(mpChip[i], nameW, y + (LARGE ? 3 : 1));
+    else lv_obj_set_pos(mpChip[i], 0, y + (LARGE ? 28 : 22));
+    lv_obj_set_width(mpBar[i], fw - barX - wattW - 10);
+    lv_obj_set_pos(mpBar[i], barX, y + 8);
+    lv_obj_set_width(mpW[i], wattW);
+    lv_obj_set_pos(mpW[i], fw - wattW, y + 2);
+  }
 }
 
 void buildHome(lv_obj_t *p) {
   // ---------------- battery
-  lv_obj_t *b = card(p, 12, 12, 264, 228, "BATTERY", col::CHARGE);
+  lv_obj_t *b = card(p, GAP, GAP, BAT_W, TOP_H, "BATTERY", col::CHARGE);
   lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(b, goPower, LV_EVENT_CLICKED, nullptr);
+  constexpr int arcD = innerOf(TOP_H) - 50;  // leave room for the amps row underneath
   arcSoc = lv_arc_create(b);
-  lv_obj_set_size(arcSoc, 150, 150);
+  lv_obj_set_size(arcSoc, arcD, arcD);
   lv_obj_align(arcSoc, LV_ALIGN_TOP_MID, 0, 14);
   lv_arc_set_rotation(arcSoc, 135);
   lv_arc_set_bg_angles(arcSoc, 0, 270);
@@ -45,87 +86,150 @@ void buildHome(lv_obj_t *p) {
   lv_arc_set_value(arcSoc, 0);
   lv_obj_remove_style(arcSoc, nullptr, LV_PART_KNOB);
   lv_obj_clear_flag(arcSoc, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_set_style_arc_width(arcSoc, 14, LV_PART_MAIN);
-  lv_obj_set_style_arc_width(arcSoc, 14, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_width(arcSoc, arcD / 11, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(arcSoc, arcD / 11, LV_PART_INDICATOR);
   lv_obj_set_style_arc_color(arcSoc, c(col::TILE), LV_PART_MAIN);
   lv_obj_set_style_arc_color(arcSoc, c(col::CHARGE), LV_PART_INDICATOR);
-  lSoc = lbl(b, &lv_font_montserrat_40, col::TEXT, "--%");
+  lSoc = lbl(b, LARGE ? &lv_font_montserrat_48 : &lv_font_montserrat_40, col::TEXT, "--%");
+  // Fixed-width, centre-aligned labels: align_to() positions an object once,
+  // so a label sized to "--%" would stay left-anchored and drift off-centre
+  // as the text changes to "100%".
+  lv_obj_set_width(lSoc, arcD);
+  lv_obj_set_style_text_align(lSoc, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align_to(lSoc, arcSoc, LV_ALIGN_CENTER, 0, -8);
-  lVolt = lbl(b, &lv_font_montserrat_16, col::MUTED, "-- V");
-  lv_obj_align_to(lVolt, arcSoc, LV_ALIGN_CENTER, 0, 28);
-  lAmps = lbl(b, &lv_font_montserrat_24, col::TEXT, "-- A");
+  lVolt = lbl(b, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED, "-- V");
+  lv_obj_set_width(lVolt, arcD);
+  lv_obj_set_style_text_align(lVolt, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align_to(lVolt, arcSoc, LV_ALIGN_CENTER, 0, LARGE ? 34 : 28);
+  lAmps = lbl(b, LARGE ? &lv_font_montserrat_28 : &lv_font_montserrat_24, col::TEXT, "-- A");
   lv_obj_align(lAmps, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-  lTtg = lbl(b, &lv_font_montserrat_12, col::MUTED, "");
+  lTtg = lbl(b, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
   lv_obj_set_style_text_align(lTtg, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_align(lTtg, LV_ALIGN_BOTTOM_RIGHT, 0, -2);
   lSrc = lbl(b, &lv_font_montserrat_12, col::DIM, "");
   lv_obj_align(lSrc, LV_ALIGN_TOP_RIGHT, 0, 0);
 
   // ---------------- energy flow
-  lv_obj_t *f = card(p, 288, 12, 412, 228, "ENERGY FLOW", col::SOLAR);
+  lv_obj_t *f = card(p, GAP + BAT_W + GAP, GAP, FLOW_W, TOP_H, "ENERGY FLOW", col::SOLAR);
   lv_obj_add_flag(f, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(f, goPower, LV_EVENT_CLICKED, nullptr);
+  constexpr int fw = innerOf(FLOW_W), statW = fw / 3;
   stat(f, 0, LV_SYMBOL_IMAGE " SOLAR", col::SOLAR, &lSolarW, &lSolarA);
-  stat(f, 136, LV_SYMBOL_CHARGE " CHARGING", col::CHARGE, &lChgA, &lChgSub);
-  stat(f, 262, LV_SYMBOL_POWER " LOADS", col::LOAD, &lLoadA, &lLoadW);
-  for (int i = 0; i < cv::NUM_SOLAR; i++) {
-    int y = 112 + i * 44;
-    mpName[i] = lbl(f, &lv_font_montserrat_16, col::TEXT, app::meta.solarName[i]);
-    lv_obj_set_pos(mpName[i], 0, y);
+  stat(f, statW, LV_SYMBOL_CHARGE " CHARGING", col::CHARGE, &lChgA, &lChgSub);
+  stat(f, 2 * statW, LV_SYMBOL_POWER " LOADS", col::LOAD, &lLoadA, &lLoadW);
+  // One row per source, spread over the space under the stats (laid out by
+  // layoutRows() so the mains row can come and go).
+  for (int i = 0; i < NROWS; i++) {
+    bool ac = i == ROW_AC;
+    uint32_t cc = ac ? col::MAINS : col::SOLAR;
+    mpName[i] = lbl(f, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::TEXT,
+                    ac ? LV_SYMBOL_CHARGE " Mains" : app::meta.solarName[i]);
+    lv_label_set_long_mode(mpName[i], LV_LABEL_LONG_DOT);
     mpChip[i] = chip(f);
-    lv_obj_set_pos(mpChip[i], 0, y + 22);
-    mpBar[i] = vbar(f, 170, 10, col::SOLAR);
-    lv_obj_set_pos(mpBar[i], 112, y + 8);
-    lv_bar_set_range(mpBar[i], 0, 700);  // 100/50 @ 12 V ~ 700 W max
-    mpW[i] = lbl(f, &lv_font_montserrat_20, col::SOLAR, "-- W");
+    mpBar[i] = vbar(f, 100, LARGE ? 12 : 10, cc);
+    lv_bar_set_range(mpBar[i], 0, ac ? 120 : 700);  // 2 x 60 A chargers; 100/50 @ 12 V ~ 700 W
+    mpW[i] = lbl(f, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, cc, "-- W");
     lv_obj_set_style_text_align(mpW[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_width(mpW[i], 90);
-    lv_obj_set_pos(mpW[i], 292, y + 2);
   }
+  lv_obj_set_style_text_color(mpName[ROW_AC], c(col::MAINS), 0);
+  setChip(mpChip[ROW_AC], "Bulk", col::MAINS);
+
+  rowsAc = -1;
+  layoutRows(false);
+
+  constexpr int bw = colW(3), bh = innerOf(BOT_H);
 
   // ---------------- temperatures
-  lv_obj_t *t = card(p, 12, 252, 228, 172, "TEMPERATURE", col::CLIMATE);
+  lv_obj_t *t = card(p, colX(0, 3), BOT_Y, bw, BOT_H, "TEMPERATURE", col::CLIMATE);
   lv_obj_add_flag(t, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(t, goClimate, LV_EVENT_CLICKED, nullptr);
+  constexpr int tStep = (bh - 24) / cv::NUM_TEMPS;
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
-    int y = 26 + i * 42;
-    tName[i] = lbl(t, &lv_font_montserrat_16, col::MUTED, app::meta.tempName[i]);
+    int y = 24 + i * tStep + (tStep - 34) / 2;
+    tName[i] = lbl(t, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED, app::meta.tempName[i]);
     lv_obj_set_pos(tName[i], 0, y + 6);
     tVal[i] = lbl(t, &lv_font_montserrat_28, col::TEXT, "--");
     lv_obj_align(tVal[i], LV_ALIGN_TOP_RIGHT, 0, y);
   }
 
   // ---------------- water
-  lv_obj_t *w = card(p, 252, 252, 236, 172, "WATER", col::WATER);
+  lv_obj_t *w = card(p, colX(1, 3), BOT_Y, bw, BOT_H, "WATER", col::WATER);
   lv_obj_add_flag(w, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(w, goWater, LV_EVENT_CLICKED, nullptr);
+  constexpr int slot = innerOf(bw) / cv::NUM_TANKS, tankBarW = LARGE ? 46 : 38;
+  constexpr int tankBarH = bh - 24 - 46;  // caption above, % and name below
   for (int i = 0; i < cv::NUM_TANKS; i++) {
-    int x = 8 + i * 72;
-    tkBar[i] = vbar(w, 38, 86, col::WATER);
-    lv_obj_set_pos(tkBar[i], x + 8, 24);
+    int x = i * slot;
+    tkBar[i] = vbar(w, tankBarW, tankBarH, col::WATER);
+    lv_obj_set_pos(tkBar[i], x + (slot - tankBarW) / 2, 24);
     lv_obj_clear_flag(tkBar[i], LV_OBJ_FLAG_CLICKABLE);
-    tkPct[i] = lbl(w, &lv_font_montserrat_16, col::TEXT, "--");
-    lv_obj_set_width(tkPct[i], 56);
+    tkPct[i] = lbl(w, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::TEXT, "--");
+    lv_obj_set_width(tkPct[i], slot);
     lv_obj_set_style_text_align(tkPct[i], LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(tkPct[i], x - 1, 114);
-    tkName[i] = lbl(w, &lv_font_montserrat_12, col::MUTED, app::meta.tankName[i]);
-    lv_obj_set_width(tkName[i], 66);
+    lv_obj_set_pos(tkPct[i], x, 24 + tankBarH + 4);
+    tkName[i] = lbl(w, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, app::meta.tankName[i]);
+    lv_obj_set_width(tkName[i], slot - 2);
     lv_label_set_long_mode(tkName[i], LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(tkName[i], LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(tkName[i], x - 6, 132);
+    lv_obj_set_pos(tkName[i], x + 1, 24 + tankBarH + (LARGE ? 28 : 22));
   }
 
-  // ---------------- quick controls
-  lv_obj_t *q = card(p, 500, 252, 200, 172, "CONTROLS", col::ACCENT);
+  // ---------------- gas bottle + quick controls. Gas gauge (BMPRO SmartSense)
+  // on the left; the pump tiles stacked at half height on the right (plus
+  // inverter / aircon in a second column when those features are on, ui.h).
+  constexpr int nTiles = cv::NUM_PUMPS + HAS_INVERTER + HAS_AIRCON;
+  constexpr int tCols = nTiles > cv::NUM_PUMPS ? 2 : 1, tRows = (nTiles + tCols - 1) / tCols;
+  lv_obj_t *q = card(p, colX(2, 3), BOT_Y, bw, BOT_H, nTiles > cv::NUM_PUMPS ? "GAS & CONTROLS" : "GAS & PUMPS",
+                     col::GAS);
   lv_obj_set_style_pad_all(q, 10, 0);
+  constexpr int qw = bw - 20, qh = BOT_H - 20, tg = 8;
+  constexpr int gasW = (tCols == 1 ? qw * 50 / 100 : qw * 34 / 100);
+  // Shaped like a 9 kg LPG bottle: about two-thirds as wide as it is tall.
+  constexpr int gasBarH = qh - 20 - (LARGE ? 50 : 42);  // % and name below
+  constexpr int shroudH = 16, bodyH = gasBarH - shroudH + 4;
+  constexpr int gasBarW = bodyH * 66 / 100 < gasW - 8 ? bodyH * 66 / 100 : gasW - 8;
+  // The bottle: a wide rounded body with the carry-handle shroud on top.
+  lv_obj_t *shroud = lv_obj_create(q);
+  lv_obj_remove_style_all(shroud);
+  lv_obj_set_size(shroud, gasBarW * 58 / 100, shroudH + 8);
+  lv_obj_set_style_border_width(shroud, 5, 0);
+  lv_obj_set_style_border_color(shroud, c(col::TILE), 0);
+  lv_obj_set_style_border_opa(shroud, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(shroud, 8, 0);
+  lv_obj_set_pos(shroud, (gasW - gasBarW * 58 / 100) / 2, 20);
+  gasBar = vbar(q, gasBarW, bodyH, col::GAS);
+  lv_obj_set_style_radius(gasBar, gasBarW / 4, 0);
+  lv_obj_set_style_radius(gasBar, gasBarW / 4, LV_PART_INDICATOR);
+  lv_obj_set_pos(gasBar, (gasW - gasBarW) / 2, 20 + shroudH);
+  lv_obj_clear_flag(gasBar, LV_OBJ_FLAG_CLICKABLE);
+  gasPct = lbl(q, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::TEXT, "--");
+  lv_obj_set_width(gasPct, gasW);
+  lv_obj_set_style_text_align(gasPct, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_pos(gasPct, 0, 20 + gasBarH + 4);
+  lv_obj_t *gasName = lbl(q, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "Gas");
+  lv_obj_set_width(gasName, gasW);
+  lv_obj_set_style_text_align(gasName, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_pos(gasName, 0, 20 + gasBarH + (LARGE ? 28 : 22));
+
+  constexpr int tx0 = gasW + tg, tw = (qw - tx0 - (tCols - 1) * tg) / tCols;
+  constexpr int th = (qh - 20 - (tRows - 1) * tg) / tRows;
+  int n = 0;
+  auto place = [&](lv_obj_t *t) {
+    lv_obj_set_pos(t, tx0 + (n / tRows) * (tw + tg), 20 + (n % tRows) * (th + tg));
+    n++;
+  };
   for (int i = 0; i < cv::NUM_PUMPS; i++) {
-    tilePump[i] = tile(q, 84, 64, LV_SYMBOL_LOOP, i == 0 ? "Pump 1" : "Pump 2", pumpCb, (void *)(intptr_t)i);
-    lv_obj_set_pos(tilePump[i], i * 92, 20);
+    tilePump[i] = tile(q, tw, th, ICON_TAP, app::meta.pumpName[i], pumpCb, (void *)(intptr_t)i);
+    place(tilePump[i]);
   }
-  tileInv = tile(q, 84, 64, LV_SYMBOL_POWER, "Inverter", invCb);
-  lv_obj_set_pos(tileInv, 0, 90);
-  tileAc = tile(q, 84, 64, LV_SYMBOL_SHUFFLE, "Aircon", acCb);
-  lv_obj_set_pos(tileAc, 92, 90);
+  if (HAS_INVERTER) {
+    tileInv = tile(q, tw, th, LV_SYMBOL_POWER, "Inverter", invCb);
+    place(tileInv);
+  }
+  if (HAS_AIRCON) {
+    tileAc = tile(q, tw, th, LV_SYMBOL_SHUFFLE, "Aircon", acCb);
+    place(tileAc);
+  }
 }
 
 void updateHome() {
@@ -137,6 +241,7 @@ void updateHome() {
     for (int i = 0; i < cv::NUM_SOLAR; i++) lv_label_set_text(mpName[i], app::meta.solarName[i]);
     for (int i = 0; i < cv::NUM_TEMPS; i++) lv_label_set_text(tName[i], app::meta.tempName[i]);
     for (int i = 0; i < cv::NUM_TANKS; i++) lv_label_set_text(tkName[i], app::meta.tankName[i]);
+    for (int i = 0; i < cv::NUM_PUMPS; i++) lv_label_set_text(lv_obj_get_child(tilePump[i], 1), app::meta.pumpName[i]);
   }
 
   // battery
@@ -164,8 +269,15 @@ void updateHome() {
   float solarW = s.solarW();
   setText(lSolarW, "%.0f W", solarW);
   setText(lSolarA, "%.1f A", s.bat.solarA);
-  setText(lChgA, "%.1f A", s.bat.chargeA);
-  setText(lChgSub, s.bat.chargerA > 0.5f ? "mains %.1f A" : "solar only", s.bat.chargerA);
+  setText(lChgA, s.bat.chargeA >= 99.95f ? "%.0f A" : "%.1f A", s.bat.chargeA);
+  if (s.bat.acOn) setText(lChgSub, "mains %.0f A", s.bat.acA);
+  else if (s.bat.chargerA > 0.5f) setText(lChgSub, "BMPRO %.1f A", s.bat.chargerA);
+  else setText(lChgSub, "solar only");
+  layoutRows(s.bat.online && s.bat.acOn);
+  if (rowsAc == 1) {
+    lv_bar_set_value(mpBar[ROW_AC], (int)s.bat.acA, LV_ANIM_ON);
+    setText(mpW[ROW_AC], "%.0f A", s.bat.acA);
+  }
   setText(lLoadA, "%.1f A", s.bat.loadA);
   setText(lLoadW, "%.0f W", s.bat.loadA * (s.bat.v > 0 ? s.bat.v : 12.8f));
   for (int i = 0; i < cv::NUM_SOLAR; i++) {
@@ -188,7 +300,7 @@ void updateHome() {
   // temps
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
     if (s.temp[i].online) {
-      setText(tVal[i], "%.1f\xC2\xB0", s.temp[i].c);
+      setText(tVal[i], "%d\xC2\xB0", (int)lroundf(s.temp[i].c));
       lv_obj_set_style_text_color(tVal[i], c(tempColor(i, s.temp[i].c)), 0);
     } else {
       setText(tVal[i], "--");
@@ -208,17 +320,31 @@ void updateHome() {
     }
   }
 
+  // gas bottle
+  if (s.gas.online) {
+    lv_bar_set_value(gasBar, (int)s.gas.pct, LV_ANIM_ON);
+    setBarColor(gasBar, gasColor(s.gas.pct));
+    setText(gasPct, "%d%%", (int)(s.gas.pct + 0.5f));
+    lv_obj_set_style_text_color(gasPct, c(col::TEXT), 0);
+  } else {
+    lv_bar_set_value(gasBar, 0, LV_ANIM_OFF);
+    setText(gasPct, "--");
+    lv_obj_set_style_text_color(gasPct, c(col::DIM), 0);
+  }
+
   // controls
   for (int i = 0; i < cv::NUM_PUMPS; i++) {
     const cv::Pump &pm = s.pump[i];
     const char *sub = pm.lockout ? "Locked" : pm.on ? "Running" : "Off";
     setTile(tilePump[i], pm.on, pm.lockout ? col::WARN : col::WATER, sub);
   }
-  setTile(tileInv, s.inv.on, col::SOLAR, s.inv.on ? (s.inv.acPresent ? "240V on" : "On") : "Off");
-  const char *acSub = "Off";
-  if (s.ac.on && s.ac.preset >= 0 && s.ac.preset < app::meta.acPresetCount)
-    acSub = app::meta.acPresetName[s.ac.preset];
-  setTile(tileAc, s.ac.on, col::CLIMATE, acSub);
+  if (tileInv) setTile(tileInv, s.inv.on, col::SOLAR, s.inv.on ? (s.inv.acPresent ? "240V on" : "On") : "Off");
+  if (tileAc) {
+    const char *acSub = "Off";
+    if (s.ac.on && s.ac.preset >= 0 && s.ac.preset < app::meta.acPresetCount)
+      acSub = app::meta.acPresetName[s.ac.preset];
+    setTile(tileAc, s.ac.on, col::CLIMATE, acSub);
+  }
 }
 
 }  // namespace ui

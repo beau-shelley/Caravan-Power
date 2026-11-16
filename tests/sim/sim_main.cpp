@@ -26,10 +26,13 @@ bool backlightOn() { return true; }
 uint32_t lastTouchMs() { return gNow; }
 }  // namespace board
 
-static std::vector<uint16_t> fb(800 * 480);
+// Same resolution as the firmware (board.h); override with
+//   make -C tests/sim RES="-DDISPLAY_HOR_RES=800 -DDISPLAY_VER_RES=480"
+static constexpr int W = board::SCREEN_W, H = board::SCREEN_H;
+static std::vector<uint16_t> fb(W * H);
 static void flush(lv_disp_drv_t *d, const lv_area_t *a, lv_color_t *px) {
   for (int y = a->y1; y <= a->y2; y++)
-    for (int x = a->x1; x <= a->x2; x++) fb[y * 800 + x] = (px++)->full;
+    for (int x = a->x1; x <= a->x2; x++) fb[y * W + x] = (px++)->full;
   lv_disp_flush_ready(d);
 }
 
@@ -50,7 +53,7 @@ static void shot(const char *name) {
   char path[256];
   snprintf(path, sizeof(path), "%s/%s.ppm", getenv("OUT") ? getenv("OUT") : ".", name);
   FILE *f = fopen(path, "wb");
-  fprintf(f, "P6\n800 480\n255\n");
+  fprintf(f, "P6\n%d %d\n255\n", W, H);
   for (uint16_t p : fb) {
     uint8_t r = ((p >> 11) & 31) * 255 / 31, g = ((p >> 5) & 63) * 255 / 63, b = (p & 31) * 255 / 31;
     fputc(r, f);
@@ -85,6 +88,7 @@ static void demoData() {
   s.tank[0] = {true, 72};
   s.tank[1] = {true, 18};
   s.tank[2] = {true, 41};
+  s.gas = {true, 63};
   s.pump[0].on = true;
   s.pump[0].sensed = true;
   s.pump[0].runSec = 94;
@@ -116,12 +120,12 @@ static void demoData() {
 int main() {
   lv_init();
   static lv_disp_draw_buf_t db;
-  static std::vector<lv_color_t> buf(800 * 480);
-  lv_disp_draw_buf_init(&db, buf.data(), nullptr, 800 * 480);
+  static std::vector<lv_color_t> buf(W * H);
+  lv_disp_draw_buf_init(&db, buf.data(), nullptr, W * H);
   static lv_disp_drv_t drv;
   lv_disp_drv_init(&drv);
-  drv.hor_res = 800;
-  drv.ver_res = 480;
+  drv.hor_res = W;
+  drv.ver_res = H;
   drv.flush_cb = flush;
   drv.draw_buf = &db;
   lv_disp_drv_register(&drv);
@@ -155,7 +159,7 @@ int main() {
   shot("08-level");
   ui::showPage(ui::PAGE_MORE);
   shot("11-more");
-  app::state.lvl.roll = 0.1f;  // now level -> "Set weather location" appears
+  app::state.lvl.roll = 0.1f;  // now level -> "set weather location on your phone" hint appears
   app::state.lvl.pitch = -0.2f;
   ui::showPage(ui::PAGE_LEVEL);
   for (int i = 0; i < 4; i++) shot("12-level-done");  // level held > 3 s (sim refreshes once per shot)
@@ -163,17 +167,22 @@ int main() {
   // An active alarm + a warning
   cv::State &s = app::state;
   s.temp[cv::TEMP_FRIDGE].c = 7.4f;
-  s.alertCount = 2;
+  s.alertCount = 3;
   s.alerts[0] = {};
-  s.alerts[0].ruleId = 7;
-  s.alerts[0].sev = cv::SEV_ALARM;
-  s.alerts[0].since = s.ts - 1500;
-  strcpy(s.alerts[0].msg, "Fridge warm: 7.4C (> 6.0)");
+  s.alerts[0].ruleId = 4;
+  s.alerts[0].sev = cv::SEV_CRIT;
+  s.alerts[0].since = s.ts - 600;
+  strcpy(s.alerts[0].msg, "Battery charge low: 4% (< 5)");
   s.alerts[1] = {};
-  s.alerts[1].ruleId = 12;
-  s.alerts[1].sev = cv::SEV_INFO;
-  s.alerts[1].since = s.ts - 3600;
-  strcpy(s.alerts[1].msg, "Fresh 2 low: 18% (< 20)");
+  s.alerts[1].ruleId = 7;
+  s.alerts[1].sev = cv::SEV_ALARM;
+  s.alerts[1].since = s.ts - 1500;
+  strcpy(s.alerts[1].msg, "Fridge warm: 7.4C (> 6.0)");
+  s.alerts[2] = {};
+  s.alerts[2].ruleId = 12;
+  s.alerts[2].sev = cv::SEV_INFO;
+  s.alerts[2].since = s.ts - 3600;
+  strcpy(s.alerts[2].msg, "Tank 2 low: 18% (< 20)");
   ui::showPage(ui::PAGE_ALERTS);
   shot("05-alerts");
   ui::showPage(ui::PAGE_HOME);
@@ -182,17 +191,107 @@ int main() {
   s.temp[cv::TEMP_FRIDGE].c = 3.4f;
   ui::showPage(ui::PAGE_SETTINGS);
   shot("07-settings");
-  {
-    JsonDocument r;
-    deserializeJson(r, R"({"t":"loc_results","list":[{"name":"Mudgee NSW","area":"Mid-Western Regional","lat":-32.6,"lon":149.59},
-      {"name":"Mudgeeraba QLD","area":"Gold Coast","lat":-28.08,"lon":153.36}]})");
-    ui::handleLocResults(r.as<JsonObjectConst>());
-    shot("10-location-search");
-    JsonDocument none;  // closes the picker (empty result list)
-    deserializeJson(none, R"({"t":"loc_results","list":[]})");
-    ui::handleLocResults(none.as<JsonObjectConst>());
-    gNow += 5000;
-  }
+  // Mains chargers bulk charging: Home grows a Mains row
+  s.bat.acOn = true;
+  s.bat.acA = 118.4f;
+  s.bat.chargeA = s.bat.solarA + s.bat.acA;
+  s.bat.a = s.bat.chargeA - s.bat.loadA;
+  s.bat.ttgMin = 38;
+  app::stateDirty = true;
+  ui::showPage(ui::PAGE_HOME);
+  shot("13-home-mains");
+  ui::showPage(ui::PAGE_POWER);
+  shot("14-power-mains");
+  s.bat.acOn = false;
+  s.bat.acA = 0;
+  s.bat.chargeA = s.bat.solarA;
+  s.bat.a = s.bat.chargeA - s.bat.loadA;
+  app::stateDirty = true;
+
+  // Diesel heater (Bluetooth): running on the thermostat, a cold evening
+  cv::Heater &h = s.htr;
+  h.link = cv::HTR_LINK_BLE;
+  h.online = true;
+  h.phase = cv::HTR_RUNNING;
+  h.mode = cv::HTR_MODE_TEMP;
+  h.setC = 22;
+  h.level = 6;
+  h.cabinC = 18.6f;
+  h.bodyC = 142;
+  h.supplyV = 12.9f;
+  s.temp[cv::TEMP_INSIDE].c = 18.6f;
+  s.temp[cv::TEMP_OUTSIDE].c = 7.8f;
+  app::stateDirty = true;
+  ui::showPage(ui::PAGE_CLIMATE);
+  shot("15-climate-heater");
+  h.phase = cv::HTR_STARTING;
+  h.mode = cv::HTR_MODE_LEVEL;
+  h.bodyC = 41;
+  h.cabinC = 12.4f;
+  app::stateDirty = true;
+  shot("16-heater-heating-up");
+  h.phase = cv::HTR_OFF;
+  h.mode = cv::HTR_MODE_TEMP;
+  h.err = 2;
+  h.bodyC = 16;
+  app::stateDirty = true;
+  shot("17-heater-fault");
+  h.err = 0;
+  h.online = false;
+  app::stateDirty = true;
+  shot("18-heater-not-connected");
+  h = cv::Heater();
+  s.temp[cv::TEMP_INSIDE].c = 24.6f;
+  s.temp[cv::TEMP_OUTSIDE].c = 31.2f;
+  app::stateDirty = true;
+
+  // Secure mode (anti-theft): the button at the top of the nav rail.
+  cv::Secure &sec = s.sec;
+  sec = cv::Secure();
+  sec.sensor = true;
+  sec.tiltLim = 2;
+  sec.turnLim = 20;
+  sec.shakeLim = 45;
+  ui::showPage(ui::PAGE_HOME);
+  ui::secureButton();  // asks before arming
+  shot("19-secure-arm-confirm");
+  lv_obj_del(lv_obj_get_child(lv_layer_top(), -1));  // close the confirm box
+  sec.mode = cv::SEC_ARMING;
+  sec.armLeft = 42;
+  shot("20-home-arming");
+  sec.mode = cv::SEC_ARMED;
+  sec.armLeft = 0;
+  sec.tilt = 0.3f;
+  sec.turn = 2;
+  sec.shake = 1;
+  shot("21-home-armed");
+  // Movement: 5 minutes to disarm (with the code) before the full alarm.
+  app::meta.secCodeSet = true;
+  sec.mode = cv::SEC_ENTRY;
+  sec.cause = cv::SEC_TURN;
+  sec.armLeft = 272;
+  s.alertCount = 1;
+  s.alerts[0] = {};
+  s.alerts[0].ruleId = 14;
+  s.alerts[0].sev = cv::SEV_WARN;
+  s.alerts[0].since = s.ts;
+  strcpy(s.alerts[0].msg, "Theft alarm: movement - disarm within 5 min");
+  shot("23-home-movement-entry-delay");
+  ui::secureButton();  // code keypad
+  shot("24-disarm-keypad");
+  lv_obj_del(lv_obj_get_child(lv_layer_top(), -1));
+  sec.mode = cv::SEC_TRIGGERED;
+  s.alertCount = 1;
+  s.alerts[0] = {};
+  s.alerts[0].ruleId = 14;
+  s.alerts[0].sev = cv::SEV_CRIT;
+  s.alerts[0].since = s.ts;
+  strcpy(s.alerts[0].msg, "Theft alarm: van turned (being towed?)");
+  gNow = gNow / 1000 * 1000 + 1000;  // lands on the fuchsia half of the flash
+  shot("22-home-theft-alarm");
+  s.alertCount = 0;
+  sec = cv::Secure();
+
   ui::showPage(ui::PAGE_HOME);
   ui::openWeatherForTest();
   shot("09-forecast");

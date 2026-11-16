@@ -3,6 +3,9 @@
 #include "LinkCodec.h"
 #include "app.h"
 #include "board.h"
+#ifdef DISPLAY_DEMO_MODE
+#include "demo.h"
+#endif
 
 namespace app {
 
@@ -32,6 +35,10 @@ void linkBegin() {
 }
 
 void send(JsonDocument &cmd) {
+#ifdef DISPLAY_DEMO_MODE
+  demo::command(cmd);  // no hub in demo builds: apply the command locally
+  return;
+#endif
   if (gQCount >= QLEN) return;  // drop if the hub is unreachable
   String s;
   serializeJson(cmd, s);
@@ -64,10 +71,31 @@ void cmdAircon(int preset) {
   else d["preset"] = preset;
   send(d);
 }
-void cmdRule(const cv::Rule &r) {
+
+void cmdHeaterOn(bool on) {
   JsonDocument d;
-  d["c"] = "rule_set";
-  cv::ruleToJson(r, d["rule"].to<JsonObject>());
+  d["c"] = "heater";
+  d["on"] = on;
+  send(d);
+}
+void cmdHeaterSet(const char *key, int value) {
+  JsonDocument d;
+  d["c"] = "heater";
+  d[key] = value;
+  send(d);
+}
+void cmdHeaterMode(bool level) {
+  JsonDocument d;
+  d["c"] = "heater";
+  d["mode"] = level ? "level" : "temp";
+  send(d);
+}
+
+void cmdSecure(bool arm, const char *code) {
+  JsonDocument d;
+  d["c"] = "secure";
+  d["arm"] = arm;
+  if (code) d["code"] = code;
   send(d);
 }
 

@@ -7,11 +7,20 @@
 #include <lvgl.h>
 
 namespace {
-constexpr int W = 1024, H = 600;
+constexpr int W = board::SCREEN_W, H = board::SCREEN_H;
 constexpr int PIN_SDA = 8, PIN_SCL = 9;
 constexpr uint8_t IO_ADDR = 0x24;
-constexpr uint8_t REG_MODE = 0x02, REG_OUTPUT = 0x03, REG_PWM = 0x05;
-constexpr int IO_BACKLIGHT = 2, IO_LCD_RESET = 3;
+constexpr uint8_t REG_MODE = 0x02, REG_OUTPUT = 0x03;
+// 0x05 = backlight PWM, INVERTED (0x00 brightest, 0xFF off). Never written at
+// boot (see begin()); only once the screen first dims.
+constexpr uint8_t REG_PWM = 0x05;
+// How far "dimmed" goes. DISPLAY_DIM_PWM=0 switches the backlight fully off
+// instead (no PWM writes at all), in case PWM brings back the stripe band.
+#ifndef DISPLAY_DIM_PWM
+#define DISPLAY_DIM_PWM 1
+#endif
+constexpr uint8_t PWM_DIM = 0xF0, PWM_FULL = 0x00;
+constexpr int IO_BACKLIGHT = 2;  // IO3 = LCD reset: left high, never pulsed
 
 esp_lcd_panel_handle_t gPanel = nullptr;
 lv_disp_draw_buf_t gDrawBuf;
@@ -19,6 +28,8 @@ lv_disp_drv_t gDispDrv;
 lv_indev_drv_t gIndevDrv;
 uint8_t gExio = 0xff;
 bool gBacklight = false;
+bool gPwmUsed = false;      // PWM register written since boot
+bool gSwallowTouch = false; // current touch woke the screen: don't pass it to LVGL
 uint32_t gLastTouchMs = 0;
 uint8_t gTouchAddr = 0;
 
@@ -96,6 +107,10 @@ void touchCb(lv_indev_drv_t *, lv_indev_data_t *data) {
   }
   if (down && !gBacklight) {
     board::backlight(true);
+    gSwallowTouch = true;
+  }
+  if (gSwallowTouch) {
+    if (!down) gSwallowTouch = false;  // finger lifted: the next touch is a real one
     down = false;
   }
   data->point.x = lastX;
@@ -109,15 +124,13 @@ void begin() {
   Serial.printf("[board] PSRAM: %u bytes, free internal heap: %u bytes\n", ESP.getPsramSize(), ESP.getFreeHeap());
   Wire.begin(PIN_SDA, PIN_SCL, 400000);
 
-  // Verified 7B boot order: CH32 direction and outputs, pulse LCD reset,
-  // then set inverted PWM to full brightness before starting the RGB panel.
+  // Same start-up as Waveshare's 06_LCD demo: CH32 pins to outputs (all high,
+  // so backlight on, LCD out of reset and EXIO5 = CAN: GPIO19/20 go to the
+  // CAN transceiver, not the native USB port) and nothing else. Pulsing LCD reset
+  // (IO3) and writing the backlight PWM register here left a faint band of
+  // vertical stripes across the panel; confirmed on hardware by A/B flash.
   bool ioOk = exioWrite(REG_MODE, 0xff);
   exioWrite(REG_OUTPUT, gExio);
-  exioPin(IO_LCD_RESET, false);
-  delay(10);
-  exioPin(IO_LCD_RESET, true);
-  delay(120);
-  exioWrite(REG_PWM, 0x00);
   gBacklight = true;
   Serial.printf("[board] CH32 IO extension: %s\n", ioOk ? "OK" : "FAILED");
 
@@ -153,7 +166,7 @@ void begin() {
     Serial.printf("[board] ERROR: RGB panel initialization failed: %d\n", err);
     while (true) delay(1000);
   }
-  Serial.println("[board] RGB panel initialized: 1024x600, 30MHz");
+  Serial.printf("[board] RGB panel initialized: %dx%d, 30MHz\n", W, H);
 
   lv_init();
   const size_t n = W * 60;
@@ -170,7 +183,6 @@ void begin() {
   gDispDrv.flush_cb = flushCb;
   gDispDrv.draw_buf = &gDrawBuf;
   lv_disp_drv_register(&gDispDrv);
-  backlight(true);
 
   for (uint8_t addr : {(uint8_t)0x5d, (uint8_t)0x14}) {
     Wire.beginTransmission(addr);
@@ -188,8 +200,18 @@ void begin() {
 }
 
 void backlight(bool on) {
+  if (on == gBacklight) return;
   gBacklight = on;
+#if DISPLAY_DIM_PWM
+  if (!on) {
+    exioWrite(REG_PWM, PWM_DIM);
+    gPwmUsed = true;
+  } else if (gPwmUsed) {
+    exioWrite(REG_PWM, PWM_FULL);
+  }
+#else
   exioPin(IO_BACKLIGHT, on);
+#endif
   if (on) gLastTouchMs = millis();
 }
 bool backlightOn() { return gBacklight; }

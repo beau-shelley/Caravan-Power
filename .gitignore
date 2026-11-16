@@ -4,7 +4,7 @@ build/
 secrets.h
 tests/bin/
 *.o
-tests/sim/out/
+tests/sim/out*/
 tests/sim/obj/
 firmware/hub/data/
 firmware/display/.dummy/

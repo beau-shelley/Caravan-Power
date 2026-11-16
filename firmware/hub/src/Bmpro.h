@@ -26,9 +26,13 @@ struct BmproData {
   float batV = 0, batA = 0, batSoc = 0;
   int32_t batTtgMin = -1;
   bool chargerValid = false;
-  float chargerA = 0;
+  float chargerA = 0;   // BMPRO charger output (solar input + DC-DC)
+  bool loadValid = false;  // BMPRO 12 V load outputs (lets the mains-charger figure be exact)
+  float loadA = 0;
   bool tankValid[cv::NUM_TANKS] = {};
   float tankPct[cv::NUM_TANKS] = {};
+  bool gasValid = false;  // SmartSense LPG level (frame not decoded yet: stub)
+  float gasPct = 0;
   bool pumpValid[cv::NUM_PUMPS] = {};
   bool pumpOn[cv::NUM_PUMPS] = {};
 };
@@ -42,6 +46,8 @@ class Bmpro {
   void connect(const char *addr);  // change target (async)
   bool connected() const;
   bool decoded() const;  // any frame decoded yet?
+  // Load current measured by the BMPRO, or -1 if not decoded / stale.
+  float loadA() const;
   bool setPump(int i, bool on, const char **why);
   // Raw write for protocol experiments, e.g. replaying a captured app write.
   bool write(const char *charUuid, const uint8_t *data, size_t len, bool response);
