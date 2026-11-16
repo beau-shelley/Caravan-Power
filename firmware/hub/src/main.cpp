@@ -3,6 +3,7 @@
 // inverter / aircon, and serves the data to the 7" display (RS485), the local
 // web dashboard (Wi-Fi) and the cloud (MQTT over TLS) with phone push alerts.
 #include <Arduino.h>
+#include <esp_task_wdt.h>
 #include <cctype>
 #include <LittleFS.h>
 #include <Wire.h>
@@ -18,6 +19,7 @@
 #include "Outputs.h"
 #include "VictronBle.h"
 #include "BleTempRx.h"
+#include "BleSurvey.h"
 #include "LevelSensor.h"
 #include "WeatherClient.h"
 #include "VictronBleRx.h"
@@ -198,6 +200,10 @@ static void onAlert(const cv::AlertEngine::Event &ev, void *) {
   stateChanged();
 }
 
+// "Restart system" from the touchscreen (or phone): reply first, restart 1 s
+// later so the reply has time to reach the display over RS485.
+static uint32_t gRestartAtMs = 0;
+
 // ---------------------------------------------------------------- commands
 // One handler for every client (touchscreen, local web, cloud). Messages look
 // like {"c":"pump","i":0,"on":true}. See docs/PROTOCOL.md for the full list.
@@ -218,7 +224,11 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     return;
   }
 
-  if (!strcmp(c, "ping")) {
+  if (!strcmp(c, "restart")) {
+    Serial.println("[sys] restart requested - restarting in 1 s");
+    reply["t"] = "restarting";
+    gRestartAtMs = millis() | 1;
+  } else if (!strcmp(c, "ping")) {
     reply["t"] = "pong";
   } else if (!strcmp(c, "state")) {
     cv::stateToJson(gState, reply.to<JsonObject>());
@@ -432,6 +442,8 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   } else if (!strcmp(c, "bmpro_devices")) {
     reply["t"] = "bmpro_devices";
     if (gBmproOn) reply["list"] = serialized(gBmpro.devices());
+  } else if (survey::kOn && (!strcmp(c, "bmpro_connect") || !strcmp(c, "bmpro_write"))) {
+    return replyErr(reply, "Bluetooth survey build: listen-only, nothing is sent to the BMPRO");
   } else if (!strcmp(c, "bmpro_connect")) {
     if (!gBmproOn) return replyErr(reply, "BMPRO link not running");
     const char *addr = cmd["addr"] | "";
@@ -612,11 +624,18 @@ void setup() {
   }
   for (auto s : gConfig.tempSrc)
     if (s == TEMP_BLE) startBleTemps();
-  if (gConfig.usesBmpro()) {
+  if (survey::kOn) {
+    survey::begin();  // listen-only Bluetooth logging; the BMPRO link stays off
+  } else if (gConfig.usesBmpro()) {
     gBmpro.begin(gConfig.bmproAddr, gConfig.bmproExplorer);
     gBmproOn = true;
   }
   xTaskCreatePinnedToCore(netTask, "net", 12288, nullptr, 1, nullptr, 0);
+
+  // Watchdog: if loop() stops running for 30 s (a hang or a deadlock), the
+  // hub restarts itself. The Arduino core feeds it after every loop().
+  esp_task_wdt_init(30, true);
+  enableLoopWDT();
 }
 
 void loop() {
@@ -668,5 +687,7 @@ void loop() {
     gLink.loop(gState);
   }
   buzzerLoop(now);
+  if (survey::kOn) survey::loop();
+  if (gRestartAtMs && millis() - gRestartAtMs > 1000) ESP.restart();
   delay(2);
 }

@@ -21,6 +21,13 @@
 #include "secrets.example.h"
 #endif
 
+// The van-visit (Bluetooth survey) build runs on the van's Starlink Wi-Fi, so
+// it must not leave the dashboard / app open without a login.
+#ifdef HUB_BLE_SURVEY
+static_assert(sizeof(WEB_USER) > 1 && sizeof(WEB_PASS) > 1,
+              "hub-esp32-survey: set WEB_USER and WEB_PASS in src/secrets.h (the bench build may leave them empty)");
+#endif
+
 namespace hub {
 
 DisplayLink gLink;

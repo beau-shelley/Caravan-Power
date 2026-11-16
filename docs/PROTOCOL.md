@@ -39,6 +39,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | Command | Fields | Notes |
 |---|---|---|
 | `state`, `hello`, `rules_get`, `ping` | | read-only; `hello` returns meta + rules |
+| `restart` | | replies `{"t":"restarting"}`, then the hub restarts 1 s later. The touchscreen sends it from More → Restart system, then restarts itself |
 | `pump` | `i`, `on` | refused if locked out; with the relay fallback, also if the BMPRO turned it on |
 | `inverter` | `on` | |
 | `aircon` | `preset` or `off:true` | |

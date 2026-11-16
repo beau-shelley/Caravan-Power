@@ -51,4 +51,8 @@ struct HardwareSerial {
   void println(const char *s) { ::puts(s); }
 };
 extern HardwareSerial Serial, Serial1;
+struct EspClass {
+  void restart() {}  // the simulator never restarts
+};
+inline EspClass ESP;
 #endif

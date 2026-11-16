@@ -299,11 +299,71 @@ static lv_obj_t *moreTile(lv_obj_t *p, int i, int page, const char *sym, const c
   return s;
 }
 
+// ---------------------------------------------------------------- system restart
+// More -> Restart system: asks the hub to restart, waits up to 4 s for it to
+// say so, then restarts the display too. If the hub doesn't answer, the
+// display still restarts (and says so). Both boards also have a watchdog that
+// restarts them by itself if the firmware hangs (see main.cpp).
+static uint32_t gRestartAt = 0;  // when the restart was asked for (0 = not restarting)
+static bool gHubAcked = false;
+static lv_obj_t *gRestartMsg = nullptr;
+
+static void restartDo(void *) {
+  gRestartAt = millis() | 1;
+  gHubAcked = false;
+  lv_obj_t *ov = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(ov, SCR_W, SCR_H);
+  lv_obj_set_style_bg_color(ov, c(col::BG), 0);
+  lv_obj_set_style_bg_opa(ov, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(ov, 0, 0);
+  lv_obj_set_style_radius(ov, 0, 0);
+  gRestartMsg = lbl(ov, LARGE ? &lv_font_montserrat_28 : &lv_font_montserrat_24, col::TEXT,
+                    LV_SYMBOL_REFRESH "  Restarting the hub...");
+  lv_obj_set_width(gRestartMsg, SCR_W - 80);
+  lv_obj_set_style_text_align(gRestartMsg, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_long_mode(gRestartMsg, LV_LABEL_LONG_WRAP);
+  lv_obj_center(gRestartMsg);
+  app::cmd("restart");
+}
+
+static void restartCb(lv_event_t *) {
+  confirm("Restart system", "Restart the display and the hub?\nEverything is back in about 20 seconds.", restartDo);
+}
+
+static void restartLoop() {
+  if (!gRestartAt) return;
+  static uint32_t decidedAt = 0;
+  uint32_t now = millis();
+  if (!decidedAt && (gHubAcked || now - gRestartAt > 4000)) {
+    decidedAt = now | 1;
+    if (gHubAcked) lv_label_set_text(gRestartMsg, LV_SYMBOL_REFRESH "  Hub is restarting.\nRestarting the display...");
+    else {
+      lv_label_set_text(gRestartMsg, LV_SYMBOL_WARNING "  The hub didn't respond.\nRestarting the display only.");
+      lv_obj_set_style_text_color(gRestartMsg, c(col::WARN), 0);
+    }
+  }
+  if (decidedAt && now - decidedAt > 2000) ESP.restart();  // long enough to read the message
+}
+
 static void buildMore(lv_obj_t *p) {
   moreTile(p, 0, PAGE_LEVEL, LV_SYMBOL_GPS, "Caravan level", "Bubble level and wheel / jockey heights", col::ACCENT);
   gMoreAlerts = moreTile(p, 1, PAGE_ALERTS, LV_SYMBOL_BELL, "Alerts & rules", "", col::WARN);
   moreTile(p, 2, PAGE_SETTINGS, LV_SYMBOL_SETTINGS, "Settings",
            HAS_AIRCON ? "Aircon, weather location, display" : "Weather location, display", col::MUTED);
+
+  // Below the tiles, kept small so it isn't pressed by accident (and it asks first).
+  lv_obj_t *rb = lv_btn_create(p);
+  lv_obj_set_size(rb, LARGE ? 260 : 220, LARGE ? 54 : 46);
+  lv_obj_align(rb, LV_ALIGN_BOTTOM_MID, 0, -12);
+  lv_obj_set_style_bg_color(rb, c(col::TILE), 0);
+  lv_obj_set_style_border_color(rb, c(col::BORDER), 0);
+  lv_obj_set_style_border_width(rb, 1, 0);
+  lv_obj_set_style_radius(rb, 14, 0);
+  lv_obj_set_style_shadow_width(rb, 0, 0);
+  lv_obj_add_event_cb(rb, restartCb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t *rl = lbl(rb, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, col::MUTED,
+                     LV_SYMBOL_REFRESH "  Restart system");
+  lv_obj_center(rl);
 }
 
 static void updateMore() {
@@ -488,9 +548,11 @@ static void replyHandler(JsonObjectConst m) {
   else if (!strcmp(t, "ac_learn")) handleLearnReply(m);
   else if (!strcmp(t, "tank_cal")) toast("Tank calibration saved", col::CHARGE);
   else if (!strcmp(t, "level")) toast(m["msg"] | "", col::ACCENT);
+  else if (!strcmp(t, "restarting")) gHubAcked = true;
 }
 
 void loop() {
+  restartLoop();
   static uint32_t last = 0;
   if (millis() - last < 200) return;  // 5 Hz UI refresh is plenty
   last = millis();

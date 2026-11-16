@@ -2,6 +2,7 @@
 // Pure UI: all data and control goes through the hub over RS485.
 #include <Arduino.h>
 #include <lvgl.h>
+#include <esp_task_wdt.h>
 
 #include "app.h"
 #include "board.h"
@@ -26,6 +27,15 @@ void setup() {
   ui::begin();
   Serial.println("[ui] Initialization complete");
   canbus::begin();  // listen-only CAN logger, runs on core 0 (see canbus.h)
+
+  // Watchdog: if loop() stops running for 30 s (a hang), the board restarts
+  // itself. The touchscreen may be frozen then, so this is the real safety net;
+  // More -> Restart system is the manual one.
+  esp_task_wdt_config_t wdt = {};
+  wdt.timeout_ms = 30000;
+  wdt.trigger_panic = true;
+  if (esp_task_wdt_reconfigure(&wdt) != ESP_OK) esp_task_wdt_init(&wdt);
+  enableLoopWDT();  // the Arduino core feeds it after every loop()
 }
 
 static void sleepLogic() {

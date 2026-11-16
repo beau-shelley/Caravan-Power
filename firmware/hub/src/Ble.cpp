@@ -2,6 +2,8 @@
 
 #include <NimBLEDevice.h>
 
+#include "BleSurvey.h"
+
 namespace hub {
 namespace ble {
 
@@ -27,7 +29,9 @@ void begin() {
   // Duplicates wanted: Victron devices re-broadcast new readings constantly.
   scan->setAdvertisedDeviceCallbacks(new ScanCb(), true);
   scan->setMaxResults(0);  // callbacks only - don't accumulate results in RAM
-  scan->setActiveScan(true);
+  // Active scans ask each device for its name (a scan request). The survey
+  // build only listens, so it never transmits anything at other devices.
+  scan->setActiveScan(!survey::kOn);
   scan->setInterval(160);  // 100 ms
   scan->setWindow(60);     // 37.5 ms: leaves the shared radio free for Wi-Fi
 }
