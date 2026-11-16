@@ -109,6 +109,13 @@ void tick(cv::State &s, uint32_t nowMs) {
     s.tank[i].pct = tank[i];
   }
 
+  // ---- gas bottle: slowly used by the stove/hot water, swapped when empty
+  static float gas = 63;
+  gas -= 0.01f * dt;
+  if (gas < 3) gas = 100;
+  s.gas.online = true;
+  s.gas.pct = gas;
+
   // ---- level: a little wobble, as if someone is walking around inside
   s.lvl.online = s.lvl.zeroed = s.lvl.fwdLearned = true;
   s.lvl.roll = -0.9f + 0.3f * sinf(t * 0.9f);
