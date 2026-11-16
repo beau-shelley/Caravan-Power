@@ -1,6 +1,11 @@
 package com.caravan.monitor.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,12 +37,15 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.caravan.monitor.ConnStatus
 import com.caravan.monitor.HubState
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Rule
+import com.caravan.monitor.Secure
+import com.caravan.monitor.fmtNum
 import com.caravan.monitor.UpdateInfo
 
 // Home is laid out to fit on one phone screen without scrolling (it still
@@ -54,6 +62,8 @@ fun HomeContent(
     onOpenSetup: () -> Unit,
     update: UpdateInfo = UpdateInfo(),
     onUpdate: () -> Unit = {},
+    /** Arm (true) or disarm (false) secure mode; the Android wrapper asks first. */
+    onSecure: (Boolean) -> Unit = {},
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
@@ -84,6 +94,7 @@ fun HomeContent(
             }
         }
 
+        SecureCard(s.sec, onSecure)
         BatteryCard(s)
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SolarCard(s, meta, Modifier.weight(1f).fillMaxHeight())
@@ -91,6 +102,53 @@ fun HomeContent(
         }
         TempsCard(s, meta)
         GasAndPumpsCard(s, meta, onPump)
+    }
+}
+
+/** Secure mode (anti-theft): one compact row, state on the left, Arm / Disarm on the right. */
+@Composable
+private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit) {
+    val color = when (x.mode) {
+        Secure.ARMING -> Accent.warn; Secure.ARMED -> Accent.secure; Secure.ALARM -> Accent.critical; else -> Accent.muted
+    }
+    val title = when (x.mode) {
+        Secure.ARMING -> "Arming in ${x.armLeft} s"; Secure.ARMED -> "Secure mode armed"
+        Secure.ALARM -> "THEFT ALARM"; else -> "Secure mode off"
+    }
+    val sub = when (x.mode) {
+        Secure.ARMING -> "Time to leave the van"
+        Secure.ARMED -> "Tilt ${fmt1(x.tilt)}° of ${fmtNum(x.tiltLim)}°, turned ${x.turn}° of ${x.turnLim}°"
+        Secure.ALARM -> Secure.causeText(x.cause).replaceFirstChar { it.uppercase() }
+        else -> if (x.sensorOk) "${Secure.SENS[x.sens.coerceIn(0, 2)]} sensitivity · wind is ignored" else "Level sensor not answering"
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Surfaces.card),
+        shape = RoundedCornerShape(16.dp),
+        border = if (x.active) BorderStroke(1.5.dp, color) else null,
+    ) {
+        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).background(color.copy(alpha = 0.18f), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                Icon(when (x.mode) { Secure.ALARM -> CaravanIcons.Shield; Secure.OFF -> CaravanIcons.Unlock; else -> CaravanIcons.Lock },
+                    null, Modifier.size(22.dp), tint = color)
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold, color = if (x.active) color else Surfaces.text,
+                    style = MaterialTheme.typography.titleSmall)
+                Text(sub, style = MaterialTheme.typography.bodySmall, color = Accent.muted, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = { onSecure(!x.active) },
+                enabled = x.active || x.sensorOk,
+                modifier = Modifier.height(40.dp),
+                contentPadding = PaddingValues(horizontal = 18.dp),
+                colors = if (x.active) ButtonDefaults.buttonColors(containerColor = Surfaces.track, contentColor = Surfaces.text)
+                else ButtonDefaults.buttonColors(),
+            ) { Text(if (x.active) "Disarm" else "Arm", fontWeight = FontWeight.SemiBold) }
+        }
     }
 }
 

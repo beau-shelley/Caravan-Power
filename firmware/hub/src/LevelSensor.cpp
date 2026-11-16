@@ -6,6 +6,7 @@
 #include "Ble.h"
 #include "HubConfig.h"
 #include "Leveling.h"
+#include "Secure.h"
 
 namespace hub {
 
@@ -76,6 +77,7 @@ bool LevelSensor::begin() {
     regWrite(addr_, 0x6B, 0x01);  // wake up, PLL clock
     regWrite(addr_, 0x1A, 0x05);  // DLPF ~10 Hz: ignores people walking about
     regWrite(addr_, 0x1C, 0x00);  // +/-2 g full scale
+    regWrite(addr_, 0x1B, 0x00);  // gyro +/-250 deg/s (secure mode)
     regWrite(addr_, 0x19, 9);     // 100 Hz sample rate
   }
   Serial.printf("[level] MPU-6050 %s\n", ok_ ? "found" : "NOT FOUND (levelling disabled)");
@@ -83,16 +85,21 @@ bool LevelSensor::begin() {
   return ok_;
 }
 
+// Accelerometer (raw counts) plus the gyro (deg/s) in one burst: 0x3B..0x48 =
+// accel XYZ, temperature, gyro XYZ. Secure mode uses the gyro to see the van
+// turning; levelling only needs the accelerometer.
 bool LevelSensor::readAccel(float &x, float &y, float &z) {
   Wire.beginTransmission(addr_);
   Wire.write(0x3B);
   if (Wire.endTransmission(false) != 0) return false;
-  if (Wire.requestFrom((int)addr_, 6) != 6) return false;
-  int16_t v[3];
+  if (Wire.requestFrom((int)addr_, 14) != 14) return false;
+  int16_t v[7];
   for (auto &a : v) a = (int16_t)((Wire.read() << 8) | Wire.read());
   x = v[0];
   y = v[1];
   z = v[2];
+  constexpr float kLsbPerG = 16384, kLsbPerDps = 131;  // +/-2 g, +/-250 deg/s
+  gyro_ = {v[4] / kLsbPerDps, v[5] / kLsbPerDps, v[6] / kLsbPerDps};
   return true;
 }
 
@@ -156,7 +163,7 @@ void LevelSensor::finishCal() {
   Serial.printf("[level] %s\n", result_);
 }
 
-void LevelSensor::loop(cv::State &s) {
+void LevelSensor::loop(cv::State &s, bool publish) {
   uint32_t now = millis();
   // Commands from the phone (Bluetooth task) are run here, on the main loop.
   uint8_t cmd = gPendingCmd;
@@ -169,7 +176,7 @@ void LevelSensor::loop(cv::State &s) {
   }
 
   if (!ok_) {
-    s.lvl.online = false;
+    if (publish) s.lvl.online = false;
     if (now - lastRetryMs_ > 30000) {  // sensor plugged in later / loose wire
       lastRetryMs_ = now;
       if (begin()) primed_ = false;
@@ -184,6 +191,7 @@ void LevelSensor::loop(cv::State &s) {
     ok_ = false;
     return;
   }
+  secure::feed(cv::Vec3{x / 16384.0f, y / 16384.0f, z / 16384.0f}, gyro_, now);
   if (calMode_ != CAL_NONE) {  // 2 s average for calibration
     sx_ += x;
     sy_ += y;
@@ -202,6 +210,7 @@ void LevelSensor::loop(cv::State &s) {
     fz_ += (z - fz_) * 0.02f;
   }
 
+  if (!publish) return;  // fake-data build: the level shown is made up
   const LevelCfg &lc = gConfig.level;
   cv::LevelAngles a = cv::levelCompute(lc.cal, cv::Vec3{fx_, fy_, fz_});
   s.lvl.online = true;

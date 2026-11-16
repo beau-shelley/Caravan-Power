@@ -15,6 +15,7 @@ object Accent {
     val climate = Color(0xFFB48CFF)
     val warn = Color(0xFFFFA94D)
     val alarm = Color(0xFFFF5C5C)
+    val secure = Color(0xFF22C55E)  // secure mode armed, same green as the touchscreen and web page
     val critical = Color(0xFFD946EF)  // fuchsia, same as the touchscreen and web page
     val muted = Color(0xFF8A96A3)
 }

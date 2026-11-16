@@ -64,9 +64,13 @@ int sleepSeconds();
 
 // ---------------------------------------------------------------- palette
 // Extra icons (Font Awesome Free 6, SIL OFL 1.1) in ui_icons_20/24/28.c, made
-// with lv_font_conv from fa-solid-900.ttf: -r 0xf043,0xe006 --bpp 4.
+// with lv_font_conv from fa-solid-900.ttf: -r 0xf043,0xe006,0xf023,0xf09c,0xf3ed --bpp 4.
 #define ICON_WATER ""  // U+F043 droplet (UTF-8 EF 81 83)
 #define ICON_TAP ""    // U+E006 faucet-drip, for pumps (UTF-8 EE 80 86)
+// Secure mode (anti-theft): -r 0xf023,0xf09c,0xf3ed added to the same fonts.
+#define ICON_LOCK "\xEF\x80\xA3"    // U+F023 lock (armed)
+#define ICON_UNLOCK "\xEF\x82\x9C"  // U+F09C lock-open (off)
+#define ICON_SHIELD "\xEF\x8F\xAD"  // U+F3ED shield-halved (alarm)
 // The extra icons need their own font; LVGL's symbols use Montserrat.
 bool isExtraIcon(const char *sym);
 
@@ -78,6 +82,7 @@ constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0x22D3EE, WARN = 0xF59E0B, ALARM
 constexpr uint32_t OK = 0x22C55E, TILE = 0x1A2438, GAS = 0xFB923C, MAINS = 0x60A5FA;
 constexpr uint32_t CRIT = 0xD946EF;  // critical alerts (same colour as the phone page)
 constexpr uint32_t HEAT = 0xFB923C;  // diesel heater (warm orange, same as the phone page)
+constexpr uint32_t SECURE = 0x22C55E;  // secure mode armed (green, same as the phone page)
 }  // namespace col
 inline uint32_t sevColor(int sev) {
   return sev >= cv::SEV_CRIT ? col::CRIT : sev == cv::SEV_ALARM ? col::ALARM : sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
@@ -135,5 +140,6 @@ void openWeatherForTest();
 void togglePump(int i);
 void toggleInverter();
 void toggleAircon();
+void secureButton();  // arm / disarm, asks first
 
 }  // namespace ui

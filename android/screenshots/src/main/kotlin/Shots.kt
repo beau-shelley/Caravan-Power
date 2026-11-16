@@ -32,6 +32,7 @@ import com.caravan.monitor.Meta
 import com.caravan.monitor.Net
 import com.caravan.monitor.Pump
 import com.caravan.monitor.Rule
+import com.caravan.monitor.Secure
 import com.caravan.monitor.Settings
 import com.caravan.monitor.Severity
 import com.caravan.monitor.Solar
@@ -221,6 +222,22 @@ fun main() {
         AppScaffold(3, {}, 0) {
             ClimateContent(cold.copy(htr = cold.htr!!.copy(phase = 0, err = 2, bodyC = 16.0)), META, CONNECTED, { _, _ -> }, nop)
         }
+    }
+    // Secure mode (anti-theft)
+    val calm = CHARGING.copy(sec = Secure(sensorOk = true, sens = 1))
+    shot("9-home-secure-off", 840) {
+        AppScaffold(0, {}, 0) { HomeContent(calm, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
+    }
+    shot("10-home-secure-armed", 840) {
+        AppScaffold(0, {}, 0) {
+            HomeContent(calm.copy(sec = calm.sec.copy(mode = Secure.ARMED, tilt = 0.3, tiltLim = 2.0, turn = 2, turnLim = 20, shakeLim = 45)),
+                META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop)
+        }
+    }
+    val theft = calm.copy(sec = calm.sec.copy(mode = Secure.ALARM, cause = 2),
+        alerts = listOf(ActiveAlert(14, Severity.CRIT, false, 0, 2.0, "Theft alarm: van turned (being towed?)")))
+    shot("11-home-theft-alarm", 840) {
+        AppScaffold(0, {}, 1) { HomeContent(theft, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
     }
     shot("6-home-not-connected", 915) {
         AppScaffold(0, {}, 0) {

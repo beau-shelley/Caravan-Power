@@ -85,6 +85,15 @@ void HubConfig::toJson(JsonObject o) const {
   loc["lat"] = location.lat;
   loc["lon"] = location.lon;
   loc["name"] = location.name;
+  JsonObject sc = o["sec"].to<JsonObject>();
+  sc["armed"] = secure.armed;
+  sc["sens"] = secure.sens;
+  if (secure.haveBase) {
+    JsonArray sb = sc["base"].to<JsonArray>();
+    sb.add(secure.base.x);
+    sb.add(secure.base.y);
+    sb.add(secure.base.z);
+  }
   JsonObject ht = o["htr"].to<JsonObject>();
   ht["link"] = heater.link;
   ht["addr"] = heater.addr;
@@ -103,6 +112,7 @@ void HubConfig::toJson(JsonObject o) const {
 void HubConfig::fromJson(JsonObjectConst o) {
   if (o["meta"].is<JsonObjectConst>()) cv::metaFromJson(meta, o["meta"]);
   if (o["rules"].is<JsonArrayConst>()) cv::rulesFromJson(rules, o["rules"]);
+  cv::ensureTheftRule(rules);  // rule lists saved before secure mode existed
 
   JsonObjectConst b = o["bat"];
   if (!b.isNull()) {
@@ -160,6 +170,14 @@ void HubConfig::fromJson(JsonObjectConst o) {
     if (loc["name"].is<const char *>()) copyStr(location.name, sizeof(location.name), loc["name"]);
   }
   meta.locSrc = location.src;
+  JsonObjectConst sc = o["sec"];
+  if (!sc.isNull()) {
+    secure.armed = sc["armed"] | false;
+    secure.sens = sc["sens"] | secure.sens;
+    if (secure.sens > cv::SENS_HIGH) secure.sens = cv::SENS_MEDIUM;
+    secure.haveBase = sc["base"].size() == 3;
+    if (secure.haveBase) secure.base = {sc["base"][0].as<float>(), sc["base"][1].as<float>(), sc["base"][2].as<float>()};
+  }
   JsonObjectConst ht = o["htr"];
   if (!ht.isNull()) {
     heater.link = ht["link"] | heater.link;

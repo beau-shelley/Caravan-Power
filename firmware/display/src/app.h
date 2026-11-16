@@ -28,6 +28,8 @@ void cmdAircon(int preset);  // -1 = off
 void cmdHeaterOn(bool on);
 void cmdHeaterSet(const char *key, int value);
 void cmdHeaterMode(bool level);
+// Secure mode (anti-theft): {"c":"secure","arm":true|false}
+void cmdSecure(bool arm);
 
 // Hook for replies the UI cares about (errors, learn status, ...)
 using ReplyHandler = void (*)(JsonObjectConst msg);

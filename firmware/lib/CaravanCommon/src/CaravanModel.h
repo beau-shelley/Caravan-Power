@@ -10,6 +10,7 @@
 #include <cstring>
 #include <ArduinoJson.h>
 
+#include "TheftGuard.h"
 #include "Weather.h"
 
 namespace cv {
@@ -159,6 +160,7 @@ struct State {
   Aircon ac;
   Heater htr;
   Level lvl;
+  Secure sec;  // secure mode (anti-theft), see TheftGuard.h
   Weather wx;
   uint8_t alertCount = 0;
   ActiveAlert alerts[MAX_ACTIVE_ALERTS];
@@ -180,6 +182,7 @@ enum Metric : uint8_t {
   M_TANK1, M_TANK2, M_TANK3,
   M_WX_GUST, M_WX_RAIN,   // today's forecast max wind gust (km/h), rain chance (%)
   M_GAS,  // appended: rules refer to metrics by key, but keep the order stable
+  M_THEFT,  // secure mode: 0 quiet, else the SecureCause that set the alarm off
   M_COUNT
 };
 
@@ -243,6 +246,9 @@ struct RuleSet {
 };
 
 void loadDefaultRules(RuleSet &rs);
+// Secure mode raises its alarm through a rule; puts the default one back if
+// it's missing (older saved rule lists, or deleted). Returns true if added.
+bool ensureTheftRule(RuleSet &rs);
 
 // ---------------------------------------------------------------- metadata
 // Slow-changing names/labels, sent on connect and whenever they change.
@@ -263,6 +269,8 @@ struct Meta {
 };
 void levelToJson(const Level &l, JsonObject o);
 void levelFromJson(Level &l, JsonObjectConst o);
+void secureToJson(const Secure &x, JsonObject o);
+void secureFromJson(Secure &x, JsonObjectConst o);
 void metaToJson(const Meta &m, JsonObject o);
 void metaFromJson(Meta &m, JsonObjectConst o);
 

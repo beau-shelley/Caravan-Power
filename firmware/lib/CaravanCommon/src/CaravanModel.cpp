@@ -23,6 +23,7 @@ static const MetricInfo kMetrics[M_COUNT] = {
     {"wx_gust", "Forecast gusts", "km/h", 5.0f},
     {"wx_rain", "Forecast rain chance", "%", 10.0f},
     {"gas", "Gas bottle", "%", 5.0f},
+    {"theft", "Theft alarm", "", 1.0f},
 };
 
 const MetricInfo &metricInfo(Metric m) { return kMetrics[m < M_COUNT ? m : 0]; }
@@ -59,6 +60,8 @@ bool metricValue(const State &s, Metric m, float &out) {
     case M_WX_GUST: out = s.wx.day[0].gustMax; return s.wx.valid && s.ts && s.ts - s.wx.updated < 6 * 3600;
     case M_WX_RAIN: out = s.wx.day[0].rainProb; return s.wx.valid && s.ts && s.ts - s.wx.updated < 6 * 3600;
     case M_GAS: out = s.gas.pct; return s.gas.online;
+    // Always "online" so the alarm clears as soon as secure mode is disarmed.
+    case M_THEFT: out = s.sec.mode == SEC_TRIGGERED ? (float)s.sec.cause : 0; return true;
     default: return false;
   }
 }
@@ -210,6 +213,14 @@ void loadDefaultRules(RuleSet &rs) {
   addRule(rs, "Tank 2 low", M_TANK2, CMP_LT, 15, 5, 30, SEV_INFO);
   addRule(rs, "Grey tank full", M_TANK3, CMP_GT, 85, 5, 30, SEV_WARN);
   addRule(rs, "Strong wind forecast", M_WX_GUST, CMP_GT, 50, 10, 0, SEV_WARN);  // bring the awning in
+  ensureTheftRule(rs);
+}
+
+bool ensureTheftRule(RuleSet &rs) {
+  for (int i = 0; i < rs.count; i++)
+    if (rs.rules[i].metric == M_THEFT) return false;
+  // No delay: secure mode already waits out wind before it goes off.
+  return addRule(rs, "Theft alarm", M_THEFT, CMP_GT, 0.5f, 0, 0, SEV_CRIT) != nullptr;
 }
 
 // ---------------------------------------------------------------- JSON helpers
@@ -314,6 +325,7 @@ void stateToJson(const State &s, JsonObject o) {
   }
 
   levelToJson(s.lvl, o["lvl"].to<JsonObject>());
+  secureToJson(s.sec, o["sec"].to<JsonObject>());
   weatherToJson(s.wx, o["wx"].to<JsonObject>());
 
   JsonArray al = o["alerts"].to<JsonArray>();
@@ -419,6 +431,8 @@ void stateFromJson(State &s, JsonObjectConst o) {
   }
 
   if (o["lvl"].is<JsonObjectConst>()) levelFromJson(s.lvl, o["lvl"]);
+  s.sec = Secure();
+  if (o["sec"].is<JsonObjectConst>()) secureFromJson(s.sec, o["sec"]);
   if (o["wx"].is<JsonObjectConst>()) weatherFromJson(s.wx, o["wx"]);
 
   JsonArrayConst al = o["alerts"];
@@ -526,6 +540,36 @@ void levelFromJson(Level &l, JsonObjectConst o) {
   l.roll = o["r"] | 0.0f;
   l.trackMm = o["tr"] | l.trackMm;
   l.jockeyMm = o["jk"] | l.jockeyMm;
+}
+
+void secureToJson(const Secure &x, JsonObject o) {
+  o["m"] = x.mode;
+  o["c"] = x.cause;
+  o["sn"] = x.sens;
+  o["ok"] = x.sensor;
+  if (x.armLeft) o["al"] = x.armLeft;
+  o["since"] = x.since;
+  o["ti"] = r1(x.tilt);
+  o["tl"] = r1(x.tiltLim);
+  o["tu"] = (int)std::lround(x.turn);
+  o["ul"] = (int)std::lround(x.turnLim);
+  o["sh"] = x.shake;
+  o["sl"] = x.shakeLim;
+}
+
+void secureFromJson(Secure &x, JsonObjectConst o) {
+  x.mode = o["m"] | 0;
+  x.cause = o["c"] | 0;
+  x.sens = o["sn"] | (int)SENS_MEDIUM;
+  x.sensor = o["ok"] | false;
+  x.armLeft = o["al"] | 0;
+  x.since = o["since"] | 0u;
+  x.tilt = o["ti"] | 0.0f;
+  x.tiltLim = o["tl"] | 0.0f;
+  x.turn = o["tu"] | 0.0f;
+  x.turnLim = o["ul"] | 0.0f;
+  x.shake = o["sh"] | 0;
+  x.shakeLim = o["sl"] | 0;
 }
 
 void metaToJson(const Meta &m, JsonObject o) {

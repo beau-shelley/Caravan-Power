@@ -80,7 +80,10 @@ lv_obj_t *button(lv_obj_t *parent, int w, int h, const char *text, uint32_t bg, 
 }
 
 // Square toggle tile: icon on top, caption + sub-caption below.
-bool isExtraIcon(const char *sym) { return sym && (!strcmp(sym, ICON_WATER) || !strcmp(sym, ICON_TAP)); }
+bool isExtraIcon(const char *sym) {
+  return sym && (!strcmp(sym, ICON_WATER) || !strcmp(sym, ICON_TAP) || !strcmp(sym, ICON_LOCK) ||
+                 !strcmp(sym, ICON_UNLOCK) || !strcmp(sym, ICON_SHIELD));
+}
 
 lv_obj_t *tile(lv_obj_t *parent, int w, int h, const char *sym, const char *text, lv_event_cb_t cb, void *ud) {
   lv_obj_t *b = lv_btn_create(parent);
@@ -234,6 +237,7 @@ static lv_obj_t *gNavBtns[NAV_COUNT];
 static lv_obj_t *gMoreAlerts;
 static lv_obj_t *gTitle, *gClock, *gIcoLink, *gIcoWifi, *gIcoCloud, *gBell, *gBellCount;
 static lv_obj_t *gBanner, *gBannerText, *gBannerBtn;
+static lv_obj_t *gSecBtn, *gSecIcon, *gSecText;  // secure mode button, top of the nav rail
 static int gPage = -1;
 
 static const char *kPageNames[PAGE_COUNT] = {"Home", "Power", "Water", "Climate", "More", "Level", "Alerts", "Settings"};
@@ -386,12 +390,30 @@ static void buildShell() {
   lv_obj_set_style_border_side(rail, LV_BORDER_SIDE_RIGHT, 0);
   lv_obj_set_style_border_color(rail, c(col::BORDER), 0);
   lv_obj_set_style_border_width(rail, 1, 0);
-  lv_obj_t *logo = lbl(rail, &lv_font_montserrat_20, col::ACCENT, LV_SYMBOL_CHARGE);
-  lv_obj_align(logo, LV_ALIGN_TOP_MID, 0, 12);
+  // Secure mode (anti-theft) button where the logo used to be: on every page,
+  // shows the state at a glance, tap to arm or disarm.
 #ifdef DISPLAY_DEMO_MODE
+  constexpr int secH = 42;
   lv_obj_t *demoTag = lbl(rail, &lv_font_montserrat_12, col::WARN, "DEMO");
-  lv_obj_align(demoTag, LV_ALIGN_TOP_MID, 0, 34);
+  lv_obj_align(demoTag, LV_ALIGN_TOP_MID, 0, secH + 6);
+#else
+  constexpr int secH = LARGE ? 50 : 44;
 #endif
+  gSecBtn = lv_btn_create(rail);
+  lv_obj_set_size(gSecBtn, RAIL_W - 16, secH);
+  lv_obj_align(gSecBtn, LV_ALIGN_TOP_MID, 0, 6);
+  lv_obj_set_style_pad_all(gSecBtn, 0, 0);
+  lv_obj_set_style_radius(gSecBtn, 12, 0);
+  lv_obj_set_style_shadow_width(gSecBtn, 0, 0);
+  lv_obj_set_style_border_width(gSecBtn, 1, 0);
+  lv_obj_set_style_border_color(gSecBtn, c(col::BORDER), 0);
+  lv_obj_set_style_bg_color(gSecBtn, c(col::TILE), 0);
+  lv_obj_set_ext_click_area(gSecBtn, 6);
+  lv_obj_add_event_cb(gSecBtn, [](lv_event_t *) { secureButton(); }, LV_EVENT_CLICKED, nullptr);
+  gSecIcon = lbl(gSecBtn, &ui_icons_20, col::MUTED, ICON_UNLOCK);
+  lv_obj_align(gSecIcon, LV_ALIGN_TOP_MID, 0, 4);
+  gSecText = lbl(gSecBtn, &lv_font_montserrat_12, col::MUTED, "Arm");
+  lv_obj_align(gSecText, LV_ALIGN_BOTTOM_MID, 0, -3);
   // Nav buttons share the rail height below the logo.
   constexpr int navTop = LARGE ? 60 : 52, navStep = (SCR_H - navTop - 4) / NAV_COUNT;
   constexpr int navBtn = navStep - 12 < RAIL_W - 16 ? navStep - 12 : RAIL_W - 16;
@@ -472,9 +494,71 @@ static void buildShell() {
   lv_obj_add_flag(gBanner, LV_OBJ_FLAG_HIDDEN);
 }
 
+static void updateSecure() {
+  const cv::Secure &x = app::state.sec;
+  uint32_t col = col::MUTED;
+  const char *icon = ICON_UNLOCK;
+  char txt[16] = "Arm";
+  bool on = app::linkUp;
+  switch (on ? x.mode : cv::SEC_OFF) {
+    case cv::SEC_ARMING:
+      col = col::WARN;
+      icon = ICON_LOCK;
+      snprintf(txt, sizeof(txt), "%u s", x.armLeft);
+      break;
+    case cv::SEC_ARMED:
+      col = col::SECURE;
+      icon = ICON_LOCK;
+      strcpy(txt, "Armed");
+      break;
+    case cv::SEC_TRIGGERED:
+      col = (millis() / 500) % 2 ? col::CRIT : col::ALARM;  // flashes
+      icon = ICON_SHIELD;
+      strcpy(txt, "ALARM");
+      break;
+    default: break;
+  }
+  bool lit = on && x.mode != cv::SEC_OFF;
+  lv_obj_set_style_bg_color(gSecBtn, lit ? lv_color_mix(c(col), c(col::TILE), 70) : c(col::TILE), 0);
+  lv_obj_set_style_border_color(gSecBtn, lit ? c(col) : c(col::BORDER), 0);
+  lv_obj_set_style_text_color(gSecIcon, c(col), 0);
+  lv_obj_set_style_text_color(gSecText, c(lit ? col::TEXT : col::MUTED), 0);
+  if (strcmp(lv_label_get_text(gSecIcon), icon)) lv_label_set_text(gSecIcon, icon);
+  setText(gSecText, "%s", txt);
+}
+
+static void secureArm(void *) { app::cmdSecure(true); toast("Secure mode arms in 60 seconds - time to leave", col::WARN); }
+static void secureDisarm(void *) { app::cmdSecure(false); toast("Secure mode off", col::CHARGE); }
+
+void secureButton() {
+  const cv::Secure &x = app::state.sec;
+  static char msg[220];
+  if (!app::linkUp) {
+    toast("Hub not connected", col::WARN);
+  } else if (x.mode == cv::SEC_OFF) {
+    if (!x.sensor) {
+      toast("Secure mode needs the level sensor, and it isn't answering", col::WARN);
+      return;
+    }
+    snprintf(msg, sizeof(msg),
+             "Sounds the alarm and alerts your phone if the van is jacked up, hitched or towed. "
+             "Wind rocking the van is ignored.\n\nYou have 60 seconds to leave. Sensitivity: %s (change it on the phone).",
+             cv::secureSensText(x.sens));
+    confirm("Arm secure mode?", msg, secureArm);
+  } else if (x.mode == cv::SEC_TRIGGERED) {
+    snprintf(msg, sizeof(msg), "ALARM: %s.\n\nTurn secure mode off?", cv::secureCauseText(x.cause));
+    confirm("Theft alarm", msg, secureDisarm);
+  } else {
+    snprintf(msg, sizeof(msg), "%s. Movement now: tilt %.1f of %.1f deg, turned %.0f of %.0f deg, shaking %u of %u s.\n\nTurn secure mode off?",
+             x.mode == cv::SEC_ARMING ? "Arming" : "Armed", x.tilt, x.tiltLim, x.turn, x.turnLim, x.shake, x.shakeLim);
+    confirm("Secure mode", msg, secureDisarm);
+  }
+}
+
 static void updateShell() {
   const cv::State &s = app::state;
   updateWeather();
+  updateSecure();
   lv_obj_set_style_text_color(gIcoLink, c(app::linkUp ? col::CHARGE : col::ALARM), 0);
   lv_obj_set_style_text_color(gIcoWifi, c(app::linkUp && s.wifi ? col::TEXT : col::DIM), 0);
   lv_obj_set_style_text_color(gIcoCloud, c(app::linkUp && s.cloud ? col::ACCENT : col::DIM), 0);

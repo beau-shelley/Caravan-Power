@@ -18,7 +18,7 @@
   --bg:#0b1220; --card:#131c2e; --tile:#1a2438; --border:#1e293b;
   --text:#e2e8f0; --muted:#94a3b8; --dim:#475569;
   --solar:#fbbf24; --charge:#34d399; --load:#f87171; --water:#38bdf8; --gas:#fb923c;
-  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444; --mains:#60a5fa; --crit:#d946ef; --heat:#fb923c;
+  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444; --mains:#60a5fa; --crit:#d946ef; --heat:#fb923c; --secure:#22c55e;
   --radius:16px;
 }
 @media (prefers-color-scheme: light) {
@@ -26,7 +26,7 @@
     --bg:#eef2f7; --card:#ffffff; --tile:#f1f5f9; --border:#dbe3ee;
     --text:#0f172a; --muted:#475569; --dim:#94a3b8;
     --solar:#d97706; --charge:#059669; --load:#dc2626; --water:#0284c7; --gas:#ea580c;
-    --climate:#7c3aed; --accent:#0891b2; --mains:#2563eb; --crit:#c026d3; --heat:#ea580c;
+    --climate:#7c3aed; --accent:#0891b2; --mains:#2563eb; --crit:#c026d3; --heat:#ea580c; --secure:#16a34a;
   }
 }
 * { box-sizing:border-box; }
@@ -119,6 +119,20 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
 .wx .day { background:var(--tile); border-radius:12px; padding:8px; text-align:center; font-size:13px; }
 @media (max-width: 700px) { .wx { grid-template-columns:repeat(4, 1fr); } .wx .now { grid-column:1 / -1; }
   .wx .day { font-size:11px; padding:6px 3px; } }
+/* Secure mode (anti-theft) */
+.sec { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:12px; --c:var(--muted); }
+.sec .lock { width:52px; height:52px; border-radius:14px; display:grid; place-items:center; flex:none;
+  background:color-mix(in srgb, var(--c) 18%, var(--tile)); color:var(--c); }
+.sec .lock .ico { width:24px; height:24px; }
+.sec .what { flex:1; min-width:180px; }
+.sec .what b { font-size:17px; color:var(--c); }
+.sec .ctl { display:flex; gap:10px; align-items:center; }
+.sec .ctl select { width:auto; min-height:48px; }
+@media (max-width: 520px) { .sec .ctl { width:100%; } .sec .ctl select { flex:1; min-width:0; } }
+.sec .armBtn { min-width:120px; min-height:48px; font-size:16px; font-weight:600; }
+.sec.on { border-color:var(--c); }
+.sec.alarm { animation:secFlash 1s steps(2) infinite; }
+@keyframes secFlash { 50% { border-color:var(--alarm); } }
 /* Diesel heater card */
 .htr { display:grid; grid-template-columns:auto 1fr; gap:14px 16px; align-items:center; }
 .htr .pwr { width:76px; height:76px; border-radius:50%; border:2px solid var(--border); background:var(--tile); color:var(--muted);
@@ -149,6 +163,10 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
        Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com, icons CC BY 4.0. -->
   <symbol id="i-drop" viewBox="0 0 384 512"><path d="M192 512C86 512 0 426 0 320C0 228.8 130.2 57.7 166.6 11.7C172.6 4.2 181.5 0 191.1 0h1.8c9.6 0 18.5 4.2 24.5 11.7C253.8 57.7 384 228.8 384 320c0 106-86 192-192 192zM96 336c0-8.8-7.2-16-16-16s-16 7.2-16 16c0 61.9 50.1 112 112 112c8.8 0 16-7.2 16-16s-7.2-16-16-16c-44.2 0-80-35.8-80-80z"/></symbol>
   <symbol id="i-tap" viewBox="0 0 512 512"><path d="M224 0c17.7 0 32 14.3 32 32V44l96-12c17.7 0 32 14.3 32 32s-14.3 32-32 32L256 84l-31-3.9-1-.1-1 .1L192 84 96 96C78.3 96 64 81.7 64 64s14.3-32 32-32l96 12V32c0-17.7 14.3-32 32-32zM0 224c0-17.7 14.3-32 32-32h96l22.6-22.6c6-6 14.1-9.4 22.6-9.4H192V116.2l32-4 32 4V160h18.7c8.5 0 16.6 3.4 22.6 9.4L320 192h32c88.4 0 160 71.6 160 160c0 17.7-14.3 32-32 32H416c-17.7 0-32-14.3-32-32s-14.3-32-32-32H315.9c-20.2 29-53.9 48-91.9 48s-71.7-19-91.9-48H32c-17.7 0-32-14.3-32-32V224zM436.8 423.4c1.9-4.5 6.3-7.4 11.2-7.4s9.2 2.9 11.2 7.4l18.2 42.4c1.8 4.1 2.7 8.6 2.7 13.1V480c0 17.7-14.3 32-32 32s-32-14.3-32-32v-1.2c0-4.5 .9-8.9 2.7-13.1l18.2-42.4z"/></symbol>
+  <!-- Font Awesome 6 "lock", "lock-open" and "shield-halved" (secure mode, same as the touchscreen) -->
+  <symbol id="i-lock" viewBox="0 0 448 512"><path d="M144 144v48H304V144c0-44.2-35.8-80-80-80s-80 35.8-80 80zM80 192V144C80 64.5 144.5 0 224 0s144 64.5 144 144v48h16c35.3 0 64 28.7 64 64V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V256c0-35.3 28.7-64 64-64H80z"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 576 512"><path d="M352 144c0-44.2 35.8-80 80-80s80 35.8 80 80v48c0 17.7 14.3 32 32 32s32-14.3 32-32V144C576 64.5 511.5 0 432 0S288 64.5 288 144v48H64c-35.3 0-64 28.7-64 64V448c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V256c0-35.3-28.7-64-64-64H352V144z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 512 512"><path d="M256 0c4.6 0 9.2 1 13.4 2.9L457.7 82.8c22 9.3 38.4 31 38.3 57.2c-.5 99.2-41.3 280.7-213.6 363.2c-16.7 8-36.1 8-52.8 0C57.3 420.7 16.5 239.2 16 140c-.1-26.2 16.3-47.9 38.3-57.2L242.7 2.9C246.8 1 251.4 0 256 0zm0 66.8V444.8C394 378 431.1 230.1 432 141.4L256 66.8l0 0z"/></symbol>
   <symbol id="i-pwr" viewBox="0 0 512 512"><path d="M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32V256c0 17.7 14.3 32 32 32s32-14.3 32-32V32zM143.5 120.6c13.6-11.3 15.4-31.5 4.1-45.1s-31.5-15.4-45.1-4.1C49.7 115.4 16 181.8 16 256c0 132.5 107.5 240 240 240s240-107.5 240-240c0-74.2-33.8-140.6-86.6-184.6c-13.6-11.3-33.8-9.4-45.1 4.1s-9.4 33.8 4.1 45.1c38.9 32.3 63.5 81 63.5 135.4c0 97.2-78.8 176-176 176s-176-78.8-176-176c0-54.4 24.7-103.1 63.5-135.4z"/></symbol>
 </svg>
 <header>
@@ -166,6 +184,14 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
   <!-- ======================= OVERVIEW ======================= -->
   <section id="tab-overview">
     <div id="alertBox" class="alerts" style="margin-bottom:12px"></div>
+    <!-- Secure mode (anti-theft): uses the hub's level sensor -->
+    <div class="card sec" id="secCard">
+      <div class="lock" id="secIco"><svg class="ico"><use href="#i-unlock"/></svg></div>
+      <div class="what"><b id="secTitle">Secure mode off</b><div class="muted small" id="secSub">Arm it when you leave the van.</div></div>
+      <div class="ctl"><select id="secSens" aria-label="Sensitivity">
+        <option value="0">Low (windy sites)</option><option value="1">Medium</option><option value="2">High</option></select>
+      <button class="btn primary armBtn" id="secBtn">Arm</button></div>
+    </div>
     <div class="grid">
       <div class="card span12 hidden" id="wxCard" style="--dot:var(--water)">
         <div class="cap">Weather <span id="wxPlace" class="muted" style="text-transform:none; letter-spacing:0"></span></div>
@@ -361,7 +387,7 @@ const METRICS = [
   ["load_a","Load current","A"],["charge_a","Charge current","A"],["solar_w","Solar total","W"],
   ["solar1_w","Solar 1","W"],["solar2_w","Solar 2","W"],["temp_in","Inside temp","°C"],
   ["temp_out","Outside temp","°C"],["temp_fridge","Fridge temp","°C"],["tank1","Tank 1","%"],
-  ["tank2","Tank 2","%"],["tank3","Tank 3","%"],["gas","Gas bottle","%"]];
+  ["tank2","Tank 2","%"],["tank3","Tank 3","%"],["gas","Gas bottle","%"],["theft","Theft alarm",""]];
 const CS = {0:"Off",2:"Fault",3:"Bulk",4:"Absorption",5:"Float",7:"Equalise",245:"Starting",247:"Auto EQ",252:"Ext control"};
 const SEV = ["Info","Warning","Alarm","Critical"], SEVC = ["var(--accent)","var(--warn)","var(--alarm)","var(--crit)"];
 const SEV_OPTS = SEV.map((n, i) => `<option value="${i}">${n}</option>`).join("");
@@ -468,6 +494,7 @@ function render() {
       <span class="muted small">${t.on ? `&nbsp;↓${Math.round(t.lo)}° ↑${Math.round(t.hi)}°` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
 
   renderHeater();
+  renderSecure();
 
   $("#tanks").innerHTML = S.tank.map((t, i) => {
     const bad = i === 2 ? t.p > 85 : t.p < 15, warn = i === 2 ? t.p > 70 : t.p < 30;
@@ -499,6 +526,32 @@ function render() {
 
   const age = Math.round((Date.now() - lastMsg) / 1000);
   $("#updated").textContent = S.ts ? `Updated ${localTime(S.ts)}` : `Updated ${age}s ago`;
+}
+
+// Secure mode (anti-theft). sec: m 0 off / 1 arming / 2 armed / 3 alarm, c cause,
+// sn sensitivity, ok sensor working, al seconds to armed, ti/tl tilt, tu/ul turn, sh/sl shake.
+const SEC_CAUSE = ["", "the van tilted (jacked up or hitched?)", "the van turned (being towed?)",
+  "the van is shaking like it's on the road", "the movement sensor stopped answering"];
+function renderSecure() {
+  const x = S.sec || { m:0, ok:false, sn:1 }, card = $("#secCard");
+  const col = ["var(--muted)", "var(--warn)", "var(--secure)", "var(--crit)"][x.m] || "var(--muted)";
+  card.style.setProperty("--c", col);
+  card.classList.toggle("on", x.m > 0);
+  card.classList.toggle("alarm", x.m === 3);
+  $("#secIco").innerHTML = `<svg class="ico"><use href="#${x.m === 3 ? "i-shield" : x.m ? "i-lock" : "i-unlock"}"/></svg>`;
+  $("#secTitle").textContent = ["Secure mode off", `Arming in ${x.al || 0} s`, "Secure mode armed", "THEFT ALARM"][x.m];
+  $("#secSub").textContent = x.m === 3 ? `Set off because ${SEC_CAUSE[x.c] || "of movement"}${x.since ? " at " + localTime(x.since) : ""}.`
+    : x.m === 2 ? `Watching for jacking, hitching and towing. Now: tilt ${x.ti.toFixed(1)}° of ${x.tl}°, turned ${x.tu}° of ${x.ul}°, shaking ${x.sh} of ${x.sl} s.`
+    : x.m === 1 ? "Time to leave: it arms when the countdown ends. Wind rocking the van is ignored."
+    : x.ok ? "Arm it when you leave the van. Wind rocking the van is ignored." : "Needs the level sensor on the hub, and it isn't answering.";
+  const btn = $("#secBtn");
+  btn.textContent = x.m ? "Disarm" : "Arm";
+  btn.style.background = x.m ? "var(--tile)" : "";
+  btn.style.color = x.m ? "var(--text)" : "";
+  btn.disabled = !x.m && !x.ok;
+  const sel = $("#secSens");
+  if (document.activeElement !== sel) sel.value = x.sn ?? 1;
+  sel.disabled = transport?.kind === "cloud" && !META.rc;
 }
 
 function renderHeater() {
@@ -667,6 +720,7 @@ function demoTransport() {
     pump:[{ on:true, sn:true, lk:false, rt:94 }, { on:false, sn:false, lk:false, rt:0 }],
     inv:{ on:false, ac:false }, ac:{ on:true, pre:0 },
     htr:{ ln:1, on:true, ph:2, md:0, st:22, lv:6, cab:20.4, hx:138, v:13.3, err:0 },
+    sec:{ m:0, c:0, sn:1, ok:true, since:0, ti:0, tl:2, tu:0, ul:20, sh:0, sl:45 },
     alerts:[{ id:7, sev:2, ack:false, since: Math.floor(Date.now() / 1000) - 1500, msg:"Fridge warm: 7.4°C (> 6.0)" }],
     net:{ wifi:true, cloud:true, ip:"192.168.1.42" },
     wx:{ ok:true, up: Math.floor(Date.now() / 1000) - 720, src:2, pl:"Mudgee NSW", t:27.4, c:2, day:true, w:14.2, g:31,
@@ -694,8 +748,21 @@ function demoTransport() {
     h.cab = near(h.cab, h.ph === 2 ? Math.max(amb, h.md === 1 ? amb + 4 + 1.6 * h.lv : h.st + 0.4) : amb, h.ph === 2 ? 0.02 : 0.008);
     st.tmp[0].c = h.cab;
   };
+  // Secure mode, sped up: 10 s exit delay, 20 s of wind, then a "thief" tows it.
+  let secT = 0;
+  const secTick = () => {
+    const x = st.sec; if (!x.m) return;
+    secT++;
+    if (x.m === 1) { x.al = Math.max(0, 10 - secT); if (!x.al) { x.m = 2; secT = 0; } }
+    else if (x.m === 2) {
+      x.ti = +(0.2 + 0.15 * Math.abs(Math.sin(secT))).toFixed(1); x.tu = secT > 20 ? Math.min(25, (secT - 20) * 5) : 1; x.sh = secT > 20 ? secT - 20 : 0;
+      if (x.tu > x.ul) { x.m = 3; x.c = 2; x.since = Math.floor(Date.now() / 1000);
+        st.alerts.unshift({ id:14, sev:3, ack:false, since:x.since, msg:"Theft alarm: van turned (being towed?)" }); }
+    }
+  };
   const mainsTick = () => {
     heaterTick();
+    secTick();
     const on = demoT++ % 40 < 20, b = st.bat;
     b.acon = on; b.aca = on ? 116 + Math.round(4 * Math.sin(demoT / 3)) : 0;
     b.chg = +(b.sa + b.ca + b.aca).toFixed(1); b.a = +(b.chg - b.load).toFixed(1); b.ttg = on ? 38 : 52;
@@ -726,6 +793,13 @@ function demoTransport() {
       onMessage(st); return;
     }
     else if (c.c === "heater_set") { st.htr.ln = c.link; onMessage(st); }
+    else if (c.c === "secure") {
+      const x = st.sec;
+      if (c.sens !== undefined) x.sn = c.sens;
+      if (c.arm === true && !x.m) { x.m = 1; x.al = 10; secT = 0; }
+      if (c.arm === false) { x.m = 0; x.c = 0; x.ti = x.tu = x.sh = 0; st.alerts = st.alerts.filter((a) => a.id !== 14); }
+      onMessage(st); return;
+    }
     else if (c.c === "heater_seen") { onMessage({ t:"heater_seen", list:[{ addr:"a4:c1:38:5e:12:9f", name:"AirHeaterBLE", rssi:-71, age:2 }] }); return; }
     else if (c.c === "heater_log") { onMessage({ t:"heater_log", log:"Demo data: the heater is simulated" }); return; }
     else { toast("Demo: " + JSON.stringify(c)); return; }
@@ -774,6 +848,13 @@ async function loadHeaterCfg() {
     if (c.htr) { $("#htLink").value = c.htr.link; $("#htAddr").value = c.htr.addr || ""; $("#htPass").value = c.htr.pass ?? 1234; } } catch (e) {}
 }
 document.querySelector('nav button[data-tab="setup"]').addEventListener("click", loadHeaterCfg);
+$("#secBtn").onclick = () => {
+  const x = S?.sec || { m:0 };
+  if (x.m) { if (confirm(x.m === 3 ? "Turn the theft alarm off?" : "Turn secure mode off?")) send({ c:"secure", arm:false }); }
+  else if (confirm("Arm secure mode?\n\nThe van has 60 seconds to settle, then jacking, hitching or towing sets off a Critical alert on your phone and the display. Wind rocking the van is ignored."))
+    send({ c:"secure", arm:true });
+};
+$("#secSens").onchange = (e) => send({ c:"secure", sens:+e.target.value });
 $("#ackAll").onclick = () => send({ c:"ack" });
 $("#soc100").onclick = () => { if (confirm("Set battery state of charge to 100%?")) send({ c:"soc_set", soc:100 }); };
 $("#calRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-cal]"); if (!b) return;

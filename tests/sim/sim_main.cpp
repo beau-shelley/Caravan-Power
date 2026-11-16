@@ -245,6 +245,39 @@ int main() {
   s.temp[cv::TEMP_OUTSIDE].c = 31.2f;
   app::stateDirty = true;
 
+  // Secure mode (anti-theft): the button at the top of the nav rail.
+  cv::Secure &sec = s.sec;
+  sec = cv::Secure();
+  sec.sensor = true;
+  sec.tiltLim = 2;
+  sec.turnLim = 20;
+  sec.shakeLim = 45;
+  ui::showPage(ui::PAGE_HOME);
+  ui::secureButton();  // asks before arming
+  shot("19-secure-arm-confirm");
+  lv_obj_del(lv_obj_get_child(lv_layer_top(), -1));  // close the confirm box
+  sec.mode = cv::SEC_ARMING;
+  sec.armLeft = 42;
+  shot("20-home-arming");
+  sec.mode = cv::SEC_ARMED;
+  sec.armLeft = 0;
+  sec.tilt = 0.3f;
+  sec.turn = 2;
+  sec.shake = 1;
+  shot("21-home-armed");
+  sec.mode = cv::SEC_TRIGGERED;
+  sec.cause = cv::SEC_TURN;
+  s.alertCount = 1;
+  s.alerts[0] = {};
+  s.alerts[0].ruleId = 14;
+  s.alerts[0].sev = cv::SEV_CRIT;
+  s.alerts[0].since = s.ts;
+  strcpy(s.alerts[0].msg, "Theft alarm: van turned (being towed?)");
+  gNow = gNow / 1000 * 1000 + 1000;  // lands on the fuchsia half of the flash
+  shot("22-home-theft-alarm");
+  s.alertCount = 0;
+  sec = cv::Secure();
+
   ui::showPage(ui::PAGE_HOME);
   ui::openWeatherForTest();
   shot("09-forecast");

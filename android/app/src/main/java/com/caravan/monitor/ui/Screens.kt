@@ -11,7 +11,13 @@ import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,9 +35,11 @@ import com.caravan.monitor.BuildConfig
 import com.caravan.monitor.CaravanApp
 import com.caravan.monitor.MonitorService
 import com.caravan.monitor.Rule
+import com.caravan.monitor.Secure
 import com.caravan.monitor.UpdState
 import org.json.JSONObject
 
+@OptIn(ExperimentalMaterial3Api::class) // FilterChip is still experimental in older Material 3
 @Composable
 fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
     val hub = CaravanApp.instance.hub
@@ -41,6 +49,7 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
     val status by hub.status.collectAsStateWithLifecycle()
     val updater = CaravanApp.instance.updater
     val update by updater.info.collectAsStateWithLifecycle()
+    var askSecure by remember { mutableStateOf<Boolean?>(null) }  // true = arm, false = disarm
     HomeContent(
         state, meta, rules, status,
         onAck = { hub.send("ack") },
@@ -49,7 +58,36 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
         onOpenSetup = onOpenSetup,
         update = update,
         onUpdate = { updater.startOrInstall() },
+        onSecure = { askSecure = it },
     )
+    askSecure?.let { arm ->
+        val sec = state?.sec ?: Secure()
+        var sens by remember { mutableStateOf(sec.sens.coerceIn(0, 2)) }
+        AlertDialog(
+            onDismissRequest = { askSecure = null },
+            title = { Text(if (arm) "Arm secure mode?" else if (sec.mode == Secure.ALARM) "Turn the theft alarm off?" else "Turn secure mode off?") },
+            text = {
+                if (arm) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("The van has 60 seconds to settle, then jacking, hitching or towing sets off a Critical alert here and on the display. Wind rocking the van is ignored.")
+                    Text("Sensitivity", style = MaterialTheme.typography.labelMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Secure.SENS.forEachIndexed { i, n ->
+                            FilterChip(selected = sens == i, onClick = { sens = i }, label = { Text(n) })
+                        }
+                    }
+                    Text("Low suits very windy or exposed sites.", style = MaterialTheme.typography.bodySmall)
+                } else Text("The hub stops watching for movement.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (arm && sens != sec.sens) hub.send("secure", "sens" to sens)
+                    hub.send("secure", "arm" to arm)
+                    askSecure = null
+                }) { Text(if (arm) "Arm" else "Disarm") }
+            },
+            dismissButton = { TextButton(onClick = { askSecure = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable

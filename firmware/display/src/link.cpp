@@ -91,6 +91,13 @@ void cmdHeaterMode(bool level) {
   send(d);
 }
 
+void cmdSecure(bool arm) {
+  JsonDocument d;
+  d["c"] = "secure";
+  d["arm"] = arm;
+  send(d);
+}
+
 static void transmitOne() {
   if (gHelloPending) {
     gHelloPending = false;

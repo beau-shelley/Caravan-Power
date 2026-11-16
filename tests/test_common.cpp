@@ -14,6 +14,7 @@
 #include "VictronBle.h"
 #include "BleSensors.h"
 #include "Leveling.h"
+#include "TheftGuard.h"
 #include "Weather.h"
 
 static int failures = 0, checks = 0;
@@ -729,7 +730,162 @@ static void testHeater() {
   CHECK(x.phase == HTR_OFF && sim.currentA(x) == 0);
 }
 
+
+// ---------------------------------------------------------------- secure mode
+// Rotate a vector: the sensor can be mounted at any angle.
+static Vec3 mount(const Vec3 &v) {
+  const float a = 0.5f, b = 1.1f;  // ~29 deg about x, then ~63 deg about z
+  Vec3 r{v.x, v.y * std::cos(a) - v.z * std::sin(a), v.y * std::sin(a) + v.z * std::cos(a)};
+  return {r.x * std::cos(b) - r.y * std::sin(b), r.x * std::sin(b) + r.y * std::cos(b), r.z};
+}
+
+// Arms at t=0, runs `calmSec` of calm (exit delay), then `motion` for
+// `sec` seconds. Returns seconds into the motion when it went off, or -1.
+static float runGuard(uint8_t sens, uint8_t motion, float sec, bool rotated = false, uint8_t *cause = nullptr,
+                      float calmSec = 70) {
+  TheftGuard g;
+  MotionSim sim;
+  g.setSensitivity(sens);
+  uint32_t ms = 1000;
+  Vec3 a, w;
+  g.sample(Vec3{0, 0, 1}, Vec3{}, ms);
+  g.arm(ms);
+  for (float t = 0; t < calmSec; t += 0.01f) {
+    ms += 10;
+    sim.at(SIM_CALM, t, a, w);
+    g.sample(rotated ? mount(a) : a, rotated ? mount(w) : w, ms);
+    g.tick(ms, true);
+  }
+  if (g.mode() != SEC_ARMED) return -2;
+  for (float t = 0; t < sec; t += 0.01f) {
+    ms += 10;
+    sim.at(motion, t, a, w);
+    g.sample(rotated ? mount(a) : a, rotated ? mount(w) : w, ms);
+    g.tick(ms, true);
+    if (g.mode() == SEC_TRIGGERED) {
+      if (cause) *cause = g.cause();
+      return t;
+    }
+  }
+  return -1;
+}
+
+static void testTheftGuard() {
+  // Arming: exit delay, then armed.
+  {
+    TheftGuard g;
+    g.sample(Vec3{0, 0, 1}, Vec3{}, 100);
+    g.arm(100);
+    CHECK(g.mode() == SEC_ARMING);
+    Secure s;
+    g.fill(s, 100);
+    CHECK(s.armLeft == 60);
+    uint32_t ms = 100;
+    for (int i = 0; i < 5900; i++) {
+      ms += 10;
+      g.sample(Vec3{0, 0, 1}, Vec3{0.5f, 0, 0}, ms);
+      g.tick(ms, true);
+    }
+    CHECK(g.mode() == SEC_ARMING);
+    for (int i = 0; i < 200; i++) {
+      ms += 10;
+      g.sample(Vec3{0, 0, 1}, Vec3{0.5f, 0, 0}, ms);
+      g.tick(ms, true);
+    }
+    CHECK(g.mode() == SEC_ARMED);
+    // Sensor stops: alarm after 5 s.
+    for (int i = 0; i < 4; i++) g.tick(ms += 1000, false);
+    if (g.mode() != SEC_ARMED) printf("  mode %d cause %d\n", g.mode(), g.cause());
+    CHECK(g.mode() == SEC_ARMED);
+    for (int i = 0; i < 3; i++) g.tick(ms += 1000, false);
+    CHECK(g.mode() == SEC_TRIGGERED);
+    CHECK(g.cause() == SEC_SENSOR);
+    g.disarm();
+    CHECK(g.mode() == SEC_OFF);
+  }
+  // Ten minutes of gusty wind never sets it off, at any sensitivity.
+  for (uint8_t sens = SENS_LOW; sens <= SENS_HIGH; sens++) {
+    CHECK(runGuard(sens, SIM_WIND, 600) == -1);
+    CHECK(runGuard(sens, SIM_WIND, 600, true) == -1);
+    CHECK(runGuard(sens, SIM_CALM, 600) == -1);  // gyro bias doesn't add up to a "turn"
+  }
+  // Winding the jockey wheel up: tilt, within about half a minute.
+  uint8_t cause = 0;
+  float t = runGuard(SENS_MEDIUM, SIM_JACK, 120, false, &cause);
+  CHECK(t > 5 && t < 35);
+  CHECK(cause == SEC_TILT);
+  t = runGuard(SENS_MEDIUM, SIM_JACK, 120, true, &cause);
+  CHECK(t > 5 && t < 35);
+  CHECK(runGuard(SENS_LOW, SIM_JACK, 120) > 0);  // 4 deg is past even the low limit
+  // Towed away: caught on the turn out of the site.
+  cause = 0;
+  t = runGuard(SENS_MEDIUM, SIM_TOW, 120, false, &cause);
+  CHECK(t > 8 && t < 30);
+  CHECK(cause == SEC_TURN || cause == SEC_SHAKE);
+  CHECK(runGuard(SENS_MEDIUM, SIM_TOW, 120, true) > 0);
+  CHECK(runGuard(SENS_LOW, SIM_TOW, 120) > 0);
+  printf("  secure: jack caught after %.0f s, tow after %.0f s\n", runGuard(SENS_MEDIUM, SIM_JACK, 120),
+         runGuard(SENS_MEDIUM, SIM_TOW, 120));
+
+  // Resumed after a restart against the saved resting tilt: a van moved
+  // while the hub was off is caught.
+  {
+    TheftGuard g;
+    uint32_t ms = 10;
+    float p = 3.0f / 57.29578f;
+    g.sample(Vec3{std::sin(p), 0, std::cos(p)}, Vec3{}, ms);
+    g.resume(Vec3{0, 0, 1}, ms);
+    for (int i = 0; i < 2500 && g.mode() != SEC_TRIGGERED; i++) {
+      ms += 10;
+      g.sample(Vec3{std::sin(p), 0, std::cos(p)}, Vec3{}, ms);
+      g.tick(ms, true);
+    }
+    CHECK(g.mode() == SEC_TRIGGERED);
+    CHECK(g.cause() == SEC_TILT);
+  }
+
+  // Through the alert engine: a Critical alert while triggered, cleared on disarm.
+  {
+    RuleSet rs;
+    loadDefaultRules(rs);
+    CHECK(!ensureTheftRule(rs));  // already there
+    RuleSet empty;
+    CHECK(ensureTheftRule(empty));
+    CHECK(empty.count == 1 && empty.rules[0].sev == SEV_CRIT);
+    State s;
+    AlertEngine e;
+    e.evaluate(s, rs, 1000, 0);
+    int before = s.alertCount;
+    s.sec.mode = SEC_TRIGGERED;
+    s.sec.cause = SEC_TURN;
+    e.evaluate(s, rs, 2000, 0);
+    CHECK(s.alertCount == before + 1);
+    CHECK(s.alerts[0].sev == SEV_CRIT);
+    CHECK(std::string(s.alerts[0].msg) == "Theft alarm: van turned (being towed?)");
+    s.sec.mode = SEC_OFF;
+    s.sec.cause = SEC_NONE;
+    e.evaluate(s, rs, 3000, 0);
+    CHECK(s.alertCount == before);
+  }
+  // JSON round trip.
+  {
+    State s, s2;
+    s.sec.mode = SEC_ARMING;
+    s.sec.armLeft = 42;
+    s.sec.sens = SENS_HIGH;
+    s.sec.tilt = 0.4f;
+    s.sec.tiltLim = 1.2f;
+    s.sec.shake = 3;
+    JsonDocument d;
+    stateToJson(s, d.to<JsonObject>());
+    stateFromJson(s2, d.as<JsonObjectConst>());
+    CHECK(s2.sec.mode == SEC_ARMING && s2.sec.armLeft == 42 && s2.sec.sens == SENS_HIGH && s2.sec.shake == 3);
+    NEAR(s2.sec.tilt, 0.4f, 0.01f);
+  }
+}
+
 int main() {
+  testTheftGuard();
   testHeater();
   testAcCharge();
   testWeather();

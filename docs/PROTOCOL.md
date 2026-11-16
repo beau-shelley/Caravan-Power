@@ -32,6 +32,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `htr` | diesel heater, only present once one is set up: `ln` link (1 Bluetooth, 2 433 MHz), `on` status heard recently, `ph` phase (0 off, 1 heating up, 2 running, 3 cooling down), `md` mode (0 thermostat, 1 power level), `st` set °C (8-36), `lv` power level (1-10). Bluetooth only, while `on`: `cab` cabin °C, `hx` heat exchanger °C, `v` supply V, `err` (0 none, 1-10 = E-01..E-10) |
 | `alerts[]` | `id`, `sev` (0 info, 1 warn, 2 alarm), `ack`, `since`, `val`, `msg` |
 | `lvl` | `on`, `z` (level set), `f` (front learned), `p` pitch ° (+ front high), `r` roll ° (+ left high), `tr` track mm, `jk` axle-to-jockey mm. Also sent alone as `{"t":"lvl",…}` 4×/s on RS485 |
+| `sec` | Secure mode: `m` 0 off / 1 arming / 2 armed / 3 alarm, `c` cause (1 tilt, 2 turned, 3 shaking, 4 sensor lost), `sn` sensitivity, `ok` level sensor working, `al` seconds until armed, `since` unix time of the last change, live `ti` tilt ° vs `tl` limit, `tu` turned ° vs `ul`, `sh` shaking seconds in the last minute vs `sl`. The alarm itself is the `theft` rule metric (Critical), so it is pushed like any alert |
 | `wx` | `ok`, `up` fetched (unix), `src` (1 GPS, 2 phone, 3 manual), `pl` place, `t` °C, `c` WMO code, `day`, `w`/`g` wind/gust km/h, `d[4]` = `[code, weekday 0=Sun, max, min, rain %, rain mm, gust]` |
 | `net` | `wifi`, `cloud`, `ip` |
 
@@ -59,6 +60,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `location_set` | `lat`, `lon`, `name`, `src` (2 phone, 3 manual) | weather location (refused while a GPS has a fix) |
 | `location_search` | `q` | town search via the hub (used by the touchscreen); reply `{"t":"loc_results","list":[{name,area,lat,lon}]}` |
 | `weather_refresh` | | fetch the forecast now |
+| `secure` | `arm` true/false, and/or `sens` 0 low / 1 medium / 2 high | Secure mode (anti-theft). Arming starts a 60 s exit delay. Arming is allowed from the cloud even with remote control off; disarming follows that setting. Fails without the level sensor |
 | `level_zero` | | "Set level": averages 2 s and saves the mounting angle |
 | `level_front` | | "Learn front": with the front lifted 2-3 cm |
 | `level_reset`, `level_status` | | forget calibration / last calibration result |

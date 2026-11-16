@@ -81,6 +81,10 @@ void begin() {
   s.htr.online = true;
   s.htr.setC = 24;
   insideBase = s.temp[TEMP_INSIDE].c - 4;  // a cool evening, so the heater has work to do
+  s.sec.sensor = true;
+  s.sec.tiltLim = 2;
+  s.sec.turnLim = 20;
+  s.sec.shakeLim = 45;
   s.lvl.online = s.lvl.zeroed = s.lvl.fwdLearned = true;
   s.lvl.roll = -0.9f;
   s.lvl.pitch = 0.6f;
@@ -140,6 +144,15 @@ void loop() {
   s.bat.a = s.bat.chargeA - s.bat.loadA;
   s.pump[0].runSec += s.pump[0].on ? elapsed : 0;
   heaterSim.tick(s.htr, elapsed, insideBase, s.bat.v);
+  // Secure mode: exit delay, then armed with a little wind wobble showing.
+  if (s.sec.mode == cv::SEC_ARMING) {
+    s.sec.armLeft = s.sec.armLeft > elapsed ? s.sec.armLeft - elapsed : 0;
+    if (!s.sec.armLeft) s.sec.mode = cv::SEC_ARMED;
+  }
+  if (s.sec.mode == cv::SEC_ARMED) {
+    s.sec.tilt = 0.2f + 0.1f * sinf(phase * 3);
+    s.sec.turn = 1.5f + sinf(phase * 2);
+  }
   s.temp[cv::TEMP_INSIDE].c = s.htr.cabinC > insideBase ? s.htr.cabinC : insideBase;
   app::stateDirty = true;
 }
@@ -160,6 +173,16 @@ void command(const JsonDocument &cmd) {
     int p = (cmd["off"] | false) ? -1 : (int)(cmd["preset"] | -1);
     s.ac.on = p >= 0;
     s.ac.preset = p;
+  } else if (!strcmp(c, "secure")) {
+    bool arm = cmd["arm"] | false;
+    if (arm && s.sec.mode == cv::SEC_OFF) {
+      s.sec.mode = cv::SEC_ARMING;
+      s.sec.armLeft = 60;
+    } else if (!arm) {
+      s.sec.mode = cv::SEC_OFF;
+      s.sec.armLeft = 0;
+      s.sec.tilt = s.sec.turn = 0;
+    }
   } else if (!strcmp(c, "heater")) {
     cv::HeaterCmd hc;
     const char *why = nullptr;

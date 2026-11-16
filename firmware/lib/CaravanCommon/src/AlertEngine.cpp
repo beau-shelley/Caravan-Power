@@ -5,6 +5,10 @@
 namespace cv {
 
 void formatAlert(char *buf, size_t n, const Rule &r, float value) {
+  if (r.metric == M_THEFT) {  // the value is what set it off
+    snprintf(buf, n, "%s: %s", r.name, secureCauseText((uint8_t)value));
+    return;
+  }
   const MetricInfo &mi = metricInfo(r.metric);
   int dec = mi.step < 1.0f ? 1 : 0;
   if (r.metric == M_BAT_V) dec = 2;

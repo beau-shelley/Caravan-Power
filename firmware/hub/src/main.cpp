@@ -22,6 +22,7 @@
 #include "BleTempRx.h"
 #include "BleSurvey.h"
 #include "LevelSensor.h"
+#include "Secure.h"
 #include "WeatherClient.h"
 #include "VictronBleRx.h"
 #include "pins.h"
@@ -235,6 +236,10 @@ static void onAlert(const cv::AlertEngine::Event &ev, void *) {
   stateChanged();
 }
 
+// Secure mode needs real movement data: the MPU-6050, or in the fake-data
+// build the simulated sensor (used whenever no real one is plugged in).
+static bool secureSensorOk() { return demo::kOn || gLevel.online(); }
+
 // "Restart system" from the touchscreen (or phone): reply first, restart 1 s
 // later so the reply has time to reach the display over RS485.
 static uint32_t gRestartAtMs = 0;
@@ -254,7 +259,10 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   StateLock lock;
   const char *c = cmd["c"] | "";
 
-  if (src == SRC_CLOUD && isMutating(c) && !gConfig.meta.remoteControl) {
+  // Arming secure mode from away is always allowed (forgot to arm it);
+  // disarming from the cloud follows the remote-control setting.
+  bool armOnly = !strcmp(c, "secure") && (cmd["arm"] | false) && cmd["sens"].isNull();
+  if (src == SRC_CLOUD && isMutating(c) && !gConfig.meta.remoteControl && !armOnly) {
     replyErr(reply, "Remote control is disabled on the caravan display");
     return;
   }
@@ -470,6 +478,23 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   } else if (!strcmp(c, "weather_refresh")) {
     gWeather.refreshSoon();
 
+  // ---------------- secure mode (anti-theft)
+  } else if (!strcmp(c, "secure")) {
+    // {"c":"secure","arm":true|false} and/or {"sens":0|1|2} (low / medium / high)
+    if (!cmd["sens"].isNull()) {
+      int sens = cmd["sens"] | -1;
+      if (sens < cv::SENS_LOW || sens > cv::SENS_HIGH) return replyErr(reply, "sens must be 0, 1 or 2");
+      secure::setSensitivity((uint8_t)sens);
+    }
+    if (!cmd["arm"].isNull()) {
+      const char *why = nullptr;
+      if (!secure::arm(cmd["arm"] | false, secureSensorOk(), millis(), &why)) return replyErr(reply, why);
+      configChanged();  // the theft rule may have been put back
+    }
+    secure::loop(gState, secureSensorOk(), millis());
+    stateChanged();
+    reply["t"] = "ok";
+
   // ---------------- levelling
   } else if (!strcmp(c, "level_zero")) {
     gLevel.startZero();
@@ -680,6 +705,7 @@ void setup() {
   gTemps.begin(PIN_ONEWIRE);
   if (gConfig.tankSource == TANK_ADC) gTanks.begin();
   gLevel.begin();
+  secure::begin(millis());
   gShunt.begin();
 
   gPump[0].begin("pump1", PIN_PUMP1_OUT, PIN_PUMP1_SENSE);
@@ -726,7 +752,6 @@ void loop() {
       else gState.solar[i].online = false;
     }
     gTemps.poll(gState);
-    gLevel.loop(gState);
     {
       float lat, lon;
       char name[24];
@@ -745,6 +770,12 @@ void loop() {
       gBmpro.loop(gState, gConfig.bat.source == cv::BAT_SRC_BMPRO, gConfig.tankSource == TANK_BMPRO, pumps);
     }
     }  // !demo::kOn
+    // Level sensor: always read (secure mode needs it); in the fake-data build
+    // its level isn't shown, and with no sensor plugged in a simulated one
+    // plays out wind and then a theft after arming.
+    gLevel.loop(gState, !demo::kOn);
+    if (demo::kOn && !gLevel.online()) secure::simLoop(now);
+    if (secure::loop(gState, secureSensorOk(), now)) stateChanged();
     updateLoads(now);
     gNet.loop(gState);
     if (demo::kOn) demo::tick(gState, now);

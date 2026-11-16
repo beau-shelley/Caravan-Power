@@ -55,6 +55,40 @@ data class Heater(
         }
     }
 }
+/**
+ * Secure mode (anti-theft), hub key "sec". mode 0 off, 1 arming (exit delay),
+ * 2 armed, 3 alarm. cause 1 tilt, 2 turned, 3 shaking, 4 sensor lost.
+ * sens 0 low, 1 medium, 2 high. Live movement vs its limits while armed.
+ */
+data class Secure(
+    val mode: Int = 0, val cause: Int = 0, val sens: Int = 1, val sensorOk: Boolean = false,
+    val armLeft: Int = 0, val since: Long = 0,
+    val tilt: Double = 0.0, val tiltLim: Double = 0.0, val turn: Int = 0, val turnLim: Int = 0,
+    val shake: Int = 0, val shakeLim: Int = 0,
+) {
+    val active get() = mode != OFF
+    companion object {
+        const val OFF = 0
+        const val ARMING = 1
+        const val ARMED = 2
+        const val ALARM = 3
+        val SENS = listOf("Low", "Medium", "High")
+        // Same wording as the touchscreen and web page (TheftGuard.cpp secureCauseText).
+        fun causeText(c: Int) = when (c) {
+            1 -> "van tilted (jacked or hitched?)"; 2 -> "van turned (being towed?)"
+            3 -> "van shaking like it's on the road"; 4 -> "movement sensor stopped answering"; else -> "movement"
+        }
+        fun parse(o: JSONObject?): Secure {
+            if (o == null) return Secure()
+            return Secure(
+                mode = o.optInt("m"), cause = o.optInt("c"), sens = o.optInt("sn", 1), sensorOk = o.optBoolean("ok"),
+                armLeft = o.optInt("al"), since = o.optLong("since"),
+                tilt = o.optDouble("ti", 0.0), tiltLim = o.optDouble("tl", 0.0), turn = o.optInt("tu"), turnLim = o.optInt("ul"),
+                shake = o.optInt("sh"), shakeLim = o.optInt("sl"),
+            )
+        }
+    }
+}
 data class ActiveAlert(val id: Int, val sev: Int, val ack: Boolean, val since: Long, val value: Double, val msg: String)
 data class Weather(val ok: Boolean, val place: String, val tempC: Double, val windKmh: Double, val gustKmh: Double, val code: Int)
 data class Net(val wifi: Boolean, val cloud: Boolean, val ip: String)
@@ -71,6 +105,7 @@ data class HubState(
     val net: Net,
     val gas: Gas = Gas(),
     val htr: Heater? = null,
+    val sec: Secure = Secure(),
 ) {
     companion object {
         fun parse(o: JSONObject): HubState {
@@ -103,6 +138,7 @@ data class HubState(
                 net = Net(n.optBoolean("wifi"), n.optBoolean("cloud"), n.optString("ip")),
                 gas = Gas(g.optBoolean("on"), g.optDouble("p", 0.0)),
                 htr = Heater.parse(o.optJSONObject("htr")),
+                sec = Secure.parse(o.optJSONObject("sec")),
             )
         }
     }
@@ -156,6 +192,7 @@ object Metrics {
         Metric("wx_gust", "Forecast gusts", "km/h", 5.0),
         Metric("wx_rain", "Forecast rain chance", "%", 10.0),
         Metric("gas", "Gas bottle", "%", 5.0),
+        Metric("theft", "Theft alarm", "", 1.0),
     )
 
     fun byKey(key: String): Metric = all.firstOrNull { it.key == key } ?: all[0]

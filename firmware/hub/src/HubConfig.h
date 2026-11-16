@@ -38,6 +38,14 @@ struct LevelCfg {
   uint16_t jockeyMm = 4500;  // axle to jockey wheel
 };
 
+// Secure mode (anti-theft). Saved so a restart (or pulled power) comes back armed.
+struct SecureCfg {
+  bool armed = false;
+  uint8_t sens = cv::SENS_MEDIUM;
+  bool haveBase = false;
+  cv::Vec3 base{0, 0, 1};  // resting gravity direction when it was armed
+};
+
 struct LocationCfg {
   uint8_t src = cv::LOC_NONE;  // GPS / phone / manual
   float lat = 0, lon = 0;
@@ -96,6 +104,7 @@ struct HubConfig {
   LevelCfg level;
   LocationCfg location;
   HeaterCfg heater;
+  SecureCfg secure;
   char tempAddr[cv::NUM_TEMPS][17] = {};  // DS18B20 ROM as hex, "" = auto-assign
   uint8_t tempSrc[cv::NUM_TEMPS] = {TEMP_WIRED, TEMP_WIRED, TEMP_WIRED};
   char tempBle[cv::NUM_TEMPS][18] = {};   // Bluetooth thermometer address per role
