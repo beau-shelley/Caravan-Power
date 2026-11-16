@@ -17,7 +17,9 @@
 #define LINK_SERIAL Serial2
 #define PIN_LINK_RX 16   // <- module RO
 #define PIN_LINK_TX 17   // -> module DI
-#define PIN_LINK_DE 4    // -> module DE + /RE tied together; -1 for auto-direction
+#define PIN_LINK_DE 4    // -> module DE; -1 for auto-direction
+#define PIN_LINK_RE 5    // -> module RE (driven with DE, no bridge needed); -1 if bridged. A strapping pin, but
+                         // the MAX485 RE input does not pull it, so boot is unaffected
 
 // Victron VE.Direct #1 cable fallback (Victron TX -> ESP RX; 5 V -> divider)
 #define PIN_VE1_RX 36    // VP, input-only
@@ -70,6 +72,7 @@
 #define PIN_LINK_RX 44
 #define PIN_LINK_TX 43
 #define PIN_LINK_DE 42   // set to -1 for auto-direction RS485 modules
+#define PIN_LINK_RE -1   // DE and /RE bridged on the S3 hub
 
 // Victron VE.Direct (only the Victron TX -> ESP RX is needed; 5 V -> use divider)
 #define PIN_VE1_RX 17

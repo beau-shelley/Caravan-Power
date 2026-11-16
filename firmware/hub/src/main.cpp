@@ -599,7 +599,7 @@ void setup() {
   applyOutputConfig();
   gAircon.begin(PIN_IR_TX, PIN_IR_RX);
 
-  gLink.begin(LINK_SERIAL, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE);
+  gLink.begin(LINK_SERIAL, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE, PIN_LINK_RE);
   if (demo::kOn) demo::begin(gState);
   gNet.begin();
   gNotify.begin();

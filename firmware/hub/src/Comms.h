@@ -23,7 +23,7 @@ void handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply);
 // ---------------------------------------------------------------- RS485 link
 class DisplayLink {
  public:
-  void begin(HardwareSerial &ser, int rx, int tx, int de);
+  void begin(HardwareSerial &ser, int rx, int tx, int de, int re = -1);
   void loop(const cv::State &s);
   void send(JsonDocument &doc);
   void requestStateSoon() { nextStateMs_ = 0; }
@@ -35,6 +35,8 @@ class DisplayLink {
  private:
   HardwareSerial *ser_ = nullptr;
   int de_ = -1;
+  int re_ = -1;  // separate /RE pin, driven together with DE (-1 = bridged to DE or auto)
+  void txEnable(bool on);
   uint32_t nextStateMs_ = 0, nextPollMs_ = 0, lastRxMs_ = 0;
   volatile bool configDirty_ = false;
   String pending_;
