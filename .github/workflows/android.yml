@@ -41,7 +41,7 @@ jobs:
       # The app checks these releases for updates (android/.../Updater.kt).
       # Tag app-build-<run number>; the build number is also the APK's versionCode.
       - name: Publish as a release
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/project-thread-1xdmyo')
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/project-thread-1xdmyo' || github.ref == 'refs/heads/claude/project-thread-9avdir')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
