@@ -5,12 +5,14 @@
 
 #include "app.h"
 #include "board.h"
+#include "canbus.h"
 #include "ui/ui.h"
 #ifdef DISPLAY_DEMO_MODE
 #include "demo.h"
 #endif
 
 void setup() {
+  Serial.setTxBufferSize(8192);  // CAN log lines queue here instead of blocking
   Serial.begin(115200);
   delay(200);
   Serial.println("\n=== Caravan Power display ===");
@@ -23,6 +25,7 @@ void setup() {
 #endif
   ui::begin();
   Serial.println("[ui] Initialization complete");
+  canbus::begin();  // listen-only CAN logger, runs on core 0 (see canbus.h)
 }
 
 static void sleepLogic() {

@@ -125,7 +125,8 @@ void begin() {
   Wire.begin(PIN_SDA, PIN_SCL, 400000);
 
   // Same start-up as Waveshare's 06_LCD demo: CH32 pins to outputs (all high,
-  // so backlight on and LCD out of reset) and nothing else. Pulsing LCD reset
+  // so backlight on, LCD out of reset and EXIO5 = CAN: GPIO19/20 go to the
+  // CAN transceiver, not the native USB port) and nothing else. Pulsing LCD reset
   // (IO3) and writing the backlight PWM register here left a faint band of
   // vertical stripes across the panel; confirmed on hardware by A/B flash.
   bool ioOk = exioWrite(REG_MODE, 0xff);
