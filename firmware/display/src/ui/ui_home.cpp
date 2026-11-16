@@ -91,8 +91,15 @@ void buildHome(lv_obj_t *p) {
   lv_obj_set_style_arc_color(arcSoc, c(col::TILE), LV_PART_MAIN);
   lv_obj_set_style_arc_color(arcSoc, c(col::CHARGE), LV_PART_INDICATOR);
   lSoc = lbl(b, LARGE ? &lv_font_montserrat_48 : &lv_font_montserrat_40, col::TEXT, "--%");
+  // Fixed-width, centre-aligned labels: align_to() positions an object once,
+  // so a label sized to "--%" would stay left-anchored and drift off-centre
+  // as the text changes to "100%".
+  lv_obj_set_width(lSoc, arcD);
+  lv_obj_set_style_text_align(lSoc, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align_to(lSoc, arcSoc, LV_ALIGN_CENTER, 0, -8);
   lVolt = lbl(b, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED, "-- V");
+  lv_obj_set_width(lVolt, arcD);
+  lv_obj_set_style_text_align(lVolt, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align_to(lVolt, arcSoc, LV_ALIGN_CENTER, 0, LARGE ? 34 : 28);
   lAmps = lbl(b, LARGE ? &lv_font_montserrat_28 : &lv_font_montserrat_24, col::TEXT, "-- A");
   lv_obj_align(lAmps, LV_ALIGN_BOTTOM_LEFT, 0, 0);
