@@ -82,7 +82,7 @@ main { padding:12px 16px 40px; max-width:1200px; margin:0 auto; }
 .cap:has(.ico)::before { display:none; }
 .tog b .ico { color:var(--c, var(--water)); margin-right:6px; }
 .lvls { grid-column:1/-1; display:grid; gap:8px; }
-.lvl { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end; }
+.lvl { display:grid; grid-template-columns:minmax(0,1fr) minmax(8.5em,1fr) auto; gap:8px; align-items:end; }
 .alerts { display:flex; flex-direction:column; gap:8px; }
 .alert { border-left:4px solid var(--c); background:color-mix(in srgb, var(--c) 14%, var(--card)); padding:10px 12px; border-radius:10px; }
 .btn { border:0; background:var(--tile); color:var(--text); padding:8px 14px; border-radius:10px; font:inherit; cursor:pointer; }
@@ -327,7 +327,7 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
     <h3 style="margin-top:0">Alert rule</h3>
     <div class="form">
       <div style="grid-column:1/-1"><label>Name</label><input name="name" maxlength="27" required></div>
-      <div><label>Measurement</label><select name="m"></select></div>
+      <div style="grid-column:1/-1"><label>Measurement</label><select name="m"></select></div>
       <div><label>Condition</label><select name="cmp"><option value="&lt;">below</option><option value="&gt;">above</option></select></div>
       <div><label>Threshold</label><input name="thr" type="number" step="any" required></div>
       <div><label>Hysteresis (to clear)</label><input name="hys" type="number" step="any" min="0" value="0"></div>
