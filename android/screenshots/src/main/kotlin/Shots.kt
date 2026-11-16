@@ -40,6 +40,8 @@ import com.caravan.monitor.Tank
 import com.caravan.monitor.Temp
 import com.caravan.monitor.Weather
 import com.caravan.monitor.ui.AlertsContent
+import com.caravan.monitor.ui.CaravanColors
+import com.caravan.monitor.ui.camoBackground
 import com.caravan.monitor.ui.ClimateContent
 import com.caravan.monitor.ui.AppScaffold
 import com.caravan.monitor.ui.HomeContent
@@ -147,13 +149,7 @@ private fun Typography.withFont(f: FontFamily): Typography {
 @Composable
 fun Theme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Color(0xFF4DA3FF), onPrimary = Color(0xFF00213F), secondary = Accent.battery,
-            background = Surfaces.background, surface = Surfaces.background, onSurface = Surfaces.text,
-            onBackground = Surfaces.text, surfaceVariant = Surfaces.raised, error = Accent.alarm,
-            secondaryContainer = Color(0xFF1F3A57), onSecondaryContainer = Surfaces.text,
-            primaryContainer = Color(0xFF1F3A57), onPrimaryContainer = Surfaces.text,
-        ),
+        colorScheme = CaravanColors,
         typography = Typography().withFont(FONT),
     ) {
         androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyLarge) { content() }
@@ -167,7 +163,7 @@ const val SCALE = 2.5f
 
 fun shot(name: String, heightDp: Int, content: @Composable () -> Unit) {
     val scene = ImageComposeScene((WIDTH_DP * SCALE).toInt(), (heightDp * SCALE).toInt(), Density(SCALE)) {
-        Theme { Box(Modifier.fillMaxSize().background(Surfaces.background)) { content() } }
+        Theme { Box(Modifier.fillMaxSize().camoBackground()) { content() } }
     }
     // Two frames so layout-dependent things (lazy lists) settle.
     scene.render(0)

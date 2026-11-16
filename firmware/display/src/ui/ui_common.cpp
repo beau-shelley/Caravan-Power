@@ -381,15 +381,21 @@ static void bannerCb(lv_event_t *) { showPage(PAGE_ALERTS); }
 static void buildShell() {
   lv_obj_t *scr = lv_scr_act();
   lv_obj_set_style_bg_color(scr, c(col::BG), 0);
+  // Subtle dark camo behind the cards (like the camo in the van's side stripe).
+  lv_obj_set_style_bg_img_src(scr, &tex_camo, 0);
+  lv_obj_set_style_bg_img_tiled(scr, true, 0);
   lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
   // Nav rail
   lv_obj_t *rail = panel(scr, 0, 0, RAIL_W, SCR_H);
   lv_obj_set_style_bg_color(rail, c(col::RAIL), 0);
   lv_obj_set_style_bg_opa(rail, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_img_src(rail, &tex_tread, 0);  // black chequer plate, like the van's lower skirt
+  lv_obj_set_style_bg_img_tiled(rail, true, 0);
+  // Thin lime pinstripe down the edge, like the line on the van's stripe.
   lv_obj_set_style_border_side(rail, LV_BORDER_SIDE_RIGHT, 0);
-  lv_obj_set_style_border_color(rail, c(col::BORDER), 0);
-  lv_obj_set_style_border_width(rail, 1, 0);
+  lv_obj_set_style_border_color(rail, lv_color_mix(c(col::ACCENT), c(col::RAIL), 150), 0);
+  lv_obj_set_style_border_width(rail, 2, 0);
   // Secure mode (anti-theft) button where the logo used to be: on every page,
   // shows the state at a glance, tap to arm or disarm.
 #ifdef DISPLAY_DEMO_MODE

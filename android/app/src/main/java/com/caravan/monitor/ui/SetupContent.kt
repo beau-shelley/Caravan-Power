@@ -75,7 +75,7 @@ fun SetupContent(
     ) {
         Text("Setup", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
 
-        SectionCard("Hub connection", Accent.water) {
+        SectionCard("Hub connection", Accent.lime) {
             Text(
                 when (status.conn) {
                     Conn.CONNECTED -> if (status.cloud) status.detail else "Connected to ${status.host}"

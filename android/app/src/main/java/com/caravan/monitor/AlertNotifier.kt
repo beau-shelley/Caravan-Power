@@ -102,7 +102,7 @@ class AlertNotifier(private val context: Context) {
                 sev >= Severity.WARN -> NotificationCompat.PRIORITY_HIGH
                 else -> NotificationCompat.PRIORITY_DEFAULT
             })
-        if (sev >= Severity.ALARM) b.setColor(if (sev >= Severity.CRIT) 0xFFD946EF.toInt() else 0xFFFF5C5C.toInt())
+        if (sev >= Severity.ALARM) b.setColor(if (sev >= Severity.CRIT) 0xFFD946EF.toInt() else 0xFFEF4444.toInt())
         if (withAck) {
             val ack = PendingIntent.getBroadcast(
                 context, 1, Intent(context, AckReceiver::class.java),
