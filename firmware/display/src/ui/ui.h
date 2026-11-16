@@ -10,6 +10,12 @@
 
 #include "../board.h"
 
+// Extra icon fonts (see ICON_WATER / ICON_TAP below). Declared outside the namespace:
+// the .c files define them with C linkage.
+LV_FONT_DECLARE(ui_icons_20);
+LV_FONT_DECLARE(ui_icons_24);
+LV_FONT_DECLARE(ui_icons_28);
+
 namespace ui {
 
 // ---------------------------------------------------------------- features
@@ -57,6 +63,13 @@ void showPage(int p);
 int sleepSeconds();
 
 // ---------------------------------------------------------------- palette
+// Extra icons (Font Awesome Free 6, SIL OFL 1.1) in ui_icons_20/24/28.c, made
+// with lv_font_conv from fa-solid-900.ttf: -r 0xf043,0xe006 --bpp 4.
+#define ICON_WATER ""  // U+F043 droplet (UTF-8 EF 81 83)
+#define ICON_TAP ""    // U+E006 faucet-drip, for pumps (UTF-8 EE 80 86)
+// The extra icons need their own font; LVGL's symbols use Montserrat.
+bool isExtraIcon(const char *sym);
+
 namespace col {
 constexpr uint32_t BG = 0x0B1220, RAIL = 0x0E1626, CARD = 0x131C2E, BORDER = 0x1E293B;
 constexpr uint32_t TEXT = 0xE2E8F0, MUTED = 0x94A3B8, DIM = 0x475569;

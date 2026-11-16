@@ -219,7 +219,7 @@ void buildHome(lv_obj_t *p) {
     n++;
   };
   for (int i = 0; i < cv::NUM_PUMPS; i++) {
-    tilePump[i] = tile(q, tw, th, LV_SYMBOL_LOOP, app::meta.pumpName[i], pumpCb, (void *)(intptr_t)i);
+    tilePump[i] = tile(q, tw, th, ICON_TAP, app::meta.pumpName[i], pumpCb, (void *)(intptr_t)i);
     place(tilePump[i]);
   }
   if (HAS_INVERTER) {

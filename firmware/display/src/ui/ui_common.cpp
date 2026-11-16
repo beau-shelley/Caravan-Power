@@ -1,3 +1,4 @@
+#include <string.h>
 #include <cstdarg>
 
 #include "../app.h"
@@ -79,6 +80,8 @@ lv_obj_t *button(lv_obj_t *parent, int w, int h, const char *text, uint32_t bg, 
 }
 
 // Square toggle tile: icon on top, caption + sub-caption below.
+bool isExtraIcon(const char *sym) { return sym && (!strcmp(sym, ICON_WATER) || !strcmp(sym, ICON_TAP)); }
+
 lv_obj_t *tile(lv_obj_t *parent, int w, int h, const char *sym, const char *text, lv_event_cb_t cb, void *ud) {
   lv_obj_t *b = lv_btn_create(parent);
   lv_obj_set_size(b, w, h);
@@ -88,7 +91,9 @@ lv_obj_t *tile(lv_obj_t *parent, int w, int h, const char *sym, const char *text
   lv_obj_set_style_border_width(b, 1, 0);
   lv_obj_set_style_border_color(b, c(col::BORDER), 0);
   lv_obj_set_style_pad_all(b, 6, 0);
-  lv_obj_t *ic = lbl(b, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::MUTED, sym);
+  lv_obj_t *ic = lbl(b, isExtraIcon(sym) ? (LARGE ? &ui_icons_24 : &ui_icons_20)
+                                         : (LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20),
+                     col::MUTED, sym);
   lv_obj_align(ic, LV_ALIGN_TOP_LEFT, 2, 2);
   lv_obj_t *t = lbl(b, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, col::TEXT, text);
   lv_obj_align(t, LV_ALIGN_BOTTOM_LEFT, 2, LARGE ? -19 : -16);
@@ -232,7 +237,7 @@ static lv_obj_t *gBanner, *gBannerText, *gBannerBtn;
 static int gPage = -1;
 
 static const char *kPageNames[PAGE_COUNT] = {"Home", "Power", "Water", "Climate", "More", "Level", "Alerts", "Settings"};
-static const char *kPageIcons[PAGE_COUNT] = {LV_SYMBOL_HOME,  LV_SYMBOL_CHARGE, LV_SYMBOL_LOOP, LV_SYMBOL_SHUFFLE,
+static const char *kPageIcons[PAGE_COUNT] = {LV_SYMBOL_HOME,  LV_SYMBOL_CHARGE, ICON_WATER,     LV_SYMBOL_SHUFFLE,
                                              LV_SYMBOL_BARS,  LV_SYMBOL_GPS,    LV_SYMBOL_BELL, LV_SYMBOL_SETTINGS};
 static bool isSubPage(int p) { return p == PAGE_LEVEL || p == PAGE_ALERTS || p == PAGE_SETTINGS; }
 
@@ -340,7 +345,7 @@ static void buildShell() {
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_set_style_bg_color(b, c(col::TILE), 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
-    lv_obj_t *ic = lbl(b, &lv_font_montserrat_28, col::MUTED, kPageIcons[pg]);
+    lv_obj_t *ic = lbl(b, isExtraIcon(kPageIcons[pg]) ? &ui_icons_28 : &lv_font_montserrat_28, col::MUTED, kPageIcons[pg]);
     lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, LARGE ? 12 : 8);
     lv_obj_t *tx = lbl(b, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, kPageNames[pg]);
     lv_obj_align(tx, LV_ALIGN_BOTTOM_MID, 0, LARGE ? -10 : -6);
