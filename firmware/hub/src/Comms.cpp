@@ -6,6 +6,7 @@
 #include <PubSubClient.h>
 #include <WebServer.h>
 #include <WebSocketsServer.h>
+#include <lwip/sockets.h>
 #include <ping/ping_sock.h>
 #include <lwip/ip_addr.h>
 #include <WiFi.h>
@@ -253,7 +254,28 @@ void DisplayLink::loop(const cv::State &s) {
 
 // ================================================================ local web
 static WebServer gHttp(80);
-static WebSocketsServer gWs(81);
+// A socket write to a phone that isn't reading (asleep, walked off, Wi-Fi busy
+// sharing the radio with Bluetooth) blocks inside WiFiClient::write() for
+// seconds at a time; with 1 s pushes to several clients the net task never
+// caught up and everything jammed. So the periodic push only goes to clients
+// whose socket can take data right now; one that can't for 10 s is dropped
+// (the phone reconnects by itself).
+class HubWs : public WebSocketsServer {
+ public:
+  using WebSocketsServer::WebSocketsServer;
+  bool writable(uint8_t n) {
+    if (n >= WEBSOCKETS_SERVER_CLIENT_MAX || !_clients[n].tcp) return false;
+    int fd = _clients[n].tcp->fd();
+    if (fd < 0) return false;
+    fd_set w;
+    FD_ZERO(&w);
+    FD_SET(fd, &w);
+    timeval tv = {0, 0};
+    return select(fd + 1, nullptr, &w, nullptr, &tv) > 0;
+  }
+};
+static HubWs gWs(81);
+static uint32_t gWsStuckSinceMs[WEBSOCKETS_SERVER_CLIENT_MAX] = {};
 static char gWsToken[33] = {0};
 static bool gWsAuthed[WEBSOCKETS_SERVER_CLIENT_MAX] = {};
 
@@ -383,8 +405,23 @@ void LocalWeb::begin() {
 void LocalWeb::broadcast(JsonDocument &doc) {
   String out;
   serializeJson(doc, out);
-  for (uint8_t i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++)
-    if (gWsAuthed[i] && gWs.clientIsConnected(i)) gWs.sendTXT(i, out);
+  for (uint8_t i = 0; i < WEBSOCKETS_SERVER_CLIENT_MAX; i++) {
+    if (!gWsAuthed[i] || !gWs.clientIsConnected(i)) {
+      gWsStuckSinceMs[i] = 0;
+      continue;
+    }
+    if (!gWs.writable(i)) {  // not draining: skip this round
+      if (!gWsStuckSinceMs[i]) gWsStuckSinceMs[i] = millis() | 1;
+      else if (millis() - gWsStuckSinceMs[i] > 10000) {
+        Serial.printf("[web] client %u not reading for 10 s - dropping it\n", i);
+        gWs.disconnect(i);
+        gWsStuckSinceMs[i] = 0;
+      }
+      continue;
+    }
+    gWsStuckSinceMs[i] = 0;
+    gWs.sendTXT(i, out);
+  }
 }
 
 void LocalWeb::loop(const cv::State &s) {
