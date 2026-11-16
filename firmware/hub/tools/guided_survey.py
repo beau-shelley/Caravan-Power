@@ -12,10 +12,14 @@ Run it instead of `pio device monitor` (only one program can open the port):
     guided-survey.bat                 (in firmware\\hub\\tools, uses COM4)
     python guided_survey.py --port COM5
 
-Keys during a step:  Enter = step done,  s = skip,  q = finish now.
+Keys during a step:  Enter = step done,  s = skip,  l = set up later,  q = finish now.
+"Set up later" (e.g. the gas sensor isn't fitted yet) is remembered in
+guided-later.txt and that step is left out of future runs. Run just those
+steps once the part is fitted:  guided-survey.bat COM4 --later
 Needs pyserial (PlatformIO's own Python already has it).
 """
 import argparse
+import json
 import datetime as dt
 import os
 import re
@@ -143,7 +147,23 @@ def wait_step(secs, stop):
         ans = input().strip().lower()
     except EOFError:
         return "quit"
-    return {"s": "skip", "q": "quit"}.get(ans[:1], "done")
+    return {"s": "skip", "q": "quit", "l": "later"}.get(ans[:1], "done")
+
+
+LATER_FILE = "guided-later.txt"
+
+
+def load_later():
+    try:
+        with open(LATER_FILE, encoding="utf-8") as f:
+            return set(json.load(f))
+    except (OSError, ValueError):
+        return set()
+
+
+def save_later(keys):
+    with open(LATER_FILE, "w", encoding="utf-8") as f:
+        json.dump(sorted(keys), f)
 
 
 def main():
@@ -152,7 +172,17 @@ def main():
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--out", default=None, help="log file (default: van-test-<date-time>.log here)")
     ap.add_argument("--warmup", type=int, default=30, help="seconds of listening before the first step")
+    ap.add_argument("--later", action="store_true", help="run only the steps marked 'set up later'")
     args = ap.parse_args()
+    later = load_later()
+    if args.later:
+        steps = [st for st in STEPS if st[0] in later]
+        if not steps:
+            sys.exit("No steps are marked 'set up later'.")
+    else:
+        steps = [st for st in STEPS if st[0] not in later]
+        if later:
+            print("Left out (set up later): " + ", ".join(sorted(later)) + "   - run them with --later")
 
     try:
         import serial  # pyserial
@@ -177,12 +207,13 @@ def main():
         time.sleep(args.warmup)
         tracker.live = True
 
-        for i, (key, text, secs) in enumerate(STEPS, 1):
+        for i, (key, text, secs) in enumerate(steps, 1):
             if stop.is_set():
                 break
             print("\n" + "=" * 70)
-            print(f"STEP {i}/{len(STEPS)}: {text}")
-            print("   (wait {} s)".format(secs) if secs else "   Press Enter when done, s to skip, q to finish.")
+            print(f"STEP {i}/{len(steps)}: {text}")
+            print("   (wait {} s)".format(secs) if secs else
+                  "   Press Enter when done, s to skip, l = set up later (not fitted yet), q to finish.")
             tracker.begin(key)
             mark(logf, f"STEP {key} START: {text}")
             res = wait_step(secs, stop)
@@ -190,8 +221,16 @@ def main():
             mark(logf, f"STEP {key} {res.upper()} after {dur:.0f} s")
             if res == "quit":
                 break
+            if res == "later":
+                later.add(key)
+                save_later(later)
+                print("   OK - left out from now on. Run it later with --later.")
+                continue
             if res == "skip":
                 continue
+            if args.later and key in later:
+                later.discard(key)  # done now: back in the normal list
+                save_later(later)
             if top:
                 print(f"\n   Most active during this step ({dur:.0f} s):")
                 for ratio, n, mac in top:

@@ -32,7 +32,9 @@ exactly as before. Everything it hears goes to the Surface over USB.
    `firmware\hub\tools\guided-survey.bat`. It tells you what to do one step
    at a time (pumps on/off 3 times, heater on, change temperature...), marks
    each step in the log, and shows which devices changed while you did it.
-   Press Enter after each step, `s` to skip one, `q` to finish. The log is
+   Press Enter after each step, `s` to skip one, `l` for "set up later"
+   (not fitted yet: it's left out of future runs), `q` to finish. Once the
+   part is fitted, run only those steps: `guided-survey.bat COM4 --later`. The log is
    saved as `van-test-<date>-<time>.log` in `firmware\hub`.
 
    Without the script: use the van for 15-30 minutes while the monitor logs:
