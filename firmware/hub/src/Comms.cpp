@@ -463,6 +463,16 @@ void Cloud::queueEvent(JsonDocument &doc) {
 void Cloud::loop(const cv::State &s) {
   if (strlen(MQTT_HOST) == 0 || strstr(MQTT_HOST, "xxxxxxxx")) return;
   if (WiFi.status() != WL_CONNECTED) return;
+  if (pauseReq_) {  // a push alert needs the RAM
+    if (gMqtt.connected()) {
+      Serial.println("[cloud] pausing so a push alert can go out");
+      gMqtt.disconnect();
+      gTls.stop();
+    }
+    if ((int32_t)(millis() - pauseUntilMs_) < 0) return;
+    pauseReq_ = false;
+    nextTryMs_ = 0;
+  }
   if (!gMqtt.connected()) {
     if ((int32_t)(millis() - nextTryMs_) < 0) return;
     String will = gBase + "online";
@@ -519,6 +529,8 @@ struct PushMsg {
 };
 static QueueHandle_t gPushQ;
 
+static constexpr uint32_t kPushHeapNeed = 30000;
+
 static void pushTask(void *) {
   PushMsg m;
   for (;;) {
@@ -527,6 +539,13 @@ static void pushTask(void *) {
       if (WiFi.status() != WL_CONNECTED) {
         vTaskDelay(pdMS_TO_TICKS(10000));
         continue;
+      }
+      // HTTPS needs ~35 KB in one go. If the cloud link holds it, ask it to
+      // step aside (it comes back by itself) and wait up to 5 s for the RAM.
+      if (ESP.getMaxAllocHeap() < kPushHeapNeed) {
+        gCloud.pauseFor(30000);
+        for (int i = 0; i < 50 && ESP.getMaxAllocHeap() < kPushHeapNeed; i++) vTaskDelay(pdMS_TO_TICKS(100));
+        Serial.printf("[push] largest free block %u before sending\n", (unsigned)ESP.getMaxAllocHeap());
       }
       WiFiClientSecure tls;
       tls.setCACert(ROOT_CA_PEM);

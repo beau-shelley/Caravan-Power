@@ -66,8 +66,14 @@ class Cloud {
   void publishStateSoon() { nextStateMs_ = 0; }
   void publishMetaSoon() { metaDirty_ = true; }
   bool connected();
+  // Push alerts come first: with the classic ESP32's RAM, an alert's HTTPS
+  // send and the cloud link's TLS session don't fit together. The push task
+  // asks the cloud link to step aside for a while; it reconnects afterwards.
+  void pauseFor(uint32_t ms) { pauseUntilMs_ = millis() + ms; pauseReq_ = true; }
 
  private:
+  volatile bool pauseReq_ = false;
+  volatile uint32_t pauseUntilMs_ = 0;
   uint32_t nextStateMs_ = 0, nextTryMs_ = 0;
   bool metaDirty_ = true;
   uint32_t backoffMs_ = 2000;
