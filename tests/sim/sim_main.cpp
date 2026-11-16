@@ -207,6 +207,44 @@ int main() {
   s.bat.chargeA = s.bat.solarA;
   s.bat.a = s.bat.chargeA - s.bat.loadA;
   app::stateDirty = true;
+
+  // Diesel heater (Bluetooth): running on the thermostat, a cold evening
+  cv::Heater &h = s.htr;
+  h.link = cv::HTR_LINK_BLE;
+  h.online = true;
+  h.phase = cv::HTR_RUNNING;
+  h.mode = cv::HTR_MODE_TEMP;
+  h.setC = 22;
+  h.level = 6;
+  h.cabinC = 18.6f;
+  h.bodyC = 142;
+  h.supplyV = 12.9f;
+  s.temp[cv::TEMP_INSIDE].c = 18.6f;
+  s.temp[cv::TEMP_OUTSIDE].c = 7.8f;
+  app::stateDirty = true;
+  ui::showPage(ui::PAGE_CLIMATE);
+  shot("15-climate-heater");
+  h.phase = cv::HTR_STARTING;
+  h.mode = cv::HTR_MODE_LEVEL;
+  h.bodyC = 41;
+  h.cabinC = 12.4f;
+  app::stateDirty = true;
+  shot("16-heater-heating-up");
+  h.phase = cv::HTR_OFF;
+  h.mode = cv::HTR_MODE_TEMP;
+  h.err = 2;
+  h.bodyC = 16;
+  app::stateDirty = true;
+  shot("17-heater-fault");
+  h.err = 0;
+  h.online = false;
+  app::stateDirty = true;
+  shot("18-heater-not-connected");
+  h = cv::Heater();
+  s.temp[cv::TEMP_INSIDE].c = 24.6f;
+  s.temp[cv::TEMP_OUTSIDE].c = 31.2f;
+  app::stateDirty = true;
+
   ui::showPage(ui::PAGE_HOME);
   ui::openWeatherForTest();
   shot("09-forecast");

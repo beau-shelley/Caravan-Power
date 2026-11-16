@@ -97,11 +97,16 @@ void buildForecast(lv_obj_t *box, int w, int h, const char *note, bool bubble) {
             (int)lroundf(dy.tMax), (unsigned)tempColor(cv::TEMP_OUTSIDE, dy.tMin), (int)lroundf(dy.tMin));
     lv_obj_align(hl, LV_ALIGN_TOP_MID, 0, y0 + yHl);
     if (blockH < 132) continue;
-    lv_obj_t *rn = lbl(col_, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, dy.rainProb >= 50 ? col::WATER : col::MUTED, "");
-    setText(rn, "Rain %u%%  %.0f mm", dy.rainProb, dy.rainMm);
+    // Narrow columns (forecast sharing the Climate row with the heater card):
+    // smaller text and no rain amount, so nothing runs off the edge.
+    const bool narrow = dayW < 150;
+    const lv_font_t *small = LARGE && !narrow ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
+    lv_obj_t *rn = lbl(col_, small, dy.rainProb >= 50 ? col::WATER : col::MUTED, "");
+    if (narrow) setText(rn, "Rain %u%%", dy.rainProb);
+    else setText(rn, "Rain %u%%  %.0f mm", dy.rainProb, dy.rainMm);
     lv_obj_align(rn, LV_ALIGN_TOP_MID, 0, y0 + yRn);
     if (blockH < 154) continue;
-    lv_obj_t *gs = lbl(col_, LARGE ? &lv_font_montserrat_16 : &lv_font_montserrat_14, dy.gustMax >= 50 ? col::WARN : col::MUTED, "");
+    lv_obj_t *gs = lbl(col_, small, dy.gustMax >= 50 ? col::WARN : col::MUTED, "");
     setText(gs, "Gusts %.0f km/h", dy.gustMax);
     lv_obj_align(gs, LV_ALIGN_TOP_MID, 0, y0 + yGs);
   }

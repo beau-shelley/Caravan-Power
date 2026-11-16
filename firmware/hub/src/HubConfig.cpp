@@ -85,6 +85,10 @@ void HubConfig::toJson(JsonObject o) const {
   loc["lat"] = location.lat;
   loc["lon"] = location.lon;
   loc["name"] = location.name;
+  JsonObject ht = o["htr"].to<JsonObject>();
+  ht["link"] = heater.link;
+  ht["addr"] = heater.addr;
+  ht["pass"] = heater.passkey;
   JsonArray ts = o["tsrc"].to<JsonArray>();
   for (auto v : tempSrc) ts.add(v);
   JsonArray tb = o["tble"].to<JsonArray>();
@@ -156,6 +160,13 @@ void HubConfig::fromJson(JsonObjectConst o) {
     if (loc["name"].is<const char *>()) copyStr(location.name, sizeof(location.name), loc["name"]);
   }
   meta.locSrc = location.src;
+  JsonObjectConst ht = o["htr"];
+  if (!ht.isNull()) {
+    heater.link = ht["link"] | heater.link;
+    if (heater.link > cv::HTR_LINK_RF) heater.link = cv::HTR_LINK_NONE;
+    if (ht["addr"].is<const char *>()) copyStr(heater.addr, sizeof(heater.addr), ht["addr"]);
+    heater.passkey = ht["pass"] | heater.passkey;
+  }
   copyStr(meta.locName, sizeof(meta.locName), location.name);
   JsonObjectConst lv = o["lvl"];
   if (!lv.isNull()) {

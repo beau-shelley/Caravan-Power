@@ -237,8 +237,11 @@ static lv_obj_t *cName[cv::NUM_TEMPS], *cVal[cv::NUM_TEMPS], *cMinMax[cv::NUM_TE
 static lv_obj_t *acGrid, *acStatus, *acOff;
 static lv_obj_t *acBtns[cv::MAX_AC_PRESETS];
 static int acGridW, acGridH;
-static lv_obj_t *wxBox, *wxCaption;  // forecast card (when aircon + inverter are off)
+static lv_obj_t *wxCard, *wxBox, *wxCaption;  // forecast card (when aircon + inverter are off)
 static int wxBoxW, wxBoxH;
+static lv_obj_t *heaterCard;
+static int heaterShown = -1;  // forecast card shares its row with the heater card once one is set up
+static constexpr int HTR_W = splitW(LARGE ? 38 : 42);
 static uint32_t wxSeen = UINT32_MAX;
 static void buildAircon(lv_obj_t *p, int x, int y, int w, int h);
 static void buildInverter(lv_obj_t *p, int x, int y, int w, int h);
@@ -293,9 +296,12 @@ void buildClimate(lv_obj_t *p) {
   }
 
   if (!HAS_AIRCON && !HAS_INVERTER) {
-    lv_obj_t *fc = card(p, GAP, botY, INNER_W, botH, "FORECAST", col::WATER);
-    wxCaption = lv_obj_get_child(fc, 1);  // card(): child 0 = dot, 1 = caption
-    wxBox = panel(fc, 0, 0, innerOf(INNER_W), innerOf(botH));
+    // Diesel heater on the left (only once one is set up), forecast beside it.
+    heaterCard = buildHeater(p, GAP, botY, HTR_W, botH);
+    lv_obj_add_flag(heaterCard, LV_OBJ_FLAG_HIDDEN);
+    wxCard = card(p, GAP, botY, INNER_W, botH, "FORECAST", col::WATER);
+    wxCaption = lv_obj_get_child(wxCard, 1);  // card(): child 0 = dot, 1 = caption
+    wxBox = panel(wxCard, 0, 0, innerOf(INNER_W), innerOf(botH));
     wxBoxW = innerOf(INNER_W);
     wxBoxH = innerOf(botH);
   }
@@ -354,6 +360,21 @@ void updateClimate() {
       lv_obj_set_style_text_color(cVal[i], c(col::DIM), 0);
       setText(cMinMax[i], "sensor offline");
     }
+  }
+  if (heaterCard) {
+    int shown = s.htr.link != cv::HTR_LINK_NONE;
+    if (shown != heaterShown) {  // heater set up / removed: re-flow the bottom row
+      heaterShown = shown;
+      int fx = shown ? GAP + HTR_W + GAP : GAP, fw = shown ? INNER_W - HTR_W - GAP : INNER_W;
+      if (shown) lv_obj_clear_flag(heaterCard, LV_OBJ_FLAG_HIDDEN);
+      else lv_obj_add_flag(heaterCard, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_set_pos(wxCard, fx, lv_obj_get_y(wxCard));
+      lv_obj_set_width(wxCard, fw);
+      wxBoxW = innerOf(fw);
+      lv_obj_set_width(wxBox, wxBoxW);
+      wxSeen = UINT32_MAX;  // rebuild the forecast at the new width
+    }
+    if (shown) updateHeater();
   }
   if (wxBox) {  // forecast card: rebuild on a new forecast, or once a minute for "updated N min ago"
     const cv::Weather &w = s.wx;

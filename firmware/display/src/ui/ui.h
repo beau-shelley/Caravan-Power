@@ -77,6 +77,7 @@ constexpr uint32_t SOLAR = 0xFBBF24, CHARGE = 0x34D399, LOAD = 0xF87171, WATER =
 constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0x22D3EE, WARN = 0xF59E0B, ALARM = 0xEF4444;
 constexpr uint32_t OK = 0x22C55E, TILE = 0x1A2438, GAS = 0xFB923C, MAINS = 0x60A5FA;
 constexpr uint32_t CRIT = 0xD946EF;  // critical alerts (same colour as the phone page)
+constexpr uint32_t HEAT = 0xFB923C;  // diesel heater (warm orange, same as the phone page)
 }  // namespace col
 inline uint32_t sevColor(int sev) {
   return sev >= cv::SEV_CRIT ? col::CRIT : sev == cv::SEV_ALARM ? col::ALARM : sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
@@ -119,6 +120,11 @@ void updateAlerts();
 void buildSettings(lv_obj_t *p);
 void updateSettings();
 
+
+// Diesel heater card on the Climate page (ui_heater.cpp). Hidden until a
+// heater is set up on the hub (state.htr.link != none).
+lv_obj_t *buildHeater(lv_obj_t *page, int x, int y, int w, int h);
+void updateHeater();
 
 void buildWeatherWidget(lv_obj_t *statusBar);  // ui_weather.cpp
 void buildForecast(lv_obj_t *box, int w, int h, const char *note = nullptr, bool bubble = false);

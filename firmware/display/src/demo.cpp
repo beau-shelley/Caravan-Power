@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "AirHeater.h"
 #include "CaravanModel.h"
 #include "app.h"
 
@@ -11,6 +12,8 @@ namespace demo {
 namespace {
 uint32_t lastUpdateMs = 0;
 float phase = 0;
+cv::HeaterSim heaterSim;  // same pretend heater as the hub's fake-data build
+float insideBase = 0;
 }
 
 void begin() {
@@ -74,6 +77,10 @@ void begin() {
   s.ac.preset = 0;
   s.wifi = s.cloud = true;
   strcpy(s.ip, "192.168.1.42");
+  s.htr.link = HTR_LINK_BLE;
+  s.htr.online = true;
+  s.htr.setC = 24;
+  insideBase = s.temp[TEMP_INSIDE].c - 4;  // a cool evening, so the heater has work to do
   s.lvl.online = s.lvl.zeroed = s.lvl.fwdLearned = true;
   s.lvl.roll = -0.9f;
   s.lvl.pitch = 0.6f;
@@ -132,6 +139,8 @@ void loop() {
   s.bat.chargeA = s.bat.solarA + s.bat.chargerA + s.bat.acA;
   s.bat.a = s.bat.chargeA - s.bat.loadA;
   s.pump[0].runSec += s.pump[0].on ? elapsed : 0;
+  heaterSim.tick(s.htr, elapsed, insideBase, s.bat.v);
+  s.temp[cv::TEMP_INSIDE].c = s.htr.cabinC > insideBase ? s.htr.cabinC : insideBase;
   app::stateDirty = true;
 }
 
@@ -151,6 +160,10 @@ void command(const JsonDocument &cmd) {
     int p = (cmd["off"] | false) ? -1 : (int)(cmd["preset"] | -1);
     s.ac.on = p >= 0;
     s.ac.preset = p;
+  } else if (!strcmp(c, "heater")) {
+    cv::HeaterCmd hc;
+    const char *why = nullptr;
+    if (!cv::heaterCmdFromJson(cmd.as<JsonObjectConst>(), hc, &why) || !heaterSim.apply(s.htr, hc, &why)) return;
   } else {
     return;  // settings, rules etc. aren't simulated
   }

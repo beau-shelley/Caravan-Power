@@ -72,6 +72,25 @@ void cmdAircon(int preset) {
   send(d);
 }
 
+void cmdHeaterOn(bool on) {
+  JsonDocument d;
+  d["c"] = "heater";
+  d["on"] = on;
+  send(d);
+}
+void cmdHeaterSet(const char *key, int value) {
+  JsonDocument d;
+  d["c"] = "heater";
+  d[key] = value;
+  send(d);
+}
+void cmdHeaterMode(bool level) {
+  JsonDocument d;
+  d["c"] = "heater";
+  d["mode"] = level ? "level" : "temp";
+  send(d);
+}
+
 static void transmitOne() {
   if (gHelloPending) {
     gHelloPending = false;

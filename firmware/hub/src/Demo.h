@@ -7,6 +7,7 @@
 #pragma once
 
 #include "CaravanModel.h"
+#include "Heater.h"
 
 namespace hub {
 namespace demo {
@@ -24,6 +25,9 @@ void tick(cv::State &s, uint32_t nowMs);
 // Fake 12 V load current, standing in for the BMPRO's load reading so the
 // mains-charger inference has a measured load to work with.
 float loadA();
+// Pretend Bluetooth diesel heater: answers commands like the real one would
+// and reports status, so the heater card can be tried on the bench.
+HeaterDriver &heater();
 
 }  // namespace demo
 }  // namespace hub

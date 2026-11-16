@@ -87,6 +87,57 @@ const char *chargeStateName(uint8_t cs) {
   }
 }
 
+const char *heaterPhaseText(uint8_t phase) {
+  switch (phase) {
+    case HTR_STARTING: return "Heating up";
+    case HTR_RUNNING: return "Running";
+    case HTR_COOLING: return "Cooling down";
+    default: return "Off";
+  }
+}
+
+// The usual E-01..E-10 codes of these Chinese 2-5 kW air heaters, as the
+// AirHeaterBLE app reports them. Assumed until seen on Beau's heater.
+const char *heaterErrorText(uint8_t err) {
+  switch (err) {
+    case 0: return "";
+    case 1: return "Didn't start (E-01)";
+    case 2: return "Out of fuel (E-02)";
+    case 3: return "Supply voltage fault (E-03)";
+    case 4: return "Outlet sensor fault (E-04)";
+    case 5: return "Inlet sensor fault (E-05)";
+    case 6: return "Fuel pump fault (E-06)";
+    case 7: return "Fan fault (E-07)";
+    case 8: return "Glow plug fault (E-08)";
+    case 9: return "Overheated (E-09)";
+    case 10: return "Overheat sensor fault (E-10)";
+    default: return "Heater fault";
+  }
+}
+
+bool heaterCmdFromJson(JsonObjectConst o, HeaterCmd &c, const char **why) {
+  c = HeaterCmd();
+  if (o["on"].is<bool>()) c.on = o["on"].as<bool>() ? 1 : 0;
+  if (o["mode"].is<const char *>()) {
+    const char *m = o["mode"];
+    if (!strcmp(m, "temp")) c.mode = HTR_MODE_TEMP;
+    else if (!strcmp(m, "level")) c.mode = HTR_MODE_LEVEL;
+    else { if (why) *why = "mode must be temp or level"; return false; }
+  }
+  if (!o["temp"].isNull()) {
+    int t = o["temp"] | -100;
+    if (t < HEATER_MIN_C || t > HEATER_MAX_C) { if (why) *why = "Set temperature must be 8-36 \xC2\xB0" "C"; return false; }
+    c.temp = (int8_t)t;
+  }
+  if (!o["level"].isNull()) {
+    int l = o["level"] | -1;
+    if (l < 1 || l > HEATER_LEVELS) { if (why) *why = "Power level must be 1-10"; return false; }
+    c.level = (int8_t)l;
+  }
+  if (!c.any()) { if (why) *why = "nothing to change"; return false; }
+  return true;
+}
+
 const char *severityName(uint8_t sev) {
   return sev >= SEV_CRIT ? "critical" : sev == SEV_ALARM ? "alarm" : sev == SEV_WARN ? "warning" : "info";
 }
@@ -245,6 +296,23 @@ void stateToJson(const State &s, JsonObject o) {
   ac["on"] = s.ac.on;
   ac["pre"] = s.ac.preset;
 
+  if (s.htr.link != HTR_LINK_NONE) {  // only sent once a heater is set up
+    const Heater &h = s.htr;
+    JsonObject j = o["htr"].to<JsonObject>();
+    j["ln"] = h.link;
+    j["on"] = h.online;
+    j["ph"] = h.phase;
+    j["md"] = h.mode;
+    j["st"] = h.setC;
+    j["lv"] = h.level;
+    if (h.hasStatus()) {
+      j["cab"] = r1(h.cabinC);
+      j["hx"] = r1(h.bodyC);
+      j["v"] = r1(h.supplyV);
+      j["err"] = h.err;
+    }
+  }
+
   levelToJson(s.lvl, o["lvl"].to<JsonObject>());
   weatherToJson(s.wx, o["wx"].to<JsonObject>());
 
@@ -333,6 +401,22 @@ void stateFromJson(State &s, JsonObjectConst o) {
   s.inv.acPresent = o["inv"]["ac"] | false;
   s.ac.on = o["ac"]["on"] | false;
   s.ac.preset = o["ac"]["pre"] | -1;
+
+  s.htr = Heater();
+  if (o["htr"].is<JsonObjectConst>()) {
+    JsonObjectConst j = o["htr"];
+    Heater &h = s.htr;
+    h.link = j["ln"] | 0;
+    h.online = j["on"] | false;
+    h.phase = j["ph"] | 0;
+    h.mode = j["md"] | 0;
+    h.setC = j["st"] | 20;
+    h.level = j["lv"] | 5;
+    h.cabinC = j["cab"] | 0.0f;
+    h.bodyC = j["hx"] | 0.0f;
+    h.supplyV = j["v"] | 0.0f;
+    h.err = j["err"] | 0;
+  }
 
   if (o["lvl"].is<JsonObjectConst>()) levelFromJson(s.lvl, o["lvl"]);
   if (o["wx"].is<JsonObjectConst>()) weatherFromJson(s.wx, o["wx"]);

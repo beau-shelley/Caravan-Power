@@ -18,6 +18,24 @@ constexpr float kAcCycleSec = 420;  // mains chargers plugged in for the first
 constexpr float kAcBulkSec = 120;   // 2 minutes of every 7 (bulk), then
 constexpr float kAcPlugSec = 150;   // 30 s of float before "unplugging"
 
+cv::HeaterSim gSim;
+
+class DemoHeater : public HeaterDriver {
+ public:
+  void loop(cv::State &s) override {
+    s.htr.link = cv::HTR_LINK_BLE;  // looks exactly like a Bluetooth heater to every screen
+    s.htr.online = true;
+  }
+  bool send(const cv::HeaterCmd &c, const cv::Heater &cur, const char **why) override {
+    pending = cur;
+    bool ok = gSim.apply(pending, c, why);
+    if (ok) dirty = true;
+    return ok;
+  }
+  cv::Heater pending;
+  bool dirty = false;
+} gDemoHeater;
+
 void minMax(cv::Temp &x) {
   if (x.c < x.minC) x.minC = x.c;
   if (x.c > x.maxC) x.maxC = x.c;
@@ -31,6 +49,8 @@ void begin(cv::State &s) {
   s.temp[cv::TEMP_FRIDGE] = {true, 3.4f, 2.1f, 5.2f, 64};
   s.solar[0].yieldTotalKwh = 812.4f;
   s.solar[1].yieldTotalKwh = 233.9f;
+  s.htr.link = cv::HTR_LINK_BLE;
+  s.htr.setC = 24;  // a little above the demo's dawn temperature, so starting it shows something
   lastMs = millis();
 }
 
@@ -61,6 +81,7 @@ void tick(cv::State &s, uint32_t nowMs) {
   if (s.pump[1].on) load += 6;
   if (s.ac.on) load += 45;
   if (s.inv.on) load += 3;
+  load += gSim.currentA(s.htr);  // diesel heater: glow plug while lighting, then fan + pump
 
   // ---- mains: the two 60 A chargers, plugged in for part of each cycle.
   // Nothing on the hub measures them; it works them out from what's left over.
@@ -114,7 +135,16 @@ void tick(cv::State &s, uint32_t nowMs) {
 
   // ---- temperatures follow the sun; the fridge cycles its compressor
   s.temp[cv::TEMP_OUTSIDE].c = 18 + 13 * sun;
-  s.temp[cv::TEMP_INSIDE].c = s.ac.on ? 22.5f : 20 + 8 * sun;
+  float inside = s.ac.on ? 22.5f : 20 + 8 * sun;
+  // Diesel heater: warms the van while it runs; its own cabin sensor reads
+  // the same air as the Inside thermometer, so the two agree.
+  if (gDemoHeater.dirty) {
+    s.htr = gDemoHeater.pending;
+    gDemoHeater.dirty = false;
+  }
+  gSim.tick(s.htr, dt, inside, batV);
+  if (s.htr.cabinC > inside) inside = s.htr.cabinC;
+  s.temp[cv::TEMP_INSIDE].c = inside;
   s.temp[cv::TEMP_FRIDGE].c = 3.5f + 1.8f * sinf(t * 2 * PI / 240);
   for (auto &x : s.temp) minMax(x);
 
@@ -159,6 +189,8 @@ void tick(cv::State &s, uint32_t nowMs) {
 }
 
 float loadA() { return lastLoad; }
+
+HeaterDriver &heater() { return gDemoHeater; }
 
 }  // namespace demo
 }  // namespace hub

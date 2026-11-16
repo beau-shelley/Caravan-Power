@@ -24,6 +24,10 @@ void cmd(const char *c);
 void cmdPump(int i, bool on);
 void cmdInverter(bool on);
 void cmdAircon(int preset);  // -1 = off
+// Diesel heater: {"c":"heater", key: value}, e.g. ("temp", 22), ("level", 6).
+void cmdHeaterOn(bool on);
+void cmdHeaterSet(const char *key, int value);
+void cmdHeaterMode(bool level);
 
 // Hook for replies the UI cares about (errors, learn status, ...)
 using ReplyHandler = void (*)(JsonObjectConst msg);

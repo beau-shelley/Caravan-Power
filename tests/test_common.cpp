@@ -5,6 +5,7 @@
 #include <string>
 
 #include "AcCharge.h"
+#include "AirHeater.h"
 #include "AlertEngine.h"
 #include "CaravanModel.h"
 #include "LinkCodec.h"
@@ -633,7 +634,103 @@ static void testAcCharge() {
   NEAR(r.bat.acA, 87.3f, 0.05);
 }
 
+static void testHeater() {
+  // Command frames: factory passkey 1234 -> 0C 22, checksum = sum of bytes 2..6.
+  uint8_t f[airheater::CMD_LEN];
+  airheater::encode(airheater::CMD_POWER, 1, 1234, f);
+  const uint8_t on[] = {0xAA, 0x55, 0x0C, 0x22, 0x03, 0x01, 0x00, 0x32};
+  CHECK(memcmp(f, on, 8) == 0);
+  airheater::encode(airheater::CMD_SETPOINT, 22, 1234, f);
+  CHECK(f[4] == 4 && f[5] == 22 && f[7] == (uint8_t)(0x0C + 0x22 + 4 + 22));
+
+  // Client command parsing and range checks
+  JsonDocument d;
+  HeaterCmd c;
+  const char *why = nullptr;
+  deserializeJson(d, R"({"c":"heater","temp":23})");
+  CHECK(heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why) && c.temp == 23 && c.on < 0);
+  deserializeJson(d, R"({"c":"heater","temp":40})");
+  CHECK(!heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why));
+  deserializeJson(d, R"({"c":"heater","level":0})");
+  CHECK(!heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why));
+  deserializeJson(d, R"({"c":"heater"})");
+  CHECK(!heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why));
+  deserializeJson(d, R"({"c":"heater","on":true,"mode":"level","level":7})");
+  CHECK(heaterCmdFromJson(d.as<JsonObjectConst>(), c, &why) && c.on == 1 && c.mode == HTR_MODE_LEVEL && c.level == 7);
+
+  // Frames for a command: mode first, set point, then on/off.
+  Heater cur;
+  uint8_t fr[4][airheater::CMD_LEN];
+  CHECK(airheater::framesFor(c, cur, 1234, fr, 4) == 3);
+  CHECK(fr[0][4] == airheater::CMD_MODE && fr[0][5] == airheater::WIRE_LEVEL);
+  CHECK(fr[1][4] == airheater::CMD_SETPOINT && fr[1][5] == 7);
+  CHECK(fr[2][4] == airheater::CMD_POWER && fr[2][5] == 1);
+  HeaterCmd lvlOnly;
+  lvlOnly.level = 4;  // in thermostat mode: switches to level mode first
+  CHECK(airheater::framesFor(lvlOnly, cur, 1234, fr, 4) == 2 && fr[0][4] == airheater::CMD_MODE);
+
+  // Status frame: running, thermostat 22 C, 12.8 V, case 142 C, cabin 19 C
+  const uint8_t st[] = {0xAA, 0x55, 0x0C, 0x01, 0x00, 0x03, 0x00, 0x00, 0x02, 22, 4,
+                        128, 0, 142, 0, 19, 0, 0, 0, 0};
+  Heater h;
+  CHECK(airheater::decode(st, sizeof(st), h));
+  CHECK(h.phase == HTR_RUNNING && h.mode == HTR_MODE_TEMP && h.setC == 22 && h.level == 5);
+  NEAR(h.supplyV, 12.8f, 0.01f);
+  NEAR(h.bodyC, 142, 0.01f);
+  NEAR(h.cabinC, 19, 0.01f);
+  uint8_t cool[sizeof(st)];
+  memcpy(cool, st, sizeof(st));
+  cool[5] = 4;
+  cool[15] = 0xFE;  // -2 C
+  cool[16] = 0xFF;
+  CHECK(airheater::decode(cool, sizeof(cool), h) && h.phase == HTR_COOLING);
+  NEAR(h.cabinC, -2, 0.01f);
+  const uint8_t enc[] = {0xAA, 0x66, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18};
+  CHECK(!airheater::decode(enc, sizeof(enc), h));  // encrypted variant: not decoded yet
+
+  // JSON: absent until a heater is set up; full status only over Bluetooth.
+  State s;
+  JsonDocument out;
+  stateToJson(s, out.to<JsonObject>());
+  CHECK(out["htr"].isNull());
+  s.htr = h;
+  s.htr.link = HTR_LINK_BLE;
+  s.htr.online = true;
+  s.htr.err = 2;
+  out.clear();
+  stateToJson(s, out.to<JsonObject>());
+  State r;
+  stateFromJson(r, out.as<JsonObjectConst>());
+  CHECK(r.htr.link == HTR_LINK_BLE && r.htr.online && r.htr.phase == HTR_COOLING && r.htr.err == 2);
+  NEAR(r.htr.cabinC, -2, 0.05f);
+  s.htr.link = HTR_LINK_RF;
+  out.clear();
+  stateToJson(s, out.to<JsonObject>());
+  CHECK(out["htr"]["cab"].isNull() && out["htr"]["ln"] == 2);
+
+  // Simulator: lights, runs up to the set point, refuses a restart while cooling.
+  HeaterSim sim;
+  Heater x;
+  x.link = HTR_LINK_BLE;
+  HeaterCmd go;
+  go.on = 1;
+  go.temp = 22;
+  CHECK(sim.apply(x, go, &why) && x.phase == HTR_STARTING && x.setC == 22);
+  CHECK(sim.currentA(x) > 5);  // glow plug
+  for (int i = 0; i < 45; i++) sim.tick(x, 1, 12, 12.9f);
+  CHECK(x.phase == HTR_RUNNING && x.bodyC > 60);
+  for (int i = 0; i < 600; i++) sim.tick(x, 1, 12, 12.9f);
+  CHECK(x.cabinC > 20 && x.cabinC < 23.5f);
+  HeaterCmd stop;
+  stop.on = 0;
+  CHECK(sim.apply(x, stop, &why) && x.phase == HTR_COOLING);
+  CHECK(!sim.apply(x, go, &why));
+  for (int i = 0; i < 31; i++) sim.tick(x, 1, 12, 12.9f);
+  CHECK(x.phase == HTR_OFF && sim.currentA(x) == 0);
+}
+
 int main() {
+  testHeater();
   testAcCharge();
   testWeather();
   testLeveling();

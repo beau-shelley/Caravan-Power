@@ -8,7 +8,7 @@ namespace hub {
 namespace ble {
 
 namespace {
-constexpr int MAX_LISTENERS = 4;
+constexpr int MAX_LISTENERS = 6;  // Victron, BMPRO, thermometers, heater, survey
 AdvertFn gListeners[MAX_LISTENERS];
 int gListenerCount = 0;
 bool gStarted = false;

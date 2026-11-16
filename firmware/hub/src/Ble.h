@@ -1,5 +1,5 @@
 // Shared Bluetooth LE central: one NimBLE stack, one continuous scan, many
-// listeners (Victron Instant Readout, BMPRO OdysseyLink discovery).
+// listeners (Victron Instant Readout, BMPRO OdysseyLink discovery, heater).
 #pragma once
 #include <Arduino.h>
 

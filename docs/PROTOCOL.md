@@ -29,6 +29,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `pump[2]` | `on`, `sn` sensed, `lk` dry-run lockout, `rt` run seconds |
 | `inv` | `on`, `ac` (240 V present) |
 | `ac` | `on`, `pre` preset index |
+| `htr` | diesel heater, only present once one is set up: `ln` link (1 Bluetooth, 2 433 MHz), `on` status heard recently, `ph` phase (0 off, 1 heating up, 2 running, 3 cooling down), `md` mode (0 thermostat, 1 power level), `st` set °C (8-36), `lv` power level (1-10). Bluetooth only, while `on`: `cab` cabin °C, `hx` heat exchanger °C, `v` supply V, `err` (0 none, 1-10 = E-01..E-10) |
 | `alerts[]` | `id`, `sev` (0 info, 1 warn, 2 alarm), `ack`, `since`, `val`, `msg` |
 | `lvl` | `on`, `z` (level set), `f` (front learned), `p` pitch ° (+ front high), `r` roll ° (+ left high), `tr` track mm, `jk` axle-to-jockey mm. Also sent alone as `{"t":"lvl",…}` 4×/s on RS485 |
 | `wx` | `ok`, `up` fetched (unix), `src` (1 GPS, 2 phone, 3 manual), `pl` place, `t` °C, `c` WMO code, `day`, `w`/`g` wind/gust km/h, `d[4]` = `[code, weekday 0=Sun, max, min, rain %, rain mm, gust]` |
@@ -43,6 +44,9 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `pump` | `i`, `on` | refused if locked out; with the relay fallback, also if the BMPRO turned it on |
 | `inverter` | `on` | |
 | `aircon` | `preset` or `off:true` | |
+| `heater` | any of `on` (bool), `mode` (`"temp"`/`"level"`), `temp` (8-36), `level` (1-10) | diesel heater; a set point for the other mode switches mode first. Errors: none set up, not connected, still cooling down (simulated) |
+| `heater_set` | `link` (0 none, 1 Bluetooth, 2 433 MHz), `addr`, `pass` (4-digit app passkey, default 1234) | saved in the hub config as `htr` |
+| `heater_seen`, `heater_log` | | read-only: Bluetooth heaters nearby (`{"t":"heater_seen","list":[{addr,name,rssi,age}]}`), and the recent raw frames (`{"t":"heater_log","log":"..."}`) for checking the protocol |
 | `ack` | | acknowledge all alerts (silences buzzer) |
 | `rule_set` | `rule:{id,en,name,m,cmp,thr,hys,dly,sev,ntf,act}` | `id:0` creates a new rule |
 | `rule_del` | `id` | |
@@ -104,6 +108,7 @@ The rule's `act` runs when it reaches its deepest step (the only step for a rule
 - `bmproAddr`: OdysseyLink Bluetooth address
 - `inv`: `mode`, `pulse`, `sense`
 - `loc`: `src`, `lat`, `lon`, `name` (weather location)
+- `htr`: `link` (0 none = default, 1 Bluetooth, 2 433 MHz), `addr`, `pass` (diesel heater, see docs/HEATER.md)
 - `tsrc[]` (0 wired, 1 Bluetooth per role), `tble[]` (Bluetooth address per role)
 - `tempAddr[]`, `cloudInt` s, `buzzer`, `bmproExplorer` (verbose Bluetooth logging)
 

@@ -88,6 +88,41 @@ struct Aircon {
   int8_t preset = -1;   // -1 = off / unknown
 };
 
+// Diesel heater (Power Science 2 kW in Beau's van). The hub talks to it over
+// Bluetooth (the AirHeaterBLE app's protocol, see AirHeater.h) or, as a
+// fallback, sends 433 MHz remote codes (no status comes back that way).
+enum HeaterLink : uint8_t { HTR_LINK_NONE = 0, HTR_LINK_BLE = 1, HTR_LINK_RF = 2 };
+enum HeaterPhase : uint8_t { HTR_OFF = 0, HTR_STARTING = 1, HTR_RUNNING = 2, HTR_COOLING = 3 };
+enum HeaterMode : uint8_t { HTR_MODE_TEMP = 0, HTR_MODE_LEVEL = 1 };  // thermostat / fixed power level
+constexpr int HEATER_MIN_C = 8, HEATER_MAX_C = 36, HEATER_LEVELS = 10;
+
+struct Heater {
+  uint8_t link = HTR_LINK_NONE;  // NONE = no heater set up: the screens hide the heater card
+  bool online = false;    // status heard recently (Bluetooth). RF never is.
+  uint8_t phase = HTR_OFF;
+  uint8_t mode = HTR_MODE_TEMP;
+  int8_t setC = 20;       // thermostat set point, HEATER_MIN_C..HEATER_MAX_C
+  uint8_t level = 5;      // power level 1..HEATER_LEVELS
+  float cabinC = 0;       // the heater's own air-intake / remote sensor
+  float bodyC = 0;        // heat exchanger (case) temperature
+  float supplyV = 0;
+  uint8_t err = 0;        // heater error code, 0 = none (see heaterErrorText)
+  bool running() const { return phase == HTR_STARTING || phase == HTR_RUNNING; }
+  // Readings (cabin, body, volts, error) only mean something with Bluetooth status.
+  bool hasStatus() const { return link == HTR_LINK_BLE && online; }
+};
+const char *heaterPhaseText(uint8_t phase);
+const char *heaterErrorText(uint8_t err);
+
+// A heater command from any client: {"c":"heater","on":true} / {"mode":"temp"|"level"}
+// / {"temp":22} / {"level":6}. Fields may be combined; -1 = not given.
+struct HeaterCmd {
+  int8_t on = -1, mode = -1, temp = -1, level = -1;
+  bool any() const { return on >= 0 || mode >= 0 || temp >= 0 || level >= 0; }
+};
+// Parses and range-checks; on failure *why says what's wrong.
+bool heaterCmdFromJson(JsonObjectConst o, HeaterCmd &c, const char **why);
+
 // Caravan level (MPU-6050 on the hub). pitch + = front high, roll + = left high.
 struct Level {
   bool online = false;
@@ -122,6 +157,7 @@ struct State {
   Pump pump[NUM_PUMPS];
   Inverter inv;
   Aircon ac;
+  Heater htr;
   Level lvl;
   Weather wx;
   uint8_t alertCount = 0;

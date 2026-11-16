@@ -18,7 +18,7 @@
   --bg:#0b1220; --card:#131c2e; --tile:#1a2438; --border:#1e293b;
   --text:#e2e8f0; --muted:#94a3b8; --dim:#475569;
   --solar:#fbbf24; --charge:#34d399; --load:#f87171; --water:#38bdf8; --gas:#fb923c;
-  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444; --mains:#60a5fa; --crit:#d946ef;
+  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444; --mains:#60a5fa; --crit:#d946ef; --heat:#fb923c;
   --radius:16px;
 }
 @media (prefers-color-scheme: light) {
@@ -26,7 +26,7 @@
     --bg:#eef2f7; --card:#ffffff; --tile:#f1f5f9; --border:#dbe3ee;
     --text:#0f172a; --muted:#475569; --dim:#94a3b8;
     --solar:#d97706; --charge:#059669; --load:#dc2626; --water:#0284c7; --gas:#ea580c;
-    --climate:#7c3aed; --accent:#0891b2; --mains:#2563eb; --crit:#c026d3;
+    --climate:#7c3aed; --accent:#0891b2; --mains:#2563eb; --crit:#c026d3; --heat:#ea580c;
   }
 }
 * { box-sizing:border-box; }
@@ -119,6 +119,20 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
 .wx .day { background:var(--tile); border-radius:12px; padding:8px; text-align:center; font-size:13px; }
 @media (max-width: 700px) { .wx { grid-template-columns:repeat(4, 1fr); } .wx .now { grid-column:1 / -1; }
   .wx .day { font-size:11px; padding:6px 3px; } }
+/* Diesel heater card */
+.htr { display:grid; grid-template-columns:auto 1fr; gap:14px 16px; align-items:center; }
+.htr .pwr { width:76px; height:76px; border-radius:50%; border:2px solid var(--border); background:var(--tile); color:var(--muted);
+  font:inherit; font-size:30px; cursor:pointer; display:grid; place-items:center; }
+.htr .pwr.on { border-color:var(--c); color:var(--c); background:color-mix(in srgb, var(--c) 22%, var(--tile)); }
+.htr .pwr:disabled, .htr .dim { opacity:.5; }
+.htr .set { display:flex; align-items:center; gap:10px; grid-column:1/-1; }
+.htr .set .btn { width:56px; height:48px; font-size:24px; padding:0; }
+.htr .set .v { flex:1; text-align:center; font-size:40px; font-weight:600; line-height:1; }
+.htr .set .v small { font-size:13px; color:var(--muted); font-weight:400; margin-left:4px; }
+.seg { display:grid; grid-template-columns:1fr 1fr; gap:6px; grid-column:1/-1; }
+.seg button { border:1px solid var(--border); background:var(--tile); color:var(--muted); border-radius:10px; padding:8px; font:inherit; cursor:pointer; }
+.seg button.on { border-color:var(--heat); color:var(--heat); background:color-mix(in srgb, var(--heat) 18%, var(--tile)); }
+.htr .reads { grid-column:1/-1; display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--card); border:1px solid var(--accent);
   padding:10px 16px; border-radius:12px; opacity:0; transition:opacity .25s; pointer-events:none; max-width:90vw; }
 #toast.show { opacity:1; }
@@ -135,6 +149,7 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
        Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com, icons CC BY 4.0. -->
   <symbol id="i-drop" viewBox="0 0 384 512"><path d="M192 512C86 512 0 426 0 320C0 228.8 130.2 57.7 166.6 11.7C172.6 4.2 181.5 0 191.1 0h1.8c9.6 0 18.5 4.2 24.5 11.7C253.8 57.7 384 228.8 384 320c0 106-86 192-192 192zM96 336c0-8.8-7.2-16-16-16s-16 7.2-16 16c0 61.9 50.1 112 112 112c8.8 0 16-7.2 16-16s-7.2-16-16-16c-44.2 0-80-35.8-80-80z"/></symbol>
   <symbol id="i-tap" viewBox="0 0 512 512"><path d="M224 0c17.7 0 32 14.3 32 32V44l96-12c17.7 0 32 14.3 32 32s-14.3 32-32 32L256 84l-31-3.9-1-.1-1 .1L192 84 96 96C78.3 96 64 81.7 64 64s14.3-32 32-32l96 12V32c0-17.7 14.3-32 32-32zM0 224c0-17.7 14.3-32 32-32h96l22.6-22.6c6-6 14.1-9.4 22.6-9.4H192V116.2l32-4 32 4V160h18.7c8.5 0 16.6 3.4 22.6 9.4L320 192h32c88.4 0 160 71.6 160 160c0 17.7-14.3 32-32 32H416c-17.7 0-32-14.3-32-32s-14.3-32-32-32H315.9c-20.2 29-53.9 48-91.9 48s-71.7-19-91.9-48H32c-17.7 0-32-14.3-32-32V224zM436.8 423.4c1.9-4.5 6.3-7.4 11.2-7.4s9.2 2.9 11.2 7.4l18.2 42.4c1.8 4.1 2.7 8.6 2.7 13.1V480c0 17.7-14.3 32-32 32s-32-14.3-32-32v-1.2c0-4.5 .9-8.9 2.7-13.1l18.2-42.4z"/></symbol>
+  <symbol id="i-pwr" viewBox="0 0 512 512"><path d="M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32V256c0 17.7 14.3 32 32 32s32-14.3 32-32V32zM143.5 120.6c13.6-11.3 15.4-31.5 4.1-45.1s-31.5-15.4-45.1-4.1C49.7 115.4 16 181.8 16 256c0 132.5 107.5 240 240 240s240-107.5 240-240c0-74.2-33.8-140.6-86.6-184.6c-13.6-11.3-33.8-9.4-45.1 4.1s-9.4 33.8 4.1 45.1c38.9 32.3 63.5 81 63.5 135.4c0 97.2-78.8 176-176 176s-176-78.8-176-176c0-54.4 24.7-103.1 63.5-135.4z"/></symbol>
 </svg>
 <header>
   <h1>⚡ Caravan Power</h1>
@@ -188,11 +203,16 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <div class="cap">Temperature</div>
         <div id="temps"></div>
       </div>
-      <div class="card span4" style="--dot:var(--water)">
+      <!-- Diesel heater: only shown once one is set up (Setup tab) -->
+      <div class="card span8 hidden" id="htrCard" style="--dot:var(--heat)">
+        <div class="row between"><div class="cap">Diesel heater</div><span id="htrChip" class="chip"></span></div>
+        <div class="htr" id="htr"></div>
+      </div>
+      <div class="card span4" id="waterCard" style="--dot:var(--water)">
         <div class="cap"><svg class="ico"><use href="#i-drop"/></svg>Water</div>
         <div id="tanks" class="tanks"></div>
       </div>
-      <div class="card span4" style="--dot:var(--gas)">
+      <div class="card span4" id="gasCard" style="--dot:var(--gas)">
         <div class="cap" id="ctrlCap">Gas &amp; pumps</div>
         <div class="gasrow" id="gasRow">
           <div class="tank" id="gas"></div>
@@ -278,6 +298,19 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <p class="muted small">Sync the shunt state of charge when you know the battery is full.</p>
         <button class="btn" id="soc100">Set state of charge to 100%</button>
       </div>
+      <div class="card span12" style="--dot:var(--heat)">
+        <div class="cap">Diesel heater</div>
+        <p class="muted small">Bluetooth works with heaters that use the <i>AirHeaterBLE</i> app (the hub uses the same protocol). Close the app on your phone first: the heater takes one Bluetooth connection at a time. Use <i>Find nearby</i> to get its address. The 433 MHz option needs a CC1101 module in the hub box and isn't built yet.</p>
+        <div class="form" style="align-items:end">
+          <div><label>Connection</label><select id="htLink"><option value="0">No heater</option><option value="1">Bluetooth (AirHeaterBLE)</option><option value="2">433 MHz remote (not built yet)</option></select></div>
+          <div><label>Bluetooth address</label><input id="htAddr" placeholder="aa:bb:cc:dd:ee:ff" autocomplete="off" spellcheck="false"></div>
+          <div><label>Passkey (from the app)</label><input id="htPass" inputmode="numeric" maxlength="4" placeholder="1234"></div>
+          <div><button class="btn primary" id="htSave">Save</button></div>
+        </div>
+        <div class="row" style="margin-top:8px"><button class="btn" id="htScan">Find nearby</button><button class="btn" id="htLogBtn">Show log</button></div>
+        <div id="htSeen" class="small" style="margin-top:6px"></div>
+        <pre id="htLog" class="hidden"></pre>
+      </div>
       <div class="card span12">
         <div class="cap">BMPRO OdysseyLink (Bluetooth)</div>
         <p class="muted small">Enter the OdysseyLink's Bluetooth address and press Connect; the hub remembers it. With <code>bmproExplorer</code> on, every frame is logged here &ndash; switch pumps in the Odyssey app and watch what changes.</p>
@@ -359,6 +392,12 @@ function tempColor(i, c) {
   }
   return `var(${s[s.length - 1][1]})`;
 }
+// Diesel heater (same wording as the touchscreen, CaravanModel.cpp)
+const HTR_PHASE = ["Off", "Heating up", "Running", "Cooling down"];
+const HTR_ERR = { 1:"Didn't start (E-01)", 2:"Out of fuel (E-02)", 3:"Supply voltage fault (E-03)", 4:"Outlet sensor fault (E-04)",
+  5:"Inlet sensor fault (E-05)", 6:"Fuel pump fault (E-06)", 7:"Fan fault (E-07)", 8:"Glow plug fault (E-08)", 9:"Overheated (E-09)",
+  10:"Overheat sensor fault (E-10)" };
+let htrPend = null;  // a tapped set point shows straight away; the hub's status catches up
 function socColor(s) { return s >= 50 ? "var(--charge)" : s >= 25 ? "var(--warn)" : "var(--alarm)"; }
 function localTime(ts) { if (!ts) return "--"; return new Date(ts * 1000).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }); }
 
@@ -428,6 +467,8 @@ function render() {
       <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? Math.round(t.c) + "°" : "--"}</span>
       <span class="muted small">${t.on ? `&nbsp;↓${Math.round(t.lo)}° ↑${Math.round(t.hi)}°` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
 
+  renderHeater();
+
   $("#tanks").innerHTML = S.tank.map((t, i) => {
     const bad = i === 2 ? t.p > 85 : t.p < 15, warn = i === 2 ? t.p > 70 : t.p < 30;
     const c = !t.on ? "var(--dim)" : bad ? "var(--alarm)" : warn ? "var(--warn)" : i === 2 ? "var(--muted)" : "var(--water)";
@@ -458,6 +499,40 @@ function render() {
 
   const age = Math.round((Date.now() - lastMsg) / 1000);
   $("#updated").textContent = S.ts ? `Updated ${localTime(S.ts)}` : `Updated ${age}s ago`;
+}
+
+function renderHeater() {
+  const h = S.htr, show = !!h && h.ln > 0;
+  $("#htrCard").classList.toggle("hidden", !show);
+  for (const id of ["#waterCard", "#gasCard"]) { $(id).classList.toggle("span4", !show); $(id).classList.toggle("span6", show); }
+  if (!show) return;
+  const ble = h.ln === 1, rf = h.ln === 2, lost = ble && !h.on, st = ble && h.on, fault = st && h.err > 0;
+  const running = h.ph === 1 || h.ph === 2, lit = running || h.ph === 3;
+  const tone = lost ? "var(--dim)" : fault ? "var(--alarm)" : h.ph === 2 ? "var(--heat)" : h.ph === 1 ? "var(--warn)" : h.ph === 3 ? "var(--water)" : "var(--muted)";
+  const chip = $("#htrChip");
+  chip.textContent = lost ? "Not connected" : fault ? "Fault" : HTR_PHASE[h.ph] || "Off";
+  chip.style.color = tone; chip.style.background = `color-mix(in srgb, ${tone} 22%, var(--card))`;
+  const sub = lost ? "Looking for the heater over Bluetooth" : fault ? HTR_ERR[h.err] || "Heater fault"
+    : rf ? (running ? "Start sent by remote" : "Stop sent by remote")
+    : h.ph === 1 ? "Glow plug on, lighting" : h.ph === 3 ? "Fan runs on to cool it"
+    : running ? (h.md === 1 ? "Fixed power level" : "Holding the set temperature") : "Tap to start";
+  const pend = htrPend && Date.now() - htrPend.t < 4000 ? htrPend : null;
+  const lvl = h.md === 1, v = lvl ? (pend && pend.k === "level" ? pend.v : h.lv) : (pend && pend.k === "temp" ? pend.v : h.st);
+  const rc = transport?.kind !== "cloud" || META.rc, dis = rc ? "" : "disabled";
+  const pc = h.ph === 3 ? "var(--water)" : h.ph === 1 ? "var(--warn)" : "var(--heat)";
+  const read = (cap, val, col) => `<div><div class="muted small">${cap}</div><div class="mid" style="color:${col}">${val}</div></div>`;
+  $("#htr").innerHTML = `
+    <button class="pwr ${lit ? "on" : ""}" style="--c:${pc}" data-h="pwr" ${dis} aria-label="${running ? "Stop" : "Start"} the heater"><svg class="ico"><use href="#i-pwr"/></svg></button>
+    <div><div class="mid" style="color:${fault ? "var(--alarm)" : lost ? "var(--dim)" : "var(--text)"}">${lost ? "Not connected" : fault ? "Fault" : running ? "On" : "Off"}</div>
+      <div class="small" style="color:${fault ? "var(--alarm)" : "var(--muted)"}">${esc(sub)}</div></div>
+    <div class="set ${lost ? "dim" : ""}"><button class="btn" data-h="dn" ${dis} aria-label="Lower">−</button>
+      <div class="v" style="color:${lvl ? "var(--heat)" : tempColor(0, v)}">${v}${lvl ? `<small>/ 10</small>` : `°<small>set</small>`}</div>
+      <button class="btn" data-h="up" ${dis} aria-label="Higher">+</button></div>
+    <div class="seg ${lost ? "dim" : ""}"><button data-h="mt" class="${lvl ? "" : "on"}" ${dis}>Thermostat</button><button data-h="ml" class="${lvl ? "on" : ""}" ${dis}>Power level</button></div>
+    <div class="reads">${rf ? `<span class="muted small" style="grid-column:1/-1">433 MHz remote: the heater doesn't report back</span>`
+      : st ? read("Cabin", `${Math.round(h.cab)}°`, tempColor(0, h.cab)) + read("Heater", `${Math.round(h.hx)}°`, h.hx >= 60 ? "var(--heat)" : "var(--text)")
+           + read("Supply", `${h.v.toFixed(1)} V`, h.v > 0 && h.v < 11.5 ? "var(--warn)" : "var(--text)")
+      : read("Cabin", "--", "var(--dim)") + read("Heater", "--", "var(--dim)") + read("Supply", "--", "var(--dim)")}</div>`;
 }
 
 function renderMeta() {
@@ -522,6 +597,11 @@ function onMessage(msg) {
     case "victron_seen": $("#vicSeen").innerHTML = msg.list.length ? msg.list.map((d) =>
         `<div><code>${esc(d.addr)}</code> ${esc(d.type)} model ${esc(d.model)}, ${d.rssi} dBm${d.slot >= 0 ? ` &ndash; <b>decoding as ${esc(META.sol[d.slot])}</b>` : ""}</div>`).join("")
         : "No Victron broadcasts heard yet - check Instant readout is enabled."; break;
+    case "heater_seen": $("#htSeen").innerHTML = msg.list.length ? msg.list.map((d) => `
+      <div class="row between" style="padding:4px 0"><span><b>${esc(d.name || "Unnamed")}</b> <code>${esc(d.addr)}</code> <span class="muted">${d.rssi} dBm</span></span>
+        <button class="btn" data-htaddr="${esc(d.addr)}">Use</button></div>`).join("")
+      : `<span class="muted">No heater heard yet - make sure it has power and the phone app is closed, then try again in 30 s.</span>`; break;
+    case "heater_log": $("#htLog").textContent = msg.log || "(empty)"; $("#htLog").classList.remove("hidden"); break;
     case "ok": toast("Saved"); break;
     case "tank_cal": toast("Tank calibration saved"); break;
     case "event": if (msg.type === "raised") toast(`⚠ ${msg.msg}`); break;
@@ -586,6 +666,7 @@ function demoTransport() {
     tank:[{ on:true, p:72 }, { on:true, p:18 }, { on:true, p:41 }], gas:{ on:true, p:63 },
     pump:[{ on:true, sn:true, lk:false, rt:94 }, { on:false, sn:false, lk:false, rt:0 }],
     inv:{ on:false, ac:false }, ac:{ on:true, pre:0 },
+    htr:{ ln:1, on:true, ph:2, md:0, st:22, lv:6, cab:20.4, hx:138, v:13.3, err:0 },
     alerts:[{ id:7, sev:2, ack:false, since: Math.floor(Date.now() / 1000) - 1500, msg:"Fridge warm: 7.4°C (> 6.0)" }],
     net:{ wifi:true, cloud:true, ip:"192.168.1.42" },
     wx:{ ok:true, up: Math.floor(Date.now() / 1000) - 720, src:2, pl:"Mudgee NSW", t:27.4, c:2, day:true, w:14.2, g:31,
@@ -601,8 +682,20 @@ function demoTransport() {
   }, 50);
   // Mains chargers "plugged in" for 20 s of every 40 s, so the Mains row can be
   // seen coming and going (the hub only reports it while bulk charging).
-  let demoT = 0;
+  let demoT = 0, htrT = 0;
+  // Pretend heater, sped up like the hub's fake-data one: 40 s to light, 30 s to cool.
+  const heaterTick = () => {
+    const h = st.htr, amb = 15, near = (v, t, k) => +(v + (t - v) * k).toFixed(1);
+    htrT++;
+    if (h.ph === 1 && htrT >= 40) { h.ph = 2; htrT = 0; }
+    if (h.ph === 3 && htrT >= 30) { h.ph = 0; htrT = 0; }
+    const out = h.md === 1 ? h.lv / 10 : Math.min(1, Math.max(0.15, (h.st - h.cab + 1) / 4));
+    h.hx = near(h.hx, h.ph === 1 ? 90 : h.ph === 2 ? 80 + 90 * out : amb, h.ph === 3 ? 0.12 : 0.08);
+    h.cab = near(h.cab, h.ph === 2 ? Math.max(amb, h.md === 1 ? amb + 4 + 1.6 * h.lv : h.st + 0.4) : amb, h.ph === 2 ? 0.02 : 0.008);
+    st.tmp[0].c = h.cab;
+  };
   const mainsTick = () => {
+    heaterTick();
     const on = demoT++ % 40 < 20, b = st.bat;
     b.acon = on; b.aca = on ? 116 + Math.round(4 * Math.sin(demoT / 3)) : 0;
     b.chg = +(b.sa + b.ca + b.aca).toFixed(1); b.a = +(b.chg - b.load).toFixed(1); b.ttg = on ? 38 : 52;
@@ -622,6 +715,19 @@ function demoTransport() {
     else if (c.c === "rules_reset") onMessage({ t:"rules", rules: defaults });
     else if (c.c === "display_set") onMessage({ t:"meta", ss: c.sleep });
     else if (c.c === "remote_control") onMessage({ t:"meta", rc: c.on });
+    else if (c.c === "heater") {
+      const h = st.htr;
+      if (c.on === true && h.ph === 3) { toast("Heater is still cooling down - try again in a moment"); return; }
+      if (c.mode) h.md = c.mode === "level" ? 1 : 0;
+      if (c.temp !== undefined) { h.st = c.temp; if (!c.mode) h.md = 0; }
+      if (c.level !== undefined) { h.lv = c.level; if (!c.mode) h.md = 1; }
+      if (c.on === true && h.ph !== 1 && h.ph !== 2) { h.ph = 1; h.err = 0; htrT = 0; }
+      if (c.on === false && (h.ph === 1 || h.ph === 2)) { h.ph = 3; htrT = 0; }
+      onMessage(st); return;
+    }
+    else if (c.c === "heater_set") { st.htr.ln = c.link; onMessage(st); }
+    else if (c.c === "heater_seen") { onMessage({ t:"heater_seen", list:[{ addr:"a4:c1:38:5e:12:9f", name:"AirHeaterBLE", rssi:-71, age:2 }] }); return; }
+    else if (c.c === "heater_log") { onMessage({ t:"heater_log", log:"Demo data: the heater is simulated" }); return; }
     else { toast("Demo: " + JSON.stringify(c)); return; }
     toast("Saved (demo)");
   } };
@@ -640,6 +746,34 @@ $("#ctrls").addEventListener("click", (e) => {
   if (b.dataset.act === "ac") { send(S.ac.on ? { c:"aircon", off:true } : { c:"aircon", preset: +($("#acSel").value || 0) }); }
 });
 $("#acGo").onclick = () => { if ($("#acSel").value !== "") send({ c:"aircon", preset: +$("#acSel").value }); };
+$("#htr").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-h]"); if (!b || !S || !S.htr) return;
+  const h = S.htr, a = b.dataset.h, lvl = h.md === 1;
+  if (a === "pwr") send({ c:"heater", on: !(h.ph === 1 || h.ph === 2) });
+  if (a === "mt" || a === "ml") { htrPend = null; send({ c:"heater", mode: a === "ml" ? "level" : "temp" }); }
+  if (a === "up" || a === "dn") {
+    const k = lvl ? "level" : "temp", pend = htrPend && htrPend.k === k && Date.now() - htrPend.t < 4000;
+    const v = (pend ? htrPend.v : lvl ? h.lv : h.st) + (a === "up" ? 1 : -1);
+    if (lvl ? v < 1 || v > 10 : v < 8 || v > 36) return;
+    htrPend = { k, v, t: Date.now() }; send({ c:"heater", [k]: v }); renderHeater();
+  }
+});
+$("#htSave").onclick = () => {
+  const link = +$("#htLink").value, addr = $("#htAddr").value.trim().toLowerCase(), pass = +($("#htPass").value || 1234);
+  if (link === 1 && !/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(addr)) { toast("Bluetooth address must look like aa:bb:cc:dd:ee:ff"); return; }
+  send({ c:"heater_set", link, addr, pass });
+};
+$("#htScan").onclick = () => { send({ c:"heater_seen" }); setTimeout(() => send({ c:"heater_seen" }), 6000); };
+$("#htLogBtn").onclick = () => send({ c:"heater_log" });
+$("#htSeen").addEventListener("click", (e) => { const b = e.target.closest("button[data-htaddr]"); if (!b) return;
+  $("#htAddr").value = b.dataset.htaddr; $("#htLink").value = "1"; toast("Now press Save"); });
+// The heater's saved settings come from the hub's config (only on the caravan Wi-Fi).
+async function loadHeaterCfg() {
+  if (transport?.kind !== "local") { if (S?.htr) $("#htLink").value = S.htr.ln; return; }
+  try { const c = await (await fetch("/api/config")).json();
+    if (c.htr) { $("#htLink").value = c.htr.link; $("#htAddr").value = c.htr.addr || ""; $("#htPass").value = c.htr.pass ?? 1234; } } catch (e) {}
+}
+document.querySelector('nav button[data-tab="setup"]').addEventListener("click", loadHeaterCfg);
 $("#ackAll").onclick = () => send({ c:"ack" });
 $("#soc100").onclick = () => { if (confirm("Set battery state of charge to 100%?")) send({ c:"soc_set", soc:100 }); };
 $("#calRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-cal]"); if (!b) return;

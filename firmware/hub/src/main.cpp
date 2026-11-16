@@ -14,6 +14,7 @@
 #include "CaravanModel.h"
 #include "Comms.h"
 #include "Demo.h"
+#include "Heater.h"
 #include "HubConfig.h"
 #include "Inputs.h"
 #include "Outputs.h"
@@ -132,6 +133,40 @@ static bool switchPump(int i, bool on, const char **why) {
   return gPump[i].set(on, why);
 }
 
+// Diesel heater: whichever driver the config picks (the simulated one in the
+// fake-data build). nullptr = none set up, or Bluetooth in the listen-only
+// survey build (which must never connect to anything).
+static HeaterDriver *heaterDriver() {
+  if (demo::kOn) return &demo::heater();
+  switch (gConfig.heater.link) {
+    case cv::HTR_LINK_BLE: return survey::kOn ? nullptr : &gHeaterBle;
+    case cv::HTR_LINK_RF: return &gHeater433;
+    default: return nullptr;
+  }
+}
+
+static void startHeater() {
+  if (demo::kOn || survey::kOn) return;
+  if (gConfig.heater.link == cv::HTR_LINK_BLE) gHeaterBle.setTarget(gConfig.heater.addr, gConfig.heater.passkey);
+  else gHeaterBle.release();  // switched away from Bluetooth: let go of the heater
+}
+
+static void heaterLoop() {
+  static uint8_t lastErr = 0;
+  HeaterDriver *d = heaterDriver();
+  if (!d) {
+    gState.htr = cv::Heater();
+    gState.htr.link = demo::kOn ? cv::HTR_LINK_BLE : gConfig.heater.link;
+    return;
+  }
+  gState.htr.link = demo::kOn ? cv::HTR_LINK_BLE : gConfig.heater.link;
+  d->loop(gState);
+  // A heater fault (out of fuel, didn't light...) goes to the phone once.
+  uint8_t err = gState.htr.hasStatus() ? gState.htr.err : 0;
+  if (err && err != lastErr) gNotify.push("Diesel heater", cv::heaterErrorText(err), cv::SEV_ALARM);
+  lastErr = err;
+}
+
 // ---------------------------------------------------------------- helpers
 static void applyOutputConfig() {
   for (int i = 0; i < cv::NUM_PUMPS; i++)
@@ -209,7 +244,7 @@ static uint32_t gRestartAtMs = 0;
 // like {"c":"pump","i":0,"on":true}. See docs/PROTOCOL.md for the full list.
 static bool isMutating(const char *c) {
   static const char *readOnly[] = {"state", "hello", "rules_get", "sensors", "bmpro_log", "victron_seen", "ble_sensors", "level_status",
-                                   "bmpro_devices", "ac_learn_status", "ping"};
+                                   "bmpro_devices", "ac_learn_status", "ping", "heater_seen", "heater_log"};
   for (auto r : readOnly)
     if (strcmp(c, r) == 0) return false;
   return true;
@@ -282,6 +317,44 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     if (!gAircon.hasCode(p)) return replyErr(reply, "IR code not learned yet");
     setAircon(p);
     stateChanged();
+
+  // ---------------- diesel heater
+  } else if (!strcmp(c, "heater")) {
+    // {"c":"heater","on":true} {"mode":"temp"|"level"} {"temp":22} {"level":6}
+    cv::HeaterCmd hc;
+    const char *why = nullptr;
+    if (!cv::heaterCmdFromJson(cmd, hc, &why)) return replyErr(reply, why);
+    HeaterDriver *d = heaterDriver();
+    if (!d)
+      return replyErr(reply, survey::kOn && gConfig.heater.link == cv::HTR_LINK_BLE
+                                 ? "Bluetooth survey build: listen-only, nothing is sent to the heater"
+                                 : "No diesel heater set up - add it in Setup on the phone");
+    if (!d->send(hc, gState.htr, &why)) return replyErr(reply, why);
+    stateChanged();
+  } else if (!strcmp(c, "heater_set")) {
+    // {"c":"heater_set","link":1,"addr":"aa:bb:..","pass":1234}  link 0 none, 1 Bluetooth, 2 433 MHz
+    int link = cmd["link"] | (int)gConfig.heater.link;
+    const char *addr = cmd["addr"] | (const char *)gConfig.heater.addr;
+    long pass = cmd["pass"] | (long)gConfig.heater.passkey;
+    if (link < cv::HTR_LINK_NONE || link > cv::HTR_LINK_RF) return replyErr(reply, "bad heater link");
+    if (addr[0] && strlen(addr) != 17) return replyErr(reply, "address must look like aa:bb:cc:dd:ee:ff");
+    if (pass < 0 || pass > 9999) return replyErr(reply, "passkey is 4 digits");
+    gConfig.heater.link = (uint8_t)link;
+    snprintf(gConfig.heater.addr, sizeof(gConfig.heater.addr), "%s", addr);
+    gConfig.heater.passkey = (uint16_t)pass;
+    configChanged();
+    startHeater();
+    stateChanged();
+    reply["t"] = "ok";
+  } else if (!strcmp(c, "heater_seen")) {
+    // Heaters in Bluetooth range (starts listening if needed; passive in the survey build).
+    if (!survey::kOn) gHeaterBle.listen();
+    reply["t"] = "heater_seen";
+    reply["list"] = serialized(survey::kOn ? String("[]") : gHeaterBle.seen());
+  } else if (!strcmp(c, "heater_log")) {
+    reply["t"] = "heater_log";
+    reply["log"] = demo::kOn ? String("Fake-data build: the heater is simulated") : gHeaterBle.log();
+
   } else if (!strcmp(c, "ac_learn")) {
     // slot: -1 = OFF code, 0..n-1 = re-learn existing, n = new preset
     int slot = cmd["slot"] | gConfig.meta.acPresetCount;
@@ -356,6 +429,7 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gConfig.fromJson(cmd["cfg"]);
     if (src == SRC_CLOUD) gConfig.meta.remoteControl = rc;
     applyOutputConfig();
+    startHeater();
     configChanged();
     reply["t"] = "ok";
 
@@ -541,6 +615,7 @@ static void updateLoads(uint32_t now) {
       gNotify.push(gConfig.meta.pumpName[i], "Switched off - maximum run time reached", cv::SEV_WARN);
     }
   }
+  heaterLoop();
   gInverter.loop();
   gState.inv.on = gInverter.isOn();
   gState.inv.acPresent = gInverter.sensed();
@@ -624,6 +699,7 @@ void setup() {
   }
   for (auto s : gConfig.tempSrc)
     if (s == TEMP_BLE) startBleTemps();
+  startHeater();
   if (survey::kOn) {
     survey::begin();  // listen-only Bluetooth logging; the BMPRO link stays off
   } else if (gConfig.usesBmpro()) {

@@ -66,6 +66,13 @@ struct InverterCfg {
   bool useSense = true;
 };
 
+// Diesel heater: how the hub reaches it (cv::HeaterLink). Set from the phone.
+struct HeaterCfg {
+  uint8_t link = cv::HTR_LINK_NONE;
+  char addr[18] = "";      // Bluetooth address of the heater (find it with heater_seen)
+  uint16_t passkey = 1234; // the AirHeaterBLE app's passkey (factory 1234)
+};
+
 struct BatteryCfg {
   uint8_t source = cv::BAT_SRC_BMPRO;  // BMPRO over Bluetooth, or own INA226 shunt
   float capacityAh = 300;
@@ -88,6 +95,7 @@ struct HubConfig {
   VictronCfg victron[cv::NUM_SOLAR];
   LevelCfg level;
   LocationCfg location;
+  HeaterCfg heater;
   char tempAddr[cv::NUM_TEMPS][17] = {};  // DS18B20 ROM as hex, "" = auto-assign
   uint8_t tempSrc[cv::NUM_TEMPS] = {TEMP_WIRED, TEMP_WIRED, TEMP_WIRED};
   char tempBle[cv::NUM_TEMPS][18] = {};   // Bluetooth thermometer address per role
