@@ -3,6 +3,10 @@ package com.caravan.monitor.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -48,10 +52,11 @@ fun AppScaffold(
         contentColor = Surfaces.text,  // not derived from a transparent container
         snackbarHost = snackbarHost,
         bottomBar = {
-            // Black chequer plate with a thin lime pinstripe on top, like the van.
-            Column {
+            // Black chequer plate with a thin lime pinstripe on top, like the van. The
+            // plate stops above the phone's own home/back buttons, which sit on plain dark.
+            Column(Modifier.background(Surfaces.plate)) {
                 Box(Modifier.fillMaxWidth().height(2.dp).background(Accent.lime.copy(alpha = 0.6f)))
-            NavigationBar(Modifier.treadPlate(), containerColor = Color.Transparent) {
+            NavigationBar(Modifier.treadPlate(), containerColor = Color.Transparent, windowInsets = WindowInsets(0, 0, 0, 0)) {
                 NavigationBarItem(colors = itemColors, selected = tab == 0, onClick = { onTab(0) },
                     icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Home") })
                 NavigationBarItem(colors = itemColors, selected = tab == 3, onClick = { onTab(3) },
@@ -65,6 +70,7 @@ fun AppScaffold(
                 NavigationBarItem(colors = itemColors, selected = tab == 2, onClick = { onTab(2) },
                     icon = { Icon(Icons.Filled.Settings, null) }, label = { Text("Setup") })
             }
+                Spacer(Modifier.fillMaxWidth().windowInsetsBottomHeight(NavigationBarDefaults.windowInsets))
             }
         },
     ) { pad ->
