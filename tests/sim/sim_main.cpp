@@ -26,6 +26,22 @@ bool backlightOn() { return true; }
 uint32_t lastTouchMs() { return gNow; }
 }  // namespace board
 
+// No network in the simulator: the display's cloud link is a no-op.
+#include "cloud.h"
+namespace cloud {
+void begin() {}
+bool wifiUp() { return false; }
+bool connected() { return false; }
+void onHubState(JsonDocument &) {}
+void onHubMeta(JsonVariantConst) {}
+void onHubRules(JsonVariantConst) {}
+void onHubReply(const char *, size_t) {}
+void onHubEvent(const char *, size_t) {}
+void onHubPush(JsonObjectConst) {}
+void onHubLink(bool) {}
+bool takeCommand(JsonDocument &) { return false; }
+}  // namespace cloud
+
 // Same resolution as the firmware (board.h); override with
 //   make -C tests/sim RES="-DDISPLAY_HOR_RES=800 -DDISPLAY_VER_RES=480"
 static constexpr int W = board::SCREEN_W, H = board::SCREEN_H;

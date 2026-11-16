@@ -350,7 +350,7 @@ data class Settings(
     val ntfyServer: String = "https://ntfy.sh",
     val ntfyTopic: String = "",
     val ntfyToken: String = "",
-    // Away from the van: the cloud MQTT broker (HiveMQ Cloud). Blank host = off.
+    // Away from the van: the cloud MQTT broker (EMQX Cloud Serverless). Blank host = off.
     val cloudHost: String = "",     // broker address, e.g. abc123.ala.us-east-1.emqxsl.com (or a full wss:// URL)
     val cloudUser: String = "caravan-dash",
     val cloudPass: String = "",

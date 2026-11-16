@@ -3,32 +3,45 @@
 Starlink uses **CGNAT**: there's no public IP address, so you can't port-forward into the caravan. Instead, the hub makes an **outbound**, encrypted connection to an MQTT broker, and your phone or laptop connects to the same broker. Nothing in the van is exposed to the internet.
 
 ```
-Hub ──TLS 8883──▶ MQTT broker ◀──WSS 8884── dashboard (web/index.html on phone/laptop)
-Hub ──HTTPS────▶ ntfy.sh ──push──▶ ntfy app on your phone
+Hub ──RS485──▶ Display ──TLS 8883──▶ MQTT broker (EMQX) ◀──WSS 8084── phone app / web dashboard
+                      └──HTTPS────▶ ntfy.sh ──push──▶ ntfy app on your phone
 ```
 
-The system works fully without any of this. The touchscreen and the local web page (`http://caravan.local`) only need the hub.
+The **display board** makes the internet connections. The classic ESP32 hub hasn't enough RAM for encrypted (TLS) connections next to Wi-Fi and Bluetooth, while the display's ESP32-S3 has 8 MB of PSRAM. The hub sends the display its data, alert events and push alerts over RS485, and runs the commands the display relays from the cloud (still subject to the remote-control switch). Both boards build with the same `firmware/hub/src/secrets.h`, so the display joins the same Wi-Fi and uses the same broker and ntfy topic. Set `CLOUD_ON_DISPLAY 0` in `secrets.h` only for a hub with no display.
 
-## 1. MQTT broker (HiveMQ Cloud, free tier)
+The system works fully without any of this. The touchscreen, the phone app on the van Wi-Fi and the local web page (`http://caravan.local`) only need the hub.
 
-1. Sign up at <https://www.hivemq.com/mqtt/cloud-broker/> and create a **Serverless (free)** cluster.
-2. Note its **cluster URL** (e.g. `abc123.s1.eu.hivemq.cloud`). Its ports are:
+## 1. MQTT broker (EMQX Cloud Serverless, free)
+
+HiveMQ Cloud no longer has a free plan, so we use **EMQX Cloud Serverless**. Its free allowance (1 million session-minutes and 1 GB of traffic a month) covers the hub being online all month plus a phone checking in. Set the spending limit to **$0** so it can never charge you.
+
+1. Sign up at <https://www.emqx.com/en/cloud> and create a **Serverless** deployment. Pick the region closest to you (Asia-Pacific for Australia) and set the **spend limit to $0**.
+2. Open the deployment's **Overview**. Note the **Address** (e.g. `abc123.ala.asia-southeast1.emqxsl.com`). Its ports are:
    - **8883:** MQTT over TLS, used by the hub.
-   - **8884:** MQTT over secure WebSockets, used by the dashboard at `wss://<cluster-url>:8884/mqtt`.
-3. Under *Access management*, create two credentials:
-   - `caravan-hub`: for the hub's `secrets.h`.
-   - `caravan-dash`: for the dashboard. It's separate so you can revoke it without re-flashing the hub.
-4. Put the hub's credentials in `firmware/hub/src/secrets.h`:
+   - **8084:** MQTT over secure WebSockets (path `/mqtt`), used by the phone app and the web dashboard.
+3. Go to **Access Control → Authentication → Add** and create two users. Make up a long random password for each, for example in PowerShell on the Surface:
+   ```powershell
+   -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 24 | % {[char]$_})
+   ```
+   - `caravan-hub`: goes in the hub's `secrets.h`.
+   - `caravan-dash`: goes in the phone app and the web dashboard. It's separate so you can change it without re-flashing the hub.
+
+   Keep the passwords somewhere safe (a password manager). Don't paste them into chats or commit them.
+4. Put the hub's details in `firmware/hub/src/secrets.h` (this file is git-ignored):
    ```c
-   #define MQTT_HOST "abc123.s1.eu.hivemq.cloud"
+   #define MQTT_HOST "abc123.ala.asia-southeast1.emqxsl.com"
    #define MQTT_PORT 8883
    #define MQTT_USER "caravan-hub"
    #define MQTT_PASS "…"
    ```
+   Then flash the hub **and the display** (the display reads the same file). The display's serial log (COM3) shows `[wifi] connected` and then `[cloud] connected` within a few seconds; `[cloud] failed rc=4` or `rc=5` means a wrong username or password. In the EMQX console, **Clients** then lists `caravan-display-…`.
+5. In the phone app: **Setup → Away from the van (cloud)**. Enter the Address (just the host name; the app adds `wss://…:8084/mqtt`), username `caravan-dash` and its password, then **Save**. Turn the phone's Wi-Fi off to check: Home shows an "Away from the van" strip and live numbers.
 
-The hub trusts ISRG Root X1 (Let's Encrypt: ntfy.sh, HiveMQ Cloud) and DigiCert Global Root G2 (EMQX Cloud Serverless), see `root_ca.h`. If you use a different broker with a different CA, replace that certificate.
+The app picks the connection by itself: on the van Wi-Fi it talks to the hub directly; anywhere else it goes through EMQX. It looks for the hub again every 30 s, so it switches back as soon as you're at the van.
 
-Any MQTT broker with TLS and WebSockets works: Mosquitto on a VPS, EMQX Cloud, or a Home Assistant add-on reached through Nabu Casa.
+The hub trusts DigiCert Global Root G2 (EMQX Cloud) and ISRG Root X1 (Let's Encrypt: ntfy.sh, HiveMQ Cloud), see `root_ca.h`. If you use a different broker with a different CA, replace that certificate.
+
+Any MQTT broker with TLS and WebSockets works: Mosquitto on a VPS, HiveMQ, or a Home Assistant add-on. For a broker other than EMQX, give the app and web page a full `wss://host:port/path` URL.
 
 ## 2. Remote dashboard
 
@@ -41,7 +54,7 @@ Open it, go to **Setup** → *Cloud connection*, and enter:
 
 | Field | Value |
 |---|---|
-| Broker WebSocket URL | `wss://<cluster-url>:8884/mqtt` |
+| Broker address | the EMQX Address, e.g. `abc123.ala.asia-southeast1.emqxsl.com` (or a full `wss://` URL for another broker) |
 | Device id | `caravan` (the `DEVICE_ID` in `secrets.h`) |
 | Username / password | the `caravan-dash` credential |
 

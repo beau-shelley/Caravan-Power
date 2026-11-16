@@ -31,6 +31,8 @@ class DisplayLink {
   // Queue a message for the display from another task (hold StateLock).
   void queueReply(const String &json) { pending_ = json; }
   bool displayOnline() const { return lastRxMs_ && millis() - lastRxMs_ < 10000; }
+  // Queue an alert event / push alert for the display to send on (any task).
+  void queueOut(JsonDocument &doc);
 
  private:
   HardwareSerial *ser_ = nullptr;
@@ -40,6 +42,10 @@ class DisplayLink {
   uint32_t nextStateMs_ = 0, nextPollMs_ = 0, lastRxMs_ = 0;
   volatile bool configDirty_ = false;
   String pending_;
+  struct LinkOut {
+    char json[320];
+  };
+  QueueHandle_t outQ_ = nullptr;
   void write(const char *buf, size_t n);
 };
 
