@@ -7,6 +7,7 @@
 #include <LittleFS.h>
 #include <Wire.h>
 
+#include "AcCharge.h"
 #include "AlertEngine.h"
 #include "Bmpro.h"
 #include "CaravanModel.h"
@@ -26,6 +27,7 @@ using namespace hub;
 
 static cv::State gState;
 static cv::AlertEngine gAlerts;
+static cv::AcChargeDetector gAcCharge;  // mains chargers, inferred by elimination
 static VictronPort gVictron[cv::NUM_SOLAR];
 static TempSensors gTemps;
 static TankInputs gTanks;
@@ -651,6 +653,10 @@ void loop() {
     updateLoads(now);
     gNet.loop(gState);
     if (demo::kOn) demo::tick(gState, now);
+    // Mains chargers have no sensor: whatever charge the BMPRO and Victrons
+    // don't explain is theirs. Runs every loop, after the battery drivers, so
+    // chargeA / loadA always include it. Uses the BMPRO load figure when known.
+    gAcCharge.update(gState, now, demo::kOn ? demo::loadA() : gBmproOn ? gBmpro.loadA() : -1);
 
     static uint32_t nextEval = 0;
     if ((int32_t)(now - nextEval) >= 0) {

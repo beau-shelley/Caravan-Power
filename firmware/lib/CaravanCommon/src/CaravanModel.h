@@ -46,9 +46,11 @@ struct Battery {
   float soc = 0;      // 0..100 %
   int32_t ttgMin = -1;  // time-to-go (discharging) or time-to-full (charging), -1 unknown
   float solarA = 0;   // sum of all solar controllers
-  float chargerA = 0; // mains/DC-DC charger (BMPRO 35A) if measured
+  float chargerA = 0; // BMPRO charger output (its solar input + DC-DC from the vehicle)
+  float acA = 0;      // mains chargers, inferred by elimination (see AcCharge.h)
+  bool acOn = false;  // mains bulk charging detected (debounced); Home shows a tile
   float chargeA = 0;  // total charging sources
-  float loadA = 0;    // derived: chargeA - a
+  float loadA = 0;    // measured, or derived: chargeA - a
 };
 
 struct Temp {

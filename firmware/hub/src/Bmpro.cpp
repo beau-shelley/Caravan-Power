@@ -32,7 +32,7 @@ volatile bool gDecodedAny = false;
 
 // Decoded data handed from the BLE task to loop(), with arrival times.
 BmproData gData;
-uint32_t gBatMs = 0, gChgMs = 0, gTankMs[cv::NUM_TANKS] = {}, gPumpMs[cv::NUM_PUMPS] = {}, gGasMs = 0;
+uint32_t gBatMs = 0, gChgMs = 0, gTankMs[cv::NUM_TANKS] = {}, gPumpMs[cv::NUM_PUMPS] = {}, gGasMs = 0, gLoadMs = 0;
 
 struct WriteReq {
   char uuid[40];
@@ -116,6 +116,11 @@ void applyDecoded(const BmproData &in) {
     gData.chargerValid = true;
     gData.chargerA = in.chargerA;
     gChgMs = now;
+  }
+  if (in.loadValid) {
+    gData.loadValid = true;
+    gData.loadA = in.loadA;
+    gLoadMs = now;
   }
   for (int i = 0; i < cv::NUM_TANKS; i++)
     if (in.tankValid[i]) {
@@ -240,6 +245,13 @@ void Bmpro::connect(const char *addr) {
 
 bool Bmpro::connected() const { return gClient && gClient->isConnected(); }
 bool Bmpro::decoded() const { return gDecodedAny; }
+
+float Bmpro::loadA() const {
+  xSemaphoreTake(gMux, portMAX_DELAY);
+  float a = gData.loadValid && millis() - gLoadMs < 30000 ? gData.loadA : -1;
+  xSemaphoreGive(gMux);
+  return a;
+}
 
 void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
   constexpr uint32_t STALE_MS = 30000;

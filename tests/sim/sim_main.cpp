@@ -186,6 +186,22 @@ int main() {
   s.temp[cv::TEMP_FRIDGE].c = 3.4f;
   ui::showPage(ui::PAGE_SETTINGS);
   shot("07-settings");
+  // Mains chargers bulk charging: Home grows a Mains row
+  s.bat.acOn = true;
+  s.bat.acA = 118.4f;
+  s.bat.chargeA = s.bat.solarA + s.bat.acA;
+  s.bat.a = s.bat.chargeA - s.bat.loadA;
+  s.bat.ttgMin = 38;
+  app::stateDirty = true;
+  ui::showPage(ui::PAGE_HOME);
+  shot("13-home-mains");
+  ui::showPage(ui::PAGE_POWER);
+  shot("14-power-mains");
+  s.bat.acOn = false;
+  s.bat.acA = 0;
+  s.bat.chargeA = s.bat.solarA;
+  s.bat.a = s.bat.chargeA - s.bat.loadA;
+  app::stateDirty = true;
   ui::showPage(ui::PAGE_HOME);
   ui::openWeatherForTest();
   shot("09-forecast");

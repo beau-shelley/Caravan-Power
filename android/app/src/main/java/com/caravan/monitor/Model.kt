@@ -9,6 +9,9 @@ import org.json.JSONObject
 data class Battery(
     val on: Boolean, val v: Double, val a: Double, val soc: Double, val ttgMin: Int,
     val solarA: Double, val chargerA: Double, val loadA: Double,
+    // Mains chargers (2 x 60 A): no sensor, the hub infers them from what the
+    // BMPRO and Victrons don't explain. acOn = bulk mains charging detected.
+    val acA: Double = 0.0, val acOn: Boolean = false,
 )
 
 data class Solar(val on: Boolean, val w: Double, val yieldKwh: Double, val peakW: Double, val err: Int)
@@ -41,6 +44,7 @@ data class HubState(
                     on = b.optBoolean("on"), v = b.optDouble("v", 0.0), a = b.optDouble("a", 0.0),
                     soc = b.optDouble("soc", 0.0), ttgMin = b.optInt("ttg", -1),
                     solarA = b.optDouble("sa", 0.0), chargerA = b.optDouble("ca", 0.0), loadA = b.optDouble("load", 0.0),
+                    acA = b.optDouble("aca", 0.0), acOn = b.optBoolean("acon"),
                 ),
                 sol = o.optJSONArray("sol").objects().map {
                     Solar(it.optBoolean("on"), it.optDouble("w", 0.0), it.optDouble("yt", 0.0), it.optDouble("mx", 0.0), it.optInt("err"))

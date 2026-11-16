@@ -62,7 +62,7 @@ constexpr uint32_t BG = 0x0B1220, RAIL = 0x0E1626, CARD = 0x131C2E, BORDER = 0x1
 constexpr uint32_t TEXT = 0xE2E8F0, MUTED = 0x94A3B8, DIM = 0x475569;
 constexpr uint32_t SOLAR = 0xFBBF24, CHARGE = 0x34D399, LOAD = 0xF87171, WATER = 0x38BDF8;
 constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0x22D3EE, WARN = 0xF59E0B, ALARM = 0xEF4444;
-constexpr uint32_t OK = 0x22C55E, TILE = 0x1A2438, GAS = 0xFB923C;
+constexpr uint32_t OK = 0x22C55E, TILE = 0x1A2438, GAS = 0xFB923C, MAINS = 0x60A5FA;
 }  // namespace col
 
 // ---------------------------------------------------------------- helpers (ui_common.cpp)

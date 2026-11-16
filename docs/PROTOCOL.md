@@ -22,7 +22,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | Key | Meaning |
 |---|---|
 | `ts`, `tz` | unix time, local UTC offset (s) |
-| `bat` | `on`, `src` (1 shunt, 2 BMPRO), `v`, `a` (+charge), `soc`, `ttg` (min, -1 idle), `sa` solar A, `ca` charger A, `chg` total charge A, `load` load A |
+| `bat` | `on`, `src` (1 shunt, 2 BMPRO), `v`, `a` (+charge), `soc`, `ttg` (min, -1 idle), `sa` solar A, `ca` BMPRO charger A (its solar + DC-DC), `aca` mains chargers A (inferred, 0 unless bulk), `acon` mains bulk charging detected (debounced), `chg` total charge A incl. mains, `load` load A |
 | `sol[2]` | `on`, `pv` V (-1 when not available, i.e. over Bluetooth), `w` W, `bv`, `ba`, `cs` (VE.Direct charge state), `err`, `yt` kWh today, `mx` peak W today, `ytot` |
 | `tmp[3]` | inside, outside, fridge: `on`, `c`, `lo`, `hi` (today), `b` sensor battery % (Bluetooth, if reported) |
 | `tank[3]` | `on`, `p` % |

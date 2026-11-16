@@ -64,6 +64,7 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
         }
 
         BatteryCard(s)
+        if (s.bat.on && s.bat.acOn) MainsCard(s)
         SolarCard(s, meta)
         TanksCard(s, meta)
         TempsCard(s, meta)
@@ -99,9 +100,28 @@ private fun BatteryCard(s: HubState) {
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth()) {
             Stat("Solar", "${fmt1(b.solarA)} A", Modifier.weight(1f))
-            Stat("Charger", "${fmt1(b.chargerA)} A", Modifier.weight(1f))
+            Stat("BMPRO", "${fmt1(b.chargerA)} A", Modifier.weight(1f))
             Stat("Load", "${fmt1(b.loadA)} A", Modifier.weight(1f))
         }
+    }
+}
+
+// Only shown while the hub detects bulk mains charging (it debounces, so this
+// doesn't flicker). The figure is worked out, not measured.
+@Composable
+private fun MainsCard(s: HubState) {
+    val b = s.bat
+    SectionCard("Mains charging", Accent.mains) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text("${b.acA.toInt()} A", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Accent.mains)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "${(b.acA * (if (b.v > 0) b.v else 13.6)).toInt()} W · bulk · estimated",
+                Modifier.padding(bottom = 4.dp), style = MaterialTheme.typography.bodySmall, color = Accent.muted,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Bar(b.acA / 120.0, Accent.mains)  // 2 x 60 A chargers
     }
 }
 

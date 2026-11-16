@@ -21,6 +21,9 @@ void begin(cv::State &s);
 // Call every loop after the network has stamped the clock; it rewrites the
 // sensor parts of the state once a second.
 void tick(cv::State &s, uint32_t nowMs);
+// Fake 12 V load current, standing in for the BMPRO's load reading so the
+// mains-charger inference has a measured load to work with.
+float loadA();
 
 }  // namespace demo
 }  // namespace hub

@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <string>
 
+#include "AcCharge.h"
 #include "AlertEngine.h"
 #include "CaravanModel.h"
 #include "LinkCodec.h"
@@ -487,7 +488,64 @@ static void testWeather() {
   CHECK(!strcmp(gp, "/v1/search?count=6&language=en&countryCode=AU&name=Port%20Macquarie%27s"));
 }
 
+static void testAcCharge() {
+  State s;
+  s.bat.online = true;
+  s.bat.solarA = 20;   // Victrons
+  s.bat.chargerA = 5;  // BMPRO
+  AcChargeDetector d;
+  uint32_t t = 0;
+  auto run = [&](float netA, float loadA, uint32_t ms) {
+    s.bat.a = netA;
+    for (uint32_t end = t + ms; t < end; t += 100) d.update(s, t, loadA);
+  };
+  // Solar + BMPRO explain everything: no mains.
+  run(15, 10, 120000);
+  CHECK(!s.bat.acOn);
+  NEAR(s.bat.acA, 0, 0.01);
+  NEAR(s.bat.chargeA, 25, 0.01);
+  NEAR(s.bat.loadA, 10, 0.01);
+  // Chargers plugged in: +100 A into the battery that nothing explains.
+  run(115, 10, 10000);
+  CHECK(!s.bat.acOn);  // not yet: needs 20 s
+  run(115, 10, 15000);
+  CHECK(s.bat.acOn);
+  run(115, 10, 30000);  // let the smoothing settle
+  NEAR(s.bat.acA, 100, 0.5);
+  NEAR(s.bat.chargeA, 125, 0.5);
+  // A short dip (aircon compressor start) doesn't hide it.
+  run(15, 110, 5000);
+  CHECK(s.bat.acOn);
+  run(115, 10, 10000);
+  // Float: chargers drop to 2 A -> hides only after 60 s below 4 A.
+  run(17, 10, 30000);
+  CHECK(s.bat.acOn);
+  run(17, 10, 75000);  // ~30 s to smooth below 4 A, then 60 s hold
+  CHECK(!s.bat.acOn);
+  NEAR(s.bat.acA, 0, 0.01);
+  // No load measurement: loads assumed 0, so AC is a floor (100 - 10 = 90).
+  run(115, -1, 60000);
+  CHECK(s.bat.acOn);
+  NEAR(s.bat.acA, 90, 0.5);
+  NEAR(s.bat.loadA, 0, 0.5);
+  // Battery offline: everything resets.
+  s.bat.online = false;
+  d.update(s, t, -1);
+  CHECK(!s.bat.acOn);
+  // JSON round trip
+  s.bat.online = true;
+  s.bat.acOn = true;
+  s.bat.acA = 87.3f;
+  JsonDocument doc;
+  stateToJson(s, doc.to<JsonObject>());
+  State r;
+  stateFromJson(r, doc.as<JsonObjectConst>());
+  CHECK(r.bat.acOn);
+  NEAR(r.bat.acA, 87.3f, 0.05);
+}
+
 int main() {
+  testAcCharge();
   testWeather();
   testLeveling();
   testBleSensors();

@@ -10,6 +10,7 @@ object Accent {
     val battery = Color(0xFF4CC38A)
     val solar = Color(0xFFF5B841)
     val water = Color(0xFF4DA3FF)
+    val mains = Color(0xFF60A5FA)
     val climate = Color(0xFFB48CFF)
     val warn = Color(0xFFFFA94D)
     val alarm = Color(0xFFFF5C5C)

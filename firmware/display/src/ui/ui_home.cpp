@@ -1,6 +1,7 @@
 #include <math.h>
 // HOME - everything important on one screen.
 //  [ Battery ring  ] [ Energy flow: solar / charger / loads + per-MPPT  ]
+//                      (+ a "Mains" row while the AC chargers are bulk charging)
 //  [ Temperatures  ] [ Water tanks      ] [ Gas bottle | Internal / External pumps ]
 #include "../app.h"
 #include "ui.h"
@@ -9,7 +10,11 @@ namespace ui {
 
 static lv_obj_t *arcSoc, *lSoc, *lVolt, *lAmps, *lTtg, *lSrc;
 static lv_obj_t *lSolarW, *lSolarA, *lChgA, *lChgSub, *lLoadA, *lLoadW;
-static lv_obj_t *mpName[cv::NUM_SOLAR], *mpChip[cv::NUM_SOLAR], *mpBar[cv::NUM_SOLAR], *mpW[cv::NUM_SOLAR];
+// Source rows: one per solar controller, plus the mains chargers (last slot),
+// which only appear while the hub detects bulk mains charging.
+constexpr int NROWS = cv::NUM_SOLAR + 1, ROW_AC = cv::NUM_SOLAR;
+static lv_obj_t *mpName[NROWS], *mpChip[NROWS], *mpBar[NROWS], *mpW[NROWS];
+static int rowsAc = -1;  // layout currently shown: 0 = solar only, 1 = with mains row
 static lv_obj_t *tName[cv::NUM_TEMPS], *tVal[cv::NUM_TEMPS];
 static lv_obj_t *tkBar[cv::NUM_TANKS], *tkPct[cv::NUM_TANKS], *tkName[cv::NUM_TANKS];
 static lv_obj_t *tilePump[cv::NUM_PUMPS], *tileInv, *tileAc;
@@ -39,6 +44,32 @@ static lv_obj_t *stat(lv_obj_t *parent, int x, const char *caption, uint32_t col
 static constexpr int TOP_H = (INNER_H - GAP) * (LARGE ? 54 : 57) / 100, BOT_H = INNER_H - GAP - TOP_H;
 static constexpr int BOT_Y = GAP + TOP_H + GAP;
 static constexpr int BAT_W = splitW(LARGE ? 37 : 39), FLOW_W = INNER_W - GAP - BAT_W;
+
+// Places the source rows. Solar only: two roomy rows with the charge-state chip
+// under the name. With mains: three single-line rows, mains first.
+static void layoutRows(bool ac) {
+  if (rowsAc == (int)ac) return;
+  rowsAc = ac;
+  constexpr int fw = innerOf(FLOW_W), rowTop = LARGE ? 128 : 112, space = innerOf(TOP_H) - rowTop;
+  constexpr int nameW = LARGE ? 130 : 112, wattW = LARGE ? 100 : 90, chipW = LARGE ? 104 : 96;
+  for (int i = 0; i < NROWS; i++) {
+    bool show = i != ROW_AC || ac;
+    for (lv_obj_t *o : {mpName[i], mpChip[i], mpBar[i], mpW[i]})
+      show ? lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    if (!show) continue;
+    int slot = ac ? (i == ROW_AC ? 0 : i + 1) : i;
+    int y = rowTop + slot * space / (ac ? NROWS : cv::NUM_SOLAR);
+    lv_obj_set_width(mpName[i], nameW - 8);
+    lv_obj_set_pos(mpName[i], 0, y);
+    int barX = ac ? nameW + chipW : nameW;
+    if (ac) lv_obj_set_pos(mpChip[i], nameW, y + (LARGE ? 3 : 1));
+    else lv_obj_set_pos(mpChip[i], 0, y + (LARGE ? 28 : 22));
+    lv_obj_set_width(mpBar[i], fw - barX - wattW - 10);
+    lv_obj_set_pos(mpBar[i], barX, y + 8);
+    lv_obj_set_width(mpW[i], wattW);
+    lv_obj_set_pos(mpW[i], fw - wattW, y + 2);
+  }
+}
 
 void buildHome(lv_obj_t *p) {
   // ---------------- battery
@@ -79,25 +110,25 @@ void buildHome(lv_obj_t *p) {
   stat(f, 0, LV_SYMBOL_IMAGE " SOLAR", col::SOLAR, &lSolarW, &lSolarA);
   stat(f, statW, LV_SYMBOL_CHARGE " CHARGING", col::CHARGE, &lChgA, &lChgSub);
   stat(f, 2 * statW, LV_SYMBOL_POWER " LOADS", col::LOAD, &lLoadA, &lLoadW);
-  // One row per solar controller, spread over the space under the stats.
-  constexpr int rowTop = LARGE ? 128 : 112, rowStep = (innerOf(TOP_H) - rowTop) / cv::NUM_SOLAR;
-  constexpr int nameW = LARGE ? 130 : 112, wattW = LARGE ? 100 : 90;
-  for (int i = 0; i < cv::NUM_SOLAR; i++) {
-    int y = rowTop + i * rowStep;
-    mpName[i] = lbl(f, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::TEXT, app::meta.solarName[i]);
-    lv_obj_set_width(mpName[i], nameW - 8);
+  // One row per source, spread over the space under the stats (laid out by
+  // layoutRows() so the mains row can come and go).
+  for (int i = 0; i < NROWS; i++) {
+    bool ac = i == ROW_AC;
+    uint32_t cc = ac ? col::MAINS : col::SOLAR;
+    mpName[i] = lbl(f, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::TEXT,
+                    ac ? LV_SYMBOL_CHARGE " Mains" : app::meta.solarName[i]);
     lv_label_set_long_mode(mpName[i], LV_LABEL_LONG_DOT);
-    lv_obj_set_pos(mpName[i], 0, y);
     mpChip[i] = chip(f);
-    lv_obj_set_pos(mpChip[i], 0, y + (LARGE ? 28 : 22));
-    mpBar[i] = vbar(f, fw - nameW - wattW - 10, LARGE ? 12 : 10, col::SOLAR);
-    lv_obj_set_pos(mpBar[i], nameW, y + 8);
-    lv_bar_set_range(mpBar[i], 0, 700);  // 100/50 @ 12 V ~ 700 W max
-    mpW[i] = lbl(f, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::SOLAR, "-- W");
+    mpBar[i] = vbar(f, 100, LARGE ? 12 : 10, cc);
+    lv_bar_set_range(mpBar[i], 0, ac ? 120 : 700);  // 2 x 60 A chargers; 100/50 @ 12 V ~ 700 W
+    mpW[i] = lbl(f, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, cc, "-- W");
     lv_obj_set_style_text_align(mpW[i], LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_set_width(mpW[i], wattW);
-    lv_obj_set_pos(mpW[i], fw - wattW, y + 2);
   }
+  lv_obj_set_style_text_color(mpName[ROW_AC], c(col::MAINS), 0);
+  setChip(mpChip[ROW_AC], "Bulk", col::MAINS);
+
+  rowsAc = -1;
+  layoutRows(false);
 
   constexpr int bw = colW(3), bh = innerOf(BOT_H);
 
@@ -231,8 +262,15 @@ void updateHome() {
   float solarW = s.solarW();
   setText(lSolarW, "%.0f W", solarW);
   setText(lSolarA, "%.1f A", s.bat.solarA);
-  setText(lChgA, "%.1f A", s.bat.chargeA);
-  setText(lChgSub, s.bat.chargerA > 0.5f ? "mains %.1f A" : "solar only", s.bat.chargerA);
+  setText(lChgA, s.bat.chargeA >= 99.95f ? "%.0f A" : "%.1f A", s.bat.chargeA);
+  if (s.bat.acOn) setText(lChgSub, "mains %.0f A", s.bat.acA);
+  else if (s.bat.chargerA > 0.5f) setText(lChgSub, "BMPRO %.1f A", s.bat.chargerA);
+  else setText(lChgSub, "solar only");
+  layoutRows(s.bat.online && s.bat.acOn);
+  if (rowsAc == 1) {
+    lv_bar_set_value(mpBar[ROW_AC], (int)s.bat.acA, LV_ANIM_ON);
+    setText(mpW[ROW_AC], "%.0f A", s.bat.acA);
+  }
   setText(lLoadA, "%.1f A", s.bat.loadA);
   setText(lLoadW, "%.0f W", s.bat.loadA * (s.bat.v > 0 ? s.bat.v : 12.8f));
   for (int i = 0; i < cv::NUM_SOLAR; i++) {

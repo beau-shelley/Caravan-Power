@@ -123,7 +123,13 @@ void loop() {
   s.solar[0].pvW = 312 + 45 * sinf(phase);
   s.solar[1].pvW = 118 + 20 * sinf(phase * 0.7f);
   s.bat.solarA = (s.solar[0].pvW + s.solar[1].pvW) / s.bat.v;
-  s.bat.chargeA = s.bat.solarA;
+  // Mains chargers "plugged in" for 1 minute of every 2.5, so the Home
+  // screen's Mains row can be seen appearing and going away.
+  static uint32_t demoSec = 0;
+  demoSec += elapsed;
+  s.bat.acOn = demoSec % 150 < 60;
+  s.bat.acA = s.bat.acOn ? 116 + 4 * sinf(phase * 1.3f) : 0;
+  s.bat.chargeA = s.bat.solarA + s.bat.chargerA + s.bat.acA;
   s.bat.a = s.bat.chargeA - s.bat.loadA;
   s.pump[0].runSec += s.pump[0].on ? elapsed : 0;
   app::stateDirty = true;

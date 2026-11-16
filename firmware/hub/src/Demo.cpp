@@ -13,6 +13,10 @@ uint32_t lastMs = 0;
 float t = 0;            // demo seconds since boot
 float soc = 78;
 float tank[cv::NUM_TANKS] = {72, 18, 41};
+float lastLoad = 0;
+constexpr float kAcCycleSec = 420;  // mains chargers plugged in for the first
+constexpr float kAcBulkSec = 120;   // 2 minutes of every 7 (bulk), then
+constexpr float kAcPlugSec = 150;   // 30 s of float before "unplugging"
 
 void minMax(cv::Temp &x) {
   if (x.c < x.minC) x.minC = x.c;
@@ -56,12 +60,25 @@ void tick(cv::State &s, uint32_t nowMs) {
   if (s.ac.on) load += 45;
   if (s.inv.on) load += 3;
 
-  float batV = 12.6f + soc * 0.008f;
+  // ---- mains: the two 60 A chargers, plugged in for part of each cycle.
+  // Nothing on the hub measures them; it works them out from what's left over.
+  float acT = fmodf(t, kAcCycleSec);
+  float ac = acT < kAcBulkSec   ? 116 + 4 * sinf(t * 0.5f)  // bulk: 2 x 60 A, ~120 A peak
+             : acT < kAcPlugSec ? 2.5f                       // float trickle
+                                : 0;
+
+  // ---- BMPRO: DC-DC from the car for a stretch mid-"day" (driving)
+  float frac2 = fmodf(t, kDayLenSec) / kDayLenSec;
+  float bmpro = frac2 > 0.55f && frac2 < 0.7f ? 18 + 2 * sinf(t * 0.3f) : 0;
+
+  float batV = 12.6f + soc * 0.008f + (ac > 10 ? 1.4f : 0);
   float a1 = w1 / batV, a2 = w2 / batV;
-  float charge = a1 + a2;
+  float charge = a1 + a2 + bmpro + ac;
   if (soc >= 100 && charge > load) charge = load;  // full: chargers back off
   float net = charge - load;
-  soc += net * dt / 3600 / 300 * 100 * 20;  // 300 Ah battery, time sped up 20x
+  // 300 Ah battery, time sped up 20x (mains only 2x, or it fills in seconds)
+  float socNet = net > ac ? net - ac * 0.9f : net;
+  soc += socNet * dt / 3600 / 300 * 100 * 20;
   soc = soc < 5 ? 5 : soc > 100 ? 100 : soc;
   batV += net * 0.01f;
 
@@ -84,10 +101,11 @@ void tick(cv::State &s, uint32_t nowMs) {
   b.source = cv::BAT_SRC_SHUNT;
   b.v = batV;
   b.soc = soc;
-  b.solarA = a1 + a2;
-  b.chargerA = 0;
+  b.solarA = a1 + a2;  // Victron controllers
+  b.chargerA = bmpro;  // BMPRO (solar input + DC-DC); mains left for the hub to infer
   b.chargeA = charge;
   b.loadA = load;
+  lastLoad = load;
   b.a = net;
   b.ttgMin = net < -0.2f ? (int32_t)(soc / 100 * 300 / -net * 60)
              : net > 0.2f ? (int32_t)((100 - soc) / 100 * 300 / net * 60) : -1;
@@ -137,6 +155,8 @@ void tick(cv::State &s, uint32_t nowMs) {
     }
   }
 }
+
+float loadA() { return lastLoad; }
 
 }  // namespace demo
 }  // namespace hub

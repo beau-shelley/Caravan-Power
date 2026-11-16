@@ -18,7 +18,7 @@
   --bg:#0b1220; --card:#131c2e; --tile:#1a2438; --border:#1e293b;
   --text:#e2e8f0; --muted:#94a3b8; --dim:#475569;
   --solar:#fbbf24; --charge:#34d399; --load:#f87171; --water:#38bdf8; --gas:#fb923c;
-  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444;
+  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444; --mains:#60a5fa;
   --radius:16px;
 }
 @media (prefers-color-scheme: light) {
@@ -26,7 +26,7 @@
     --bg:#eef2f7; --card:#ffffff; --tile:#f1f5f9; --border:#dbe3ee;
     --text:#0f172a; --muted:#475569; --dim:#94a3b8;
     --solar:#d97706; --charge:#059669; --load:#dc2626; --water:#0284c7; --gas:#ea580c;
-    --climate:#7c3aed; --accent:#0891b2;
+    --climate:#7c3aed; --accent:#0891b2; --mains:#2563eb;
   }
 }
 * { box-sizing:border-box; }
@@ -370,11 +370,20 @@ function render() {
   const solW = S.sol.reduce((a, x) => a + (x.on ? x.w : 0), 0);
   $("#solW").textContent = `${Math.round(solW)} W`;
   $("#solA").textContent = `${b.sa.toFixed(1)} A`;
-  $("#chgA").textContent = `${b.chg.toFixed(1)} A`;
-  $("#chgSub").textContent = b.ca > 0.5 ? `mains ${b.ca.toFixed(1)} A` : "solar only";
+  $("#chgA").textContent = `${b.chg >= 99.95 ? Math.round(b.chg) : b.chg.toFixed(1)} A`;
+  // Mains (2 x 60 A chargers) has no sensor: the hub infers it from what the
+  // BMPRO + Victrons don't explain, and sets acon only while bulk charging.
+  const mains = b.on && b.acon;
+  $("#chgSub").textContent = mains ? `mains ${Math.round(b.aca || 0)} A` : b.ca > 0.5 ? `BMPRO ${b.ca.toFixed(1)} A` : "solar only";
   $("#loadA").textContent = `${b.load.toFixed(1)} A`;
   $("#loadW").textContent = `${Math.round(b.load * (b.v || 12.8))} W`;
-  $("#mppts").innerHTML = S.sol.map((m, i) => `
+  $("#mppts").innerHTML = (mains ? `
+    <div class="row mppt between" style="padding:6px 0">
+      <div style="width:110px"><b style="color:var(--mains)">⚡ Mains</b><br><span class="chip" style="color:var(--mains)">Bulk</span></div>
+      <div class="bar"><i style="width:${Math.min(100, (b.aca || 0) / 1.2)}%; background:var(--mains)"></i></div>
+      <div style="width:150px; text-align:right"><b style="color:var(--mains)">${Math.round(b.aca || 0)} A</b><br>
+        <span class="muted small">${Math.round((b.aca || 0) * (b.v || 13.6))} W · estimated</span></div>
+    </div>` : "") + S.sol.map((m, i) => `
     <div class="row mppt between" style="padding:6px 0">
       <div style="width:110px"><b>${esc(META.sol[i])}</b><br><span class="chip" style="color:${m.err ? "var(--alarm)" : "var(--solar)"}">${m.on ? (m.err ? "Error " + m.err : CS[m.cs] || "Unknown") : "Offline"}</span></div>
       <div class="bar"><i style="width:${m.on ? Math.min(100, m.w / 7) : 0}%"></i></div>
@@ -538,7 +547,7 @@ function setConn(txt, cls) { const c = $("#conn"); c.textContent = txt; c.classN
 
 function demoTransport() {
   setConn("Demo data", "warnc");
-  const st = { t:"state", ts: Math.floor(Date.now() / 1000), bat:{ on:true, src:1, v:13.31, a:18.8, soc:78, ttg:52, sa:31.4, ca:0, chg:31.4, load:12.6 },
+  const st = { t:"state", ts: Math.floor(Date.now() / 1000), bat:{ on:true, src:1, v:13.31, a:18.8, soc:78, ttg:52, sa:31.4, ca:0, aca:0, acon:false, chg:31.4, load:12.6 },
     sol:[{ on:true, pv:-1, w:312, bv:13.31, ba:22.6, cs:3, err:0, yt:1.42, mx:498 }, { on:true, pv:-1, w:118, bv:13.3, ba:8.8, cs:4, err:0, yt:0.61, mx:205 }],
     tmp:[{ on:true, c:24.6, lo:16.2, hi:27.9 }, { on:true, c:31.2, lo:14.8, hi:33.4 }, { on:true, c:7.4, lo:2.1, hi:7.4 }],
     tank:[{ on:true, p:72 }, { on:true, p:18 }, { on:true, p:41 }], gas:{ on:true, p:63 },
@@ -556,6 +565,17 @@ function demoTransport() {
              { id:11, en:true, name:"Tank 1 low", m:"tank1", cmp:"<", thr:15, hys:5, dly:30, sev:0, ntf:true, act:"none" }] });
     onMessage(st);
   }, 50);
+  // Mains chargers "plugged in" for 20 s of every 40 s, so the Mains row can be
+  // seen coming and going (the hub only reports it while bulk charging).
+  let demoT = 0;
+  const mainsTick = () => {
+    const on = demoT++ % 40 < 20, b = st.bat;
+    b.acon = on; b.aca = on ? 116 + Math.round(4 * Math.sin(demoT / 3)) : 0;
+    b.chg = +(b.sa + b.ca + b.aca).toFixed(1); b.a = +(b.chg - b.load).toFixed(1); b.ttg = on ? 38 : 52;
+    if (demoT > 1) onMessage(st);
+  };
+  mainsTick();
+  setInterval(mainsTick, 1000);
   // Setup commands are applied locally so the phone setup screens can be tried out.
   let defaults = null, nextId = 100;
   return { kind:"demo", ready: () => true, send: (c) => {

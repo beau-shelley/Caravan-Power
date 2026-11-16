@@ -182,6 +182,8 @@ void stateToJson(const State &s, JsonObject o) {
   b["ttg"] = s.bat.ttgMin;
   b["sa"] = r1(s.bat.solarA);
   b["ca"] = r1(s.bat.chargerA);
+  b["aca"] = r1(s.bat.acA);
+  b["acon"] = s.bat.acOn;
   b["chg"] = r1(s.bat.chargeA);
   b["load"] = r1(s.bat.loadA);
 
@@ -273,6 +275,8 @@ void stateFromJson(State &s, JsonObjectConst o) {
   s.bat.ttgMin = b["ttg"] | -1;
   s.bat.solarA = b["sa"] | 0.0f;
   s.bat.chargerA = b["ca"] | 0.0f;
+  s.bat.acA = b["aca"] | 0.0f;
+  s.bat.acOn = b["acon"] | false;
   s.bat.chargeA = b["chg"] | 0.0f;
   s.bat.loadA = b["load"] | 0.0f;
 
