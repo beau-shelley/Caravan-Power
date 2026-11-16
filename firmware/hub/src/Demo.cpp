@@ -41,9 +41,11 @@ void tick(cv::State &s, uint32_t nowMs) {
   lastMs = nowMs;
   t += dt;
 
-  // ---- sun: 0 at "night", up to ~600 W across both panels at "noon"
-  float sun = sinf(2 * PI * t / kDayLenSec);
-  sun = sun > 0 ? sun : 0;
+  // ---- sun: 9 minutes of "day" peaking at ~660 W across both panels, then a
+  // 1-minute "night" with no solar (short, so the bench test rarely looks dead)
+  float frac = fmodf(t, kDayLenSec) / kDayLenSec;
+  float sun = frac < 0.9f ? sinf(PI * frac / 0.9f) : 0;
+  if (sun < 0.15f && frac < 0.9f) sun = 0.15f;  // dawn/dusk still trickle-charges
   float cloud = 0.85f + 0.15f * sinf(t * 0.37f);  // passing clouds
   float w1 = 480 * sun * cloud, w2 = 180 * sun * cloud;
 
