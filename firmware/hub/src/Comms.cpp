@@ -76,13 +76,20 @@ void Net::loop(cv::State &s) {
 // Half duplex: the hub is bus master. It sends a state frame every second and
 // a tiny poll frame every 250 ms; the display only transmits right after it
 // receives a frame, so the two never talk over each other.
-void DisplayLink::begin(HardwareSerial &ser, int rx, int tx, int de) {
+// DE (driver enable, active high) and /RE (receiver enable, active low) can
+// be bridged on one pin or wired to two; either way HIGH = transmit, LOW = listen.
+void DisplayLink::txEnable(bool on) {
+  if (de_ >= 0) digitalWrite(de_, on ? HIGH : LOW);
+  if (re_ >= 0) digitalWrite(re_, on ? HIGH : LOW);
+}
+
+void DisplayLink::begin(HardwareSerial &ser, int rx, int tx, int de, int re) {
   ser_ = &ser;
   de_ = de;
-  if (de_ >= 0) {
-    pinMode(de_, OUTPUT);
-    digitalWrite(de_, LOW);
-  }
+  re_ = re;
+  if (de_ >= 0) pinMode(de_, OUTPUT);
+  if (re_ >= 0) pinMode(re_, OUTPUT);
+  txEnable(false);
   ser_->setRxBufferSize(4096);
   ser_->setTxBufferSize(2048);
   ser_->begin(115200, SERIAL_8N1, rx, tx);
@@ -91,11 +98,11 @@ void DisplayLink::begin(HardwareSerial &ser, int rx, int tx, int de) {
 void DisplayLink::write(const char *buf, size_t n) {
   char tr[5];
   cv::linkTrailer(buf, n, tr);
-  if (de_ >= 0) digitalWrite(de_, HIGH);
+  txEnable(true);
   ser_->write((const uint8_t *)buf, n);
   ser_->write((const uint8_t *)tr, 4);
   ser_->flush();  // wait until the last bit is out before releasing the bus
-  if (de_ >= 0) digitalWrite(de_, LOW);
+  txEnable(false);
 }
 
 void DisplayLink::send(JsonDocument &doc) {

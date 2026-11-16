@@ -124,7 +124,7 @@ void tick(cv::State &s, uint32_t nowMs) {
     if (cv::parseOpenMeteo(wx, strlen(wx), s.wx)) {
       s.wx.valid = true;
       s.wx.updated = s.ts;
-      strcpy(s.wx.place, "Demo data");
+      strcpy(s.wx.place, "Mudgee NSW");
     }
   }
 }

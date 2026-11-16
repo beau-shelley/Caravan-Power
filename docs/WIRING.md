@@ -46,7 +46,8 @@ With the hub bolted behind the display, the only wires are power, the two RS485 
 | 3V3, GND | MAX485 VCC/GND and MPU-6050 VCC/GND |
 | GPIO16 (RX2) | MAX485 RO |
 | GPIO17 (TX2) | MAX485 DI |
-| GPIO4 | MAX485 DE and RE, bridged together |
+| GPIO4 | MAX485 DE |
+| GPIO5 | MAX485 RE (the firmware drives it with DE, so no bridge is needed; if you do bridge them, set `PIN_LINK_RE` to -1) |
 | GPIO21 / GPIO22 | MPU-6050 SDA / SCL |
 | MAX485 A / B | display RS485 header A / B |
 | *fallbacks / later:* GPIO23 1-Wire, GPIO25 buzzer, GPIO26 IR LED, GPIO34 IR receiver, GPIO32/33 pump relays, GPIO27 inverter relay, GPIO13 spare relay, GPIO14/18 pump sense, GPIO19 inverter sense, GPIO36 VE.Direct #1 RX, GPIO39 GPS RX | |

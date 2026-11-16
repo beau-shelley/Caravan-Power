@@ -69,6 +69,7 @@
     <text x="550" y="485">GPIO16 RX2</text>
     <text x="550" y="515">GPIO17 TX2</text>
     <text x="550" y="545">GPIO4</text>
+    <text x="550" y="575">GPIO5</text>
   </g>
   <g class="pin">
     <text x="390" y="585">3V3</text>
@@ -80,7 +81,7 @@
     <circle cx="560" cy="340" r="5" class="dot"/><circle cx="560" cy="370" r="5" class="dot"/>
     <circle cx="560" cy="400" r="5" class="dot"/><circle cx="560" cy="430" r="5" class="dot"/>
     <circle cx="560" cy="480" r="5" class="dot"/><circle cx="560" cy="510" r="5" class="dot"/>
-    <circle cx="560" cy="540" r="5" class="dot"/>
+    <circle cx="560" cy="540" r="5" class="dot"/><circle cx="560" cy="570" r="5" class="dot"/>
     <circle cx="380" cy="580" r="5" class="dot"/><circle cx="380" cy="610" r="5" class="dot"/>
     <circle cx="380" cy="640" r="5" class="dot"/><circle cx="380" cy="670" r="5" class="dot"/>
   </g>
@@ -90,7 +91,7 @@
   <path class="gnd" d="M625 150 V370 H560"/>
 
   <!-- ===== MAX485 ===== -->
-  <rect x="680" y="380" width="200" height="190" rx="10" class="box"/>
+  <rect x="680" y="380" width="200" height="225" rx="10" class="box"/>
   <text x="695" y="400" class="title" font-size="15">MAX485 module</text>
   <g class="pin">
     <text x="692" y="405" dy="0"> </text>
@@ -98,14 +99,15 @@
     <text x="692" y="455">GND</text>
     <text x="692" y="505">RO</text>
     <text x="692" y="535">DI</text>
-    <text x="692" y="565" font-size="12">DE+RE bridged</text>
+    <text x="692" y="565">DE</text>
+    <text x="692" y="595">RE</text>
     <text x="868" y="425" text-anchor="end">A</text>
     <text x="868" y="455" text-anchor="end">B</text>
   </g>
   <g>
     <circle cx="680" cy="420" r="5" class="dot"/><circle cx="680" cy="450" r="5" class="dot"/>
     <circle cx="680" cy="500" r="5" class="dot"/><circle cx="680" cy="530" r="5" class="dot"/>
-    <circle cx="680" cy="560" r="5" class="dot"/>
+    <circle cx="680" cy="560" r="5" class="dot"/><circle cx="680" cy="590" r="5" class="dot"/>
     <circle cx="880" cy="420" r="5" class="dot"/><circle cx="880" cy="450" r="5" class="dot"/>
   </g>
   <path class="w33" d="M560 400 H650 V420 H680"/>
@@ -113,6 +115,7 @@
   <path class="ttl" d="M560 480 H660 V500 H680"/>
   <path class="ttl" d="M560 510 H650 V530 H680"/>
   <path class="de" d="M560 540 H640 V560 H680"/>
+  <path class="de" d="M560 570 H630 V590 H680"/>
   <text x="585" y="474" class="note" font-size="11">RX2 ← RO</text>
   <text x="585" y="526" class="note" font-size="11">TX2 → DI</text>
   <!-- A / B up to display -->
