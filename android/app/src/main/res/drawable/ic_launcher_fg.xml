@@ -1,22 +1,28 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- body -->
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M30,40 h40 a8,8 0 0 1 8,8 v16 h-48 a4,4 0 0 1 -4,-4 v-16 a4,4 0 0 1 4,-4 z" />
-    <!-- window -->
-    <path android:fillColor="#FF13324A"
-        android:pathData="M34,45 h14 v8 h-14 z" />
-    <!-- door -->
-    <path android:fillColor="#FF13324A"
-        android:pathData="M58,46 h8 v18 h-8 z" />
-    <!-- drawbar -->
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M78,60 h6 v3 h-6 z" />
-    <!-- wheel -->
-    <path android:fillColor="#FFF5B841"
-        android:pathData="M48,64 m-6,0 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0" />
-    <!-- lightning bolt -->
-    <path android:fillColor="#FFF5B841"
-        android:pathData="M42,30 l-5,9 h4 l-2,7 l7,-10 h-4 l3,-6 z" />
+    <!-- Caravan: gunmetal body, black chequer-plate skirt and stripe, lime pinstripe and bolt. -->
+    <!-- Scaled to sit inside the launcher's safe circle. -->
+    <group android:pivotX="54" android:pivotY="52" android:scaleX="0.86" android:scaleY="0.86" android:translateX="-1.5">
+        <path android:fillColor="#FF9AA0A4"
+            android:pathData="M25,36 H72 L85,47 V61 H25 Q22,61 22,58 V39 Q22,36 25,36 Z" />
+        <path android:fillColor="#FF0E0F10"
+            android:pathData="M22,56 H85 V62 Q85,66 81,66 H26 Q22,66 22,62 Z" />
+        <path android:fillColor="#FF0E0F10"
+            android:pathData="M27,49 L34,44.5 H56 L54,51 H31 Z" />
+        <path android:fillColor="#FFA3E635"
+            android:pathData="M31,49.6 H54.4 L54,51 H29.5 Z" />
+        <path android:fillColor="#FF0E0F10"
+            android:pathData="M28.2,39 H36.8 Q38,39 38,40.2 V41.8 Q38,43 36.8,43 H28.2 Q27,43 27,41.8 V40.2 Q27,39 28.2,39 Z" />
+        <path android:fillColor="#FF0E0F10"
+            android:pathData="M43.2,39 H49.8 Q51,39 51,40.2 V41.8 Q51,43 49.8,43 H43.2 Q42,43 42,41.8 V40.2 Q42,39 43.2,39 Z" />
+        <path android:fillColor="#FF0E0F10"
+            android:pathData="M74,40 L82,47 V52 H74 Z" />
+        <path android:fillColor="#FF0E0F10"
+            android:pathData="M38.5,67 a6.5,6.5 0 1,0 13.0,0 a6.5,6.5 0 1,0 -13.0,0 Z" />
+        <path android:fillColor="#FFA3E635"
+            android:pathData="M42.4,67 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0 Z" />
+        <path android:fillColor="#FFA3E635"
+            android:pathData="M68,30 L57,51 H64.5 L60,72 L74,47 H66.5 L72,30 Z" />
+    </group>
 </vector>

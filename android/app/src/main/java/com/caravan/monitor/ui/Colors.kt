@@ -1,39 +1,70 @@
 package com.caravan.monitor.ui
 
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import com.caravan.monitor.Severity
 
-// Same accent colours as the touchscreen and web page.
+// Caravan theme: gunmetal cards on dark camo, black chequer plate, lime accents
+// (like the van). Same colours as the touchscreen (ui.h col::) and the web page.
 object Accent {
-    val battery = Color(0xFF4CC38A)
-    val solar = Color(0xFFF5B841)
-    val water = Color(0xFF4DA3FF)
+    val lime = Color(0xFFA3E635)  // theme accent: selected tab, primary buttons, info
+    val battery = Color(0xFF8FDB3A)
+    val solar = Color(0xFFFACC15)
+    val water = Color(0xFF38BDF8)
     val mains = Color(0xFF60A5FA)
-    val gas = Color(0xFFFF8A3D)
+    val gas = Color(0xFFFB923C)
     val heat = Color(0xFFFB923C)  // diesel heater, same orange as the touchscreen and web page
-    val climate = Color(0xFFB48CFF)
-    val warn = Color(0xFFFFA94D)
-    val alarm = Color(0xFFFF5C5C)
-    val secure = Color(0xFF22C55E)  // secure mode armed, same green as the touchscreen and web page
+    val climate = Color(0xFFA78BFA)
+    val warn = Color(0xFFF59E0B)
+    val alarm = Color(0xFFEF4444)
+    val secure = Color(0xFF84CC16)  // secure mode armed, same green as the touchscreen and web page
     val critical = Color(0xFFD946EF)  // fuchsia, same as the touchscreen and web page
-    val muted = Color(0xFF8A96A3)
+    val muted = Color(0xFF9EA4A6)
 }
 
 /** Background and card colours (dark theme). */
 object Surfaces {
-    val background = Color(0xFF101418)
-    val card = Color(0xFF1A2027)
-    val raised = Color(0xFF222A33)
-    val track = Color(0xFF2A333D)
-    val text = Color(0xFFE6EAEE)
+    val background = Color(0xFF0E0F10)  // camo base
+    val camo = listOf(Color(0xFF141617), Color(0xFF191C1C), Color(0xFF1F2321))  // camo layers
+    val plate = Color(0xFF0B0C0D)       // chequer plate base (bottom bar)
+    val ridge = Color(0xFF1B1D1F)       // chequer plate ridges
+    val ridgeLight = Color(0xFF2A2D30)
+    val card = Color(0xFF1E2124)        // gunmetal
+    val raised = Color(0xFF2A2E32)
+    val track = Color(0xFF34383C)
+    val text = Color(0xFFECEEEA)
+    val onLime = Color(0xFF16210A)
+    val limeContainer = Color(0xFF34451A)  // tonal lime (selected chips, tab indicator)
 }
+
+/** Material colour scheme for the app (also used by the screenshot renderer). */
+val CaravanColors = darkColorScheme(
+    primary = Accent.lime,
+    onPrimary = Surfaces.onLime,
+    secondary = Accent.battery,
+    onSecondary = Surfaces.onLime,
+    tertiary = Accent.water,
+    primaryContainer = Surfaces.limeContainer,
+    onPrimaryContainer = Surfaces.text,
+    secondaryContainer = Surfaces.limeContainer,
+    onSecondaryContainer = Surfaces.text,
+    background = Surfaces.background,
+    surface = Surfaces.background,
+    onSurface = Surfaces.text,
+    onBackground = Surfaces.text,
+    surfaceVariant = Surfaces.raised,
+    onSurfaceVariant = Accent.muted,
+    outline = Surfaces.track,
+    outlineVariant = Surfaces.raised,
+    error = Accent.alarm,
+)
 
 fun sevColor(sev: Int) = when {
     sev >= Severity.CRIT -> Accent.critical
     sev == Severity.ALARM -> Accent.alarm
     sev == Severity.WARN -> Accent.warn
-    else -> Accent.water
+    else -> Accent.lime
 }
 
 fun socColor(soc: Double) = when { soc < 20 -> Accent.alarm; soc < 40 -> Accent.warn; else -> Accent.battery }

@@ -15,6 +15,9 @@
 LV_FONT_DECLARE(ui_icons_20);
 LV_FONT_DECLARE(ui_icons_24);
 LV_FONT_DECLARE(ui_icons_28);
+// Theme textures (tex_theme.c, made by tools/theme/make_theme.py).
+LV_IMG_DECLARE(tex_camo);   // seamless dark camo tile, screen background
+LV_IMG_DECLARE(tex_tread);  // chequer (diamond) plate tile, nav rail
 
 namespace ui {
 
@@ -75,14 +78,18 @@ int sleepSeconds();
 bool isExtraIcon(const char *sym);
 
 namespace col {
-constexpr uint32_t BG = 0x0B1220, RAIL = 0x0E1626, CARD = 0x131C2E, BORDER = 0x1E293B;
-constexpr uint32_t TEXT = 0xE2E8F0, MUTED = 0x94A3B8, DIM = 0x475569;
-constexpr uint32_t SOLAR = 0xFBBF24, CHARGE = 0x34D399, LOAD = 0xF87171, WATER = 0x38BDF8;
-constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0x22D3EE, WARN = 0xF59E0B, ALARM = 0xEF4444;
-constexpr uint32_t OK = 0x22C55E, TILE = 0x1A2438, GAS = 0xFB923C, MAINS = 0x60A5FA;
+// Caravan theme: gunmetal panels on a dark camo background, black chequer-plate
+// rail, lime accents (like the stripe on the van). Status colours keep their
+// meanings: amber warning, red alarm, fuchsia critical, blue cold/water.
+// Same values in web/index.html (:root) and the app's Colors.kt.
+constexpr uint32_t BG = 0x0E0F10, RAIL = 0x0B0C0D, CARD = 0x1E2124, BORDER = 0x34383C;
+constexpr uint32_t TEXT = 0xECEEEA, MUTED = 0x9EA4A6, DIM = 0x5A6064;
+constexpr uint32_t SOLAR = 0xFACC15, CHARGE = 0x8FDB3A, LOAD = 0xF87171, WATER = 0x38BDF8;
+constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0xA3E635, WARN = 0xF59E0B, ALARM = 0xEF4444;
+constexpr uint32_t OK = 0x84CC16, TILE = 0x2A2E32, GAS = 0xFB923C, MAINS = 0x60A5FA;
+constexpr uint32_t SECURE = 0x84CC16;  // secure mode armed (green, same as the phone page)
 constexpr uint32_t CRIT = 0xD946EF;  // critical alerts (same colour as the phone page)
 constexpr uint32_t HEAT = 0xFB923C;  // diesel heater (warm orange, same as the phone page)
-constexpr uint32_t SECURE = 0x22C55E;  // secure mode armed (green, same as the phone page)
 }  // namespace col
 inline uint32_t sevColor(int sev) {
   return sev >= cv::SEV_CRIT ? col::CRIT : sev == cv::SEV_ALARM ? col::ALARM : sev == cv::SEV_WARN ? col::WARN : col::ACCENT;

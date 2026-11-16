@@ -1,7 +1,7 @@
 <resources>
     <style name="Theme.Caravan" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#FF101418</item>
-        <item name="android:statusBarColor">#FF101418</item>
-        <item name="android:navigationBarColor">#FF101418</item>
+        <item name="android:windowBackground">#FF0E0F10</item>
+        <item name="android:statusBarColor">#FF0E0F10</item>
+        <item name="android:navigationBarColor">#FF0B0C0D</item>
     </style>
 </resources>

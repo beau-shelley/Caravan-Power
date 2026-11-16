@@ -203,6 +203,7 @@ static void startLearn(int slot, const char *name) {
   lv_obj_set_style_radius(learnBox, 16, 0);
   lv_obj_t *sp = lv_spinner_create(learnBox, 1000, 60);
   lv_obj_set_size(sp, 60, 60);
+  lv_obj_set_style_arc_color(sp, c(col::ACCENT), LV_PART_INDICATOR);
   lv_obj_align(sp, LV_ALIGN_TOP_MID, 0, 6);
   learnLbl = lbl(learnBox, &lv_font_montserrat_16, col::TEXT, "");
   lv_obj_set_width(learnLbl, LARGE ? 500 : 420);
@@ -328,6 +329,8 @@ void buildSettings(lv_obj_t *p) {
   lv_obj_align(l2, LV_ALIGN_TOP_RIGHT, -70, 22);
   sRemote = lv_switch_create(a);
   lv_obj_align(sRemote, LV_ALIGN_TOP_RIGHT, 0, 26);
+  lv_obj_set_style_bg_color(sRemote, c(col::TILE), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(sRemote, c(col::ACCENT), LV_PART_INDICATOR | LV_STATE_CHECKED);
   lv_obj_add_event_cb(sRemote, remoteCb, LV_EVENT_VALUE_CHANGED, nullptr);
   sInfo = lbl(a, &lv_font_montserrat_12, col::MUTED, "");
   lv_obj_set_pos(sInfo, 0, 78);
