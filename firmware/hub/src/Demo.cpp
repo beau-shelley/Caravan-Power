@@ -51,7 +51,9 @@ void tick(cv::State &s, uint32_t nowMs) {
   float sun = frac < 0.9f ? sinf(PI * frac / 0.9f) : 0;
   if (sun < 0.15f && frac < 0.9f) sun = 0.15f;  // dawn/dusk still trickle-charges
   float cloud = 0.85f + 0.15f * sinf(t * 0.37f);  // passing clouds
-  float w1 = 480 * sun * cloud, w2 = 180 * sun * cloud;
+  // Roof: 3 x 230 W = 690 W; portable: 880 W. Real panels peak around 78% of
+  // their rating at midday (heat, angle, wiring losses).
+  float w1 = 690 * 0.78f * sun * cloud, w2 = 880 * 0.78f * sun * cloud;
 
   // ---- loads: base fridge/lights plus whatever is switched on
   float load = 4.5f + 1.5f * sinf(t * 0.21f);
