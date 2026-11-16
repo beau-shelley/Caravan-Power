@@ -5,9 +5,13 @@ touchscreen for setup and sends alerts as phone notifications.
 
 ## What it does
 
-- **Home:** battery, solar, water tanks, temperatures, pumps (tap to switch), weather.
+- **Home:** battery, mains charging (while bulk charging), solar, water tanks, temperatures,
+  gas bottle, Internal/External pumps (tap to switch), weather.
 - **Alerts:** active alerts with *Acknowledge*, and the hub's alert rules: add, edit,
   delete, switch on/off, restore defaults. Same rules as the touchscreen and web page.
+  A rule can step up through up to two more levels, e.g. battery charge below 30 %
+  warning, below 15 % alarm, below 5 % critical. Each level alerts once and re-arms
+  only after the value recovers by the rule's hysteresis.
 - **Setup:** hub login, background alerts, ntfy, touchscreen sleep time, remote control.
 - **Notifications:**
   - On the caravan's Wi-Fi the app holds a connection to the hub and raises a
@@ -15,6 +19,19 @@ touchscreen for setup and sends alerts as phone notifications.
   - Away from the van it listens to the hub's ntfy topic (`NTFY_TOPIC`), which works
     whenever the van has internet. If the van is offline, nothing can reach the phone.
   - Rules with *Send a phone notification* off are skipped.
+  - Critical alerts use their own "Critical alarms" channel with the alarm sound.
+
+## Updates
+
+Every push to `main` or the app branch builds the APK and publishes it as a GitHub
+release `app-build-<n>` (the build number is also the versionCode). All builds are
+signed with the committed key `app/debug.keystore`, so each one installs over the last.
+The app checks for a newer release when it opens and shows **Update** on Home. Tapping it
+downloads the APK and opens Android's install screen.
+
+The repository is private, so the app needs a GitHub token to read releases. In GitHub,
+create a fine-grained token for this repository only, with Contents set to Read-only,
+then paste it into Setup → App updates. The token stays on the phone.
 
 ## How it talks to the hub
 
@@ -57,3 +74,24 @@ cd android
 - Level page over Bluetooth (use `web/level.html` for now).
 - Remote dashboard over MQTT.
 - Inverter and aircon controls (hidden for now, like on the touchscreen).
+
+## Screenshots
+
+`android/screenshots/` draws the app's real screens with demo data, on a normal
+computer (no Android SDK, emulator or phone needed):
+
+```
+cd android/screenshots
+./gradlew run        # writes out/*.png
+```
+
+The screen code that doesn't touch Android lives in `ui/*Content.kt`,
+`ui/Common.kt`, `ui/Colors.kt` and `ui/AppScaffold.kt`, and the renderer compiles
+those files directly. `ui/Screens.kt` wires them to the hub on the phone. The
+font is Inter instead of Android's Roboto, so spacing can differ slightly.
+
+| Home (mains charging) | Home (alerts) | Alerts and rules |
+|---|---|---|
+| ![](screenshots/img/1-home-mains-charging.png) | ![](screenshots/img/2-home-alerts.png) | ![](screenshots/img/3-alerts-and-rules.png) |
+| **Edit a rule** | **Setup** | **Hub not found** |
+| ![](screenshots/img/4-edit-rule.png) | ![](screenshots/img/5-setup.png) | ![](screenshots/img/6-home-not-connected.png) |

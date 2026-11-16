@@ -1,10 +1,5 @@
 package com.caravan.monitor.ui
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.os.PowerManager
-import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,28 +22,38 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.caravan.monitor.BuildConfig
-import com.caravan.monitor.CaravanApp
-import com.caravan.monitor.HubClient
-import com.caravan.monitor.MonitorService
+import com.caravan.monitor.Conn
+import com.caravan.monitor.ConnStatus
+import com.caravan.monitor.Meta
+import com.caravan.monitor.Settings
+import com.caravan.monitor.UpdateInfo
 
-// Seconds, same choices as the hub web page. 0 = never.
 private val SLEEP_OPTIONS = listOf(10, 20, 30, 60, 300, 900, 1800, 3600, 0)
 
 @Composable
-fun SetupScreen() {
-    val app = CaravanApp.instance
-    val ctx = LocalContext.current
-    val saved by app.prefs.settings.collectAsStateWithLifecycle()
-    val status by app.hub.status.collectAsStateWithLifecycle()
-    val meta by app.hub.meta.collectAsStateWithLifecycle()
-    val connected = status.conn == HubClient.Conn.CONNECTED
+fun SetupContent(
+    saved: Settings,
+    status: ConnStatus,
+    meta: Meta,
+    appVersion: String,
+    batteryExempt: Boolean,
+    onSaveSettings: (Settings, reconnect: Boolean) -> Unit,
+    onBatteryExempt: () -> Unit,
+    onScreenSleep: (Int) -> Unit,
+    onRemoteControl: (Boolean) -> Unit,
+    onOpenWebPage: () -> Unit,
+    update: UpdateInfo = UpdateInfo(),
+    updateTokenSet: Boolean = false,
+    onSaveUpdateToken: (String) -> Unit = {},
+    onCheckUpdate: () -> Unit = {},
+    onUpdate: () -> Unit = {},
+    onOpenTokenPage: () -> Unit = {},
+) {
+    val connected = status.conn == Conn.CONNECTED
 
     var host by remember(saved) { mutableStateOf(saved.host) }
     var user by remember(saved) { mutableStateOf(saved.user) }
@@ -66,7 +71,7 @@ fun SetupScreen() {
         SectionCard("Hub connection", Accent.water) {
             Text(
                 when (status.conn) {
-                    HubClient.Conn.CONNECTED -> "Connected to ${status.host}"
+                    Conn.CONNECTED -> "Connected to ${status.host}"
                     else -> status.detail.ifBlank { "Not connected" }
                 },
                 color = if (connected) Accent.battery else Accent.warn,
@@ -82,23 +87,19 @@ fun SetupScreen() {
             Text("The same login as the hub's web page (WEB_USER / WEB_PASS in secrets.h).",
                 style = MaterialTheme.typography.bodySmall, color = Accent.muted)
             Spacer(Modifier.height(8.dp))
-            Button(onClick = {
-                app.prefs.update(saved.copy(host = host, user = user, pass = pass))
-                app.hub.reconnect()
-            }) { Text("Save and connect") }
+            Button(onClick = { onSaveSettings(saved.copy(host = host, user = user, pass = pass), true) }) { Text("Save and connect") }
         }
 
         SectionCard("Alerts on this phone", Accent.warn) {
             SwitchRow("Watch for alerts with the app closed", saved.backgroundAlerts) {
-                app.prefs.update(saved.copy(backgroundAlerts = it))
-                MonitorService.sync(ctx)
+                onSaveSettings(saved.copy(backgroundAlerts = it), false)
             }
             Text("On the caravan's Wi-Fi the app gets alerts straight from the hub, no internet needed. " +
                 "Android shows a small \"Watching caravan\" notification while this is on.",
                 style = MaterialTheme.typography.bodySmall, color = Accent.muted)
-            if (!ignoringBatteryOptimisation(ctx)) {
+            if (!batteryExempt) {
                 Spacer(Modifier.height(8.dp))
-                FilledTonalButton(onClick = { askBatteryExemption(ctx) }) { Text("Stop Android pausing alerts") }
+                FilledTonalButton(onClick = onBatteryExempt) { Text("Stop Android pausing alerts") }
                 Text("Some phones pause background apps to save battery, which can delay alerts.",
                     style = MaterialTheme.typography.bodySmall, color = Accent.muted)
             }
@@ -114,7 +115,7 @@ fun SetupScreen() {
                 visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
             Button(onClick = {
-                app.prefs.update(saved.copy(ntfyServer = ntfyServer.ifBlank { "https://ntfy.sh" }, ntfyTopic = ntfyTopic, ntfyToken = ntfyToken))
+                onSaveSettings(saved.copy(ntfyServer = ntfyServer.ifBlank { "https://ntfy.sh" }, ntfyTopic = ntfyTopic, ntfyToken = ntfyToken), false)
             }) { Text("Save") }
         }
 
@@ -125,31 +126,29 @@ fun SetupScreen() {
                 if (meta.screenSleepSec >= 0) {
                     Text("Screen dims after", style = MaterialTheme.typography.labelMedium, color = Accent.muted)
                     Picker(sleepLabel(meta.screenSleepSec), (SLEEP_OPTIONS + meta.screenSleepSec).distinct().sortedBy { if (it == 0) Int.MAX_VALUE else it }.map { it to sleepLabel(it) }) {
-                        app.hub.send("display_set", "sleep" to it)
-                        app.hub.send("hello")
+                        onScreenSleep(it)
                     }
                     Spacer(Modifier.height(8.dp))
                 }
                 SwitchRow("Allow control from the internet", meta.remoteControl) {
-                    app.hub.send("remote_control", "on" to it)
-                    app.hub.send("hello")
+                    onRemoteControl(it)
                 }
                 Text("When off, the remote dashboard can look but not switch pumps or change settings.",
                     style = MaterialTheme.typography.bodySmall, color = Accent.muted)
             }
         }
 
+        UpdateSection(update, updateTokenSet, onSaveUpdateToken, onCheckUpdate, onUpdate, onOpenTokenPage)
+
         SectionCard("More setup", Accent.muted) {
             Text("Victron keys, thermometers, tank calibration, BMPRO and weather location are coming to the app next. " +
                 "Until then, set them on the hub's web page.", style = MaterialTheme.typography.bodySmall, color = Accent.muted)
             Spacer(Modifier.height(8.dp))
-            FilledTonalButton(enabled = connected, onClick = {
-                app.hub.baseUrl()?.let { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) }
-            }) { Text("Open hub web page") }
+            FilledTonalButton(enabled = connected, onClick = onOpenWebPage) { Text("Open hub web page") }
         }
 
         Row {
-            Text("App ${BuildConfig.VERSION_NAME}" + if (meta.fw.isNotBlank()) " · hub firmware ${meta.fw}" else "",
+            Text("App $appVersion" + if (meta.fw.isNotBlank()) " · hub firmware ${meta.fw}" else "",
                 style = MaterialTheme.typography.bodySmall, color = Accent.muted)
         }
         Spacer(Modifier.height(8.dp))
@@ -163,16 +162,3 @@ private fun sleepLabel(sec: Int) = when {
     else -> "$sec s"
 }
 
-private fun ignoringBatteryOptimisation(ctx: Context): Boolean {
-    val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
-    return pm.isIgnoringBatteryOptimizations(ctx.packageName)
-}
-
-@android.annotation.SuppressLint("BatteryLife") // sideloaded app whose whole job is background alerts
-private fun askBatteryExemption(ctx: Context) {
-    try {
-        ctx.startActivity(Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}")))
-    } catch (_: Exception) {
-        ctx.startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-    }
-}

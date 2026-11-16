@@ -4,17 +4,6 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-/** The phone-side settings. Everything about the van itself lives on the hub. */
-data class Settings(
-    val host: String = "",          // blank = find the hub automatically
-    val user: String = "admin",
-    val pass: String = "",
-    val backgroundAlerts: Boolean = true,
-    val ntfyServer: String = "https://ntfy.sh",
-    val ntfyTopic: String = "",
-    val ntfyToken: String = "",
-)
-
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("caravan", Context.MODE_PRIVATE)
     private val _settings = MutableStateFlow(load())
@@ -24,6 +13,15 @@ class Prefs(context: Context) {
     var lastHost: String
         get() = sp.getString("lastHost", "") ?: ""
         set(v) { sp.edit().putString("lastHost", v).apply() }
+
+    /** GitHub token (read-only, this repo) for downloading app updates; the repo is private. */
+    var updateToken: String
+        get() = sp.getString("ghToken", "") ?: ""
+        set(v) { sp.edit().putString("ghToken", v.trim()).apply() }
+
+    var lastUpdateCheck: Long
+        get() = sp.getLong("lastUpdateCheck", 0)
+        set(v) { sp.edit().putLong("lastUpdateCheck", v).apply() }
 
     var ntfyLastId: String
         get() = sp.getString("ntfyLastId", "") ?: ""

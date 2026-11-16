@@ -18,6 +18,43 @@ data class Solar(val on: Boolean, val w: Double, val yieldKwh: Double, val peakW
 data class Temp(val on: Boolean, val c: Double, val lo: Double, val hi: Double, val batt: Int)
 data class Tank(val on: Boolean, val pct: Double)
 data class Pump(val on: Boolean, val lockout: Boolean, val runSec: Int)
+data class Gas(val on: Boolean = false, val pct: Double = 0.0)
+/**
+ * Diesel heater as the hub reports it ("htr"; absent until one is set up).
+ * link 1 = Bluetooth (full status), 2 = 433 MHz remote (no status back).
+ * phase 0 off, 1 heating up, 2 running, 3 cooling down. mode 0 thermostat, 1 power level.
+ */
+data class Heater(
+    val link: Int, val online: Boolean, val phase: Int, val mode: Int, val setC: Int, val level: Int,
+    val cabinC: Double? = null, val bodyC: Double? = null, val supplyV: Double? = null, val err: Int = 0,
+) {
+    val running get() = phase == 1 || phase == 2
+    val hasStatus get() = link == 1 && online
+    companion object {
+        const val MIN_C = 8
+        const val MAX_C = 36
+        const val LEVELS = 10
+        val PHASES = listOf("Off", "Heating up", "Running", "Cooling down")
+        // Same wording as the touchscreen and web page (CaravanModel.cpp heaterErrorText).
+        fun errorText(e: Int) = when (e) {
+            1 -> "Didn't start (E-01)"; 2 -> "Out of fuel (E-02)"; 3 -> "Supply voltage fault (E-03)"
+            4 -> "Outlet sensor fault (E-04)"; 5 -> "Inlet sensor fault (E-05)"; 6 -> "Fuel pump fault (E-06)"
+            7 -> "Fan fault (E-07)"; 8 -> "Glow plug fault (E-08)"; 9 -> "Overheated (E-09)"
+            10 -> "Overheat sensor fault (E-10)"; else -> "Heater fault"
+        }
+        fun parse(h: JSONObject?): Heater? {
+            if (h == null || h.optInt("ln") == 0) return null
+            return Heater(
+                link = h.optInt("ln"), online = h.optBoolean("on"), phase = h.optInt("ph"), mode = h.optInt("md"),
+                setC = h.optInt("st", 20), level = h.optInt("lv", 5),
+                cabinC = if (h.has("cab")) h.optDouble("cab") else null,
+                bodyC = if (h.has("hx")) h.optDouble("hx") else null,
+                supplyV = if (h.has("v")) h.optDouble("v") else null,
+                err = h.optInt("err"),
+            )
+        }
+    }
+}
 data class ActiveAlert(val id: Int, val sev: Int, val ack: Boolean, val since: Long, val value: Double, val msg: String)
 data class Weather(val ok: Boolean, val place: String, val tempC: Double, val windKmh: Double, val gustKmh: Double, val code: Int)
 data class Net(val wifi: Boolean, val cloud: Boolean, val ip: String)
@@ -32,12 +69,15 @@ data class HubState(
     val alerts: List<ActiveAlert>,
     val wx: Weather,
     val net: Net,
+    val gas: Gas = Gas(),
+    val htr: Heater? = null,
 ) {
     companion object {
         fun parse(o: JSONObject): HubState {
             val b = o.optJSONObject("bat") ?: JSONObject()
             val w = o.optJSONObject("wx") ?: JSONObject()
             val n = o.optJSONObject("net") ?: JSONObject()
+            val g = o.optJSONObject("gas") ?: JSONObject()
             return HubState(
                 ts = o.optLong("ts"),
                 bat = Battery(
@@ -61,6 +101,8 @@ data class HubState(
                 wx = Weather(w.optBoolean("ok"), w.optString("pl"), w.optDouble("t", 0.0), w.optDouble("w", 0.0),
                     w.optDouble("g", 0.0), w.optInt("c", -1)),
                 net = Net(n.optBoolean("wifi"), n.optBoolean("cloud"), n.optString("ip")),
+                gas = Gas(g.optBoolean("on"), g.optDouble("p", 0.0)),
+                htr = Heater.parse(o.optJSONObject("htr")),
             )
         }
     }
@@ -70,7 +112,7 @@ data class Meta(
     val solarNames: List<String> = listOf("Solar 1", "Solar 2"),
     val tempNames: List<String> = listOf("Inside", "Outside", "Fridge"),
     val tankNames: List<String> = listOf("Tank 1", "Tank 2", "Tank 3"),
-    val pumpNames: List<String> = listOf("Pump 1", "Pump 2"),
+    val pumpNames: List<String> = listOf("Internal", "External"),
     val remoteControl: Boolean = true,
     val fw: String = "",
     /** Touchscreen dim timeout in seconds (0 = never), or -1 if the hub firmware doesn't support it yet. */
@@ -113,6 +155,7 @@ object Metrics {
         Metric("tank3", "Tank 3", "%", 5.0),
         Metric("wx_gust", "Forecast gusts", "km/h", 5.0),
         Metric("wx_rain", "Forecast rain chance", "%", 10.0),
+        Metric("gas", "Gas bottle", "%", 5.0),
     )
 
     fun byKey(key: String): Metric = all.firstOrNull { it.key == key } ?: all[0]
@@ -142,7 +185,15 @@ object Severity {
     const val INFO = 0
     const val WARN = 1
     const val ALARM = 2
-    fun label(sev: Int) = when (sev) { INFO -> "Info"; ALARM -> "Alarm"; else -> "Warning" }
+    const val CRIT = 3   // the top step of a stepped rule, e.g. battery at 5 %
+    fun label(sev: Int) = when (sev) { INFO -> "Info"; ALARM -> "Alarm"; CRIT -> "Critical"; else -> "Warning" }
+}
+
+/** An extra, deeper step of a rule (hub `lv`): fires once when crossed. */
+data class Level(val threshold: Double, val sev: Int)
+
+object Levels {
+    const val MAX = 2
 }
 
 data class Rule(
@@ -157,16 +208,44 @@ data class Rule(
     val sev: Int = Severity.WARN,
     val notify: Boolean = true,
     val action: String = "none",
+    /** Up to [Levels.MAX] deeper steps after [threshold], each strictly deeper than the last. */
+    val levels: List<Level> = emptyList(),
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("en", enabled).put("name", name).put("m", metric)
         .put("cmp", if (above) ">" else "<").put("thr", threshold).put("hys", hysteresis)
         .put("dly", delaySec).put("sev", sev).put("ntf", notify).put("act", action)
+        .apply {
+            if (levels.isNotEmpty()) put("lv", JSONArray().apply {
+                levels.forEach { put(JSONObject().put("thr", it.threshold).put("sev", it.sev)) }
+            })
+        }
+
+    /** Every step, the first one included: (threshold, severity). */
+    val steps: List<Level> get() = listOf(Level(threshold, sev)) + levels
+
+    /** Highest severity this rule can reach. */
+    val maxSev: Int get() = steps.maxOf { it.sev }
 
     fun describe(meta: Meta): String {
         val m = Metrics.byKey(metric)
         val dly = if (delaySec > 0) " for ${formatDelay(delaySec)}" else ""
-        return "${Metrics.label(metric, meta)} ${if (above) "above" else "below"} ${fmtNum(threshold)} ${m.unit}$dly"
+        val thr = steps.joinToString(" → ") { fmtNum(it.threshold) }
+        return "${Metrics.label(metric, meta)} ${if (above) "above" else "below"} $thr ${m.unit}$dly"
+    }
+
+    /** Is [t] strictly deeper than [prev] in this rule's direction? */
+    fun deeper(t: Double, prev: Double) = if (above) t > prev else t < prev
+
+    /** Drops levels that aren't strictly deeper than the step before (as the hub does). */
+    fun withValidLevels(): Rule {
+        val out = mutableListOf<Level>()
+        var prev = threshold
+        for (l in levels) {
+            if (out.size >= Levels.MAX) break
+            if (deeper(l.threshold, prev)) { out += l; prev = l.threshold }
+        }
+        return copy(levels = out)
     }
 
     companion object {
@@ -176,7 +255,10 @@ data class Rule(
             threshold = o.optDouble("thr", 0.0), hysteresis = o.optDouble("hys", 0.0),
             delaySec = o.optInt("dly"), sev = o.optInt("sev", Severity.WARN),
             notify = o.optBoolean("ntf", true), action = o.optString("act", "none"),
-        )
+            levels = o.optJSONArray("lv").objects().map {
+                Level(it.optDouble("thr", 0.0), it.optInt("sev", Severity.ALARM).coerceIn(0, Severity.CRIT))
+            },
+        ).withValidLevels()
 
         fun parseList(a: JSONArray?): List<Rule> = a.objects().map { parse(it) }
     }
@@ -198,3 +280,32 @@ fun JSONArray?.objects(): List<JSONObject> =
 
 fun JSONArray?.strings(): List<String> =
     if (this == null) emptyList() else (0 until length()).map { optString(it) }
+
+/** In-app updater state (see Updater.kt). Builds are GitHub releases "app-build-<n>". */
+enum class UpdState { NO_TOKEN, IDLE, CHECKING, UP_TO_DATE, AVAILABLE, DOWNLOADING, READY, ERROR }
+data class UpdateInfo(
+    val state: UpdState = UpdState.IDLE,
+    val currentBuild: Int = 0,
+    val latestBuild: Int = 0,
+    val notes: String = "",
+    val progress: Float = 0f,
+    val message: String = "",
+) {
+    /** Worth showing on Home: there's something to download or install. */
+    val offer get() = state == UpdState.AVAILABLE || state == UpdState.DOWNLOADING || state == UpdState.READY
+}
+
+/** How the app is getting on with the hub (shown in the UI). */
+enum class Conn { IDLE, SEARCHING, CONNECTING, CONNECTED, AUTH_FAILED, OFFLINE }
+data class ConnStatus(val conn: Conn = Conn.IDLE, val host: String = "", val detail: String = "")
+
+/** The phone-side settings. Everything about the van itself lives on the hub. */
+data class Settings(
+    val host: String = "",          // blank = find the hub automatically
+    val user: String = "admin",
+    val pass: String = "",
+    val backgroundAlerts: Boolean = true,
+    val ntfyServer: String = "https://ntfy.sh",
+    val ntfyTopic: String = "",
+    val ntfyToken: String = "",
+)

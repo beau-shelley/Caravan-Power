@@ -37,7 +37,7 @@ class MonitorService : Service() {
         scope.launch {
             combine(app.hub.status, app.hub.state.map { it?.bat?.soc?.toInt() }) { st, soc ->
                 when (st.conn) {
-                    HubClient.Conn.CONNECTED -> "Connected to the hub" + (soc?.let { " · battery $it%" } ?: "")
+                    Conn.CONNECTED -> "Connected to the hub" + (soc?.let { " · battery $it%" } ?: "")
                     else -> if (app.prefs.settings.value.ntfyTopic.isNotBlank())
                         "Away from the van: alerts come through ntfy" else "Not connected to the hub"
                 }

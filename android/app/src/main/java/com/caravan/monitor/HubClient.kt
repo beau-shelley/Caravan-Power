@@ -41,8 +41,6 @@ class HubClient(
     private val prefs: Prefs,
     private val notifier: AlertNotifier,
 ) {
-    enum class Conn { IDLE, SEARCHING, CONNECTING, CONNECTED, AUTH_FAILED, OFFLINE }
-    data class Status(val conn: Conn = Conn.IDLE, val host: String = "", val detail: String = "")
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val http = OkHttpClient.Builder()
@@ -51,8 +49,8 @@ class HubClient(
         .pingInterval(15, TimeUnit.SECONDS)
         .build()
 
-    private val _status = MutableStateFlow(Status())
-    val status: StateFlow<Status> = _status
+    private val _status = MutableStateFlow(ConnStatus())
+    val status: StateFlow<ConnStatus> = _status
     private val _state = MutableStateFlow<HubState?>(null)
     val state: StateFlow<HubState?> = _state
     private val _meta = MutableStateFlow(Meta())
@@ -112,7 +110,7 @@ class HubClient(
         loop = null
         ws?.close(1000, null)
         ws = null
-        _status.value = Status(Conn.IDLE)
+        _status.value = ConnStatus(Conn.IDLE)
     }
 
     private suspend fun runLoop() {
@@ -124,16 +122,16 @@ class HubClient(
             }
             var result = tryHosts(candidates, s)
             if (result == null && s.host.isBlank()) {
-                _status.value = Status(Conn.SEARCHING, detail = "Looking for the hub on this Wi-Fi")
+                _status.value = ConnStatus(Conn.SEARCHING, detail = "Looking for the hub on this Wi-Fi")
                 val found = Discovery.find(context)
                 result = tryHosts(listOfNotNull(found, "caravan.local").distinct(), s)
             }
             when (result) {
                 null -> {
-                    _status.value = Status(Conn.OFFLINE, detail = "Hub not found. Are you on the caravan's Wi-Fi?")
+                    _status.value = ConnStatus(Conn.OFFLINE, detail = "Hub not found. Are you on the caravan's Wi-Fi?")
                 }
                 is TokenResult.AuthFailed -> {
-                    _status.value = Status(Conn.AUTH_FAILED, result.host, "Wrong username or password")
+                    _status.value = ConnStatus(Conn.AUTH_FAILED, result.host, "Wrong username or password")
                     delay(20_000)
                     continue
                 }
@@ -155,7 +153,7 @@ class HubClient(
 
     private fun tryHosts(hosts: List<String>, s: Settings): TokenResult? {
         for (h in hosts) {
-            _status.value = Status(Conn.CONNECTING, h, "Connecting to $h")
+            _status.value = ConnStatus(Conn.CONNECTING, h, "Connecting to $h")
             val r = fetchToken(h, s)
             if (r != null) return r
         }
@@ -221,7 +219,7 @@ class HubClient(
         } finally {
             socket.cancel()
             if (ws === socket) ws = null
-            if (_status.value.conn == Conn.CONNECTED) _status.value = Status(Conn.OFFLINE, t.host, "Lost connection, retrying")
+            if (_status.value.conn == Conn.CONNECTED) _status.value = ConnStatus(Conn.OFFLINE, t.host, "Lost connection, retrying")
         }
     }
 
@@ -229,16 +227,16 @@ class HubClient(
         val o = try { JSONObject(text) } catch (e: Exception) { return }
         when (o.optString("t")) {
             "auth" -> if (o.optBoolean("ok")) {
-                _status.value = Status(Conn.CONNECTED, host, "Connected")
+                _status.value = ConnStatus(Conn.CONNECTED, host, "Connected")
                 socket.send("{\"c\":\"hello\"}")
             } else {
-                _status.value = Status(Conn.AUTH_FAILED, host, "Hub refused the login")
+                _status.value = ConnStatus(Conn.AUTH_FAILED, host, "Hub refused the login")
                 socket.close(1000, null)
             }
             "state" -> {
                 // A hub with no web login accepts us straight away and never sends "auth".
                 if (_status.value.conn != Conn.CONNECTED) {
-                    _status.value = Status(Conn.CONNECTED, host, "Connected")
+                    _status.value = ConnStatus(Conn.CONNECTED, host, "Connected")
                     socket.send("{\"c\":\"hello\"}")
                 }
                 val st = HubState.parse(o)

@@ -7,6 +7,9 @@ on:
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write   # to publish each build as a GitHub release for the in-app updater
+
 concurrency:
   group: android-${{ github.ref }}
   cancel-in-progress: true
@@ -35,3 +38,20 @@ jobs:
           name: caravan-monitor-apk
           path: android/caravan-monitor-*.apk
           if-no-files-found: error
+      # The app checks these releases for updates (android/.../Updater.kt).
+      # Tag app-build-<run number>; the build number is also the APK's versionCode.
+      - name: Publish as a release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/project-thread-1xdmyo')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git log -1 --format=%s "$GITHUB_SHA" > notes.txt
+          echo "" >> notes.txt
+          echo "Branch ${GITHUB_REF_NAME}, commit ${GITHUB_SHA::7}." >> notes.txt
+          gh release create "app-build-${GITHUB_RUN_NUMBER}" caravan-monitor-*.apk \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Caravan app build ${GITHUB_RUN_NUMBER}" --notes-file notes.txt
+          # Keep the 10 newest app builds.
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[].tagName' \
+            | grep '^app-build-' | sort -t- -k3 -n -r | tail -n +11 \
+            | xargs -r -I{} gh release delete {} --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag

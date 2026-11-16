@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -23,6 +25,17 @@ class AlertNotifier(private val context: Context) {
     private fun createChannels() {
         val m = context.getSystemService(NotificationManager::class.java)
         m.createNotificationChannels(listOf(
+            NotificationChannel(CH_CRIT, "Critical alarms", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "The last step of a stepped alert, e.g. battery at 5 %. Plays the alarm sound."
+                setSound(
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build(),
+                )
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 600, 300, 600, 300, 600)
+                setBypassDnd(true)  // only takes effect if the user allows it for this channel
+            },
             NotificationChannel(CH_ALARM, "Alarms", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Alarm-level alerts from the caravan, e.g. battery flat"
             },
@@ -70,7 +83,12 @@ class AlertNotifier(private val context: Context) {
             context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val channel = when (sev) { Severity.ALARM -> CH_ALARM; Severity.WARN -> CH_WARN; else -> CH_INFO }
+        val channel = when {
+            sev >= Severity.CRIT -> CH_CRIT
+            sev == Severity.ALARM -> CH_ALARM
+            sev == Severity.WARN -> CH_WARN
+            else -> CH_INFO
+        }
         val b = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -78,8 +96,13 @@ class AlertNotifier(private val context: Context) {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(open)
             .setAutoCancel(true)
-            .setCategory(if (sev == Severity.ALARM) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_STATUS)
-            .setPriority(if (sev >= Severity.WARN) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(if (sev >= Severity.ALARM) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_STATUS)
+            .setPriority(when {
+                sev >= Severity.CRIT -> NotificationCompat.PRIORITY_MAX
+                sev >= Severity.WARN -> NotificationCompat.PRIORITY_HIGH
+                else -> NotificationCompat.PRIORITY_DEFAULT
+            })
+        if (sev >= Severity.ALARM) b.setColor(if (sev >= Severity.CRIT) 0xFFD946EF.toInt() else 0xFFFF5C5C.toInt())
         if (withAck) {
             val ack = PendingIntent.getBroadcast(
                 context, 1, Intent(context, AckReceiver::class.java),
@@ -104,6 +127,7 @@ class AlertNotifier(private val context: Context) {
             .build()
 
     companion object {
+        const val CH_CRIT = "critical"
         const val CH_ALARM = "alarm"
         const val CH_WARN = "warn"
         const val CH_INFO = "info"

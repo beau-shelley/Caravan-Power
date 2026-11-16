@@ -77,4 +77,16 @@ class ModelTest {
         assertEquals("1 h", formatDelay(3600))
         assertEquals("45 s", formatDelay(45))
     }
+
+    @Test fun ruleLevelsRoundTripAndDropShallowSteps() {
+        val r = Rule(4, true, "Battery charge low", "bat_soc", false, 30.0, 5.0, 60, Severity.WARN,
+            levels = listOf(Level(15.0, Severity.ALARM), Level(5.0, Severity.CRIT)))
+        val back = Rule.parse(org.json.JSONObject(r.toJson().toString()))
+        assertEquals(r, back)
+        assertEquals(Severity.CRIT, back.maxSev)
+        val bad = org.json.JSONObject(r.toJson().toString())
+        bad.getJSONArray("lv").getJSONObject(1).put("thr", 20)  // shallower than 15
+        assertEquals(1, Rule.parse(bad).levels.size)
+        assertFalse(Rule(1, metric = "bat_v").toJson().has("lv"))
+    }
 }
