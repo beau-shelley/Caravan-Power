@@ -20,7 +20,7 @@ val copyShared by tasks.registering(Copy::class) {
     from(app) {
         include("Model.kt")
         include("ui/Colors.kt", "ui/Common.kt", "ui/HomeContent.kt", "ui/AlertsContent.kt",
-            "ui/RuleEditorContent.kt", "ui/SetupContent.kt", "ui/AppScaffold.kt")
+            "ui/RuleEditorContent.kt", "ui/SetupContent.kt", "ui/Icons.kt", "ui/AppScaffold.kt")
     }
     into(layout.buildDirectory.dir("shared"))
 }

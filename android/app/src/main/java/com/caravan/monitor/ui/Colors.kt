@@ -14,6 +14,7 @@ object Accent {
     val climate = Color(0xFFB48CFF)
     val warn = Color(0xFFFFA94D)
     val alarm = Color(0xFFFF5C5C)
+    val critical = Color(0xFFD946EF)  // fuchsia, same as the touchscreen and web page
     val muted = Color(0xFF8A96A3)
 }
 
@@ -26,7 +27,12 @@ object Surfaces {
     val text = Color(0xFFE6EAEE)
 }
 
-fun sevColor(sev: Int) = when (sev) { Severity.ALARM -> Accent.alarm; Severity.WARN -> Accent.warn; else -> Accent.water }
+fun sevColor(sev: Int) = when {
+    sev >= Severity.CRIT -> Accent.critical
+    sev == Severity.ALARM -> Accent.alarm
+    sev == Severity.WARN -> Accent.warn
+    else -> Accent.water
+}
 
 fun socColor(soc: Double) = when { soc < 20 -> Accent.alarm; soc < 40 -> Accent.warn; else -> Accent.battery }
 

@@ -18,7 +18,7 @@
   --on-primary: #00213F;
   --tonal: #1F3A57;
   --battery: #4CC38A; --solar: #F5B841; --water: #4DA3FF; --mains: #60A5FA;
-  --gas: #FF8A3D; --climate: #B48CFF; --warn: #FFA94D; --alarm: #FF5C5C;
+  --gas: #FF8A3D; --climate: #B48CFF; --warn: #FFA94D; --alarm: #FF5C5C; --crit: #D946EF;
   --page: #0A0D10;     /* around the phone */
   --panel: #151A20;
   --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -111,6 +111,17 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 .arow { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
 .arow .dot { width: 10px; height: 10px; }
 .arow b { font-weight: 600; display: block; }
+.arow.crit { background: color-mix(in srgb, var(--crit) 18%, transparent); border-radius: 12px; padding: 8px 10px; margin: 4px 0; }
+.crittag { display: inline-block; background: var(--crit); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  border-radius: 4px; padding: 1px 5px; margin-right: 6px; vertical-align: 1px; }
+.cap .capic { width: 16px; height: 16px; fill: currentColor; flex: none; }
+.pump .pic { width: 22px; height: 22px; fill: currentColor; margin-right: 8px; flex: none; }
+.level { background: var(--card); border-radius: 14px; padding: 12px 10px; display: flex; flex-direction: column; gap: 10px; }
+.level .head { display: flex; align-items: center; font-weight: 600; }
+.sevchips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.sevchips .chip { padding: 6px 2px; font-weight: 600; text-align: center; font-size: 13px; }
+.lverr { color: var(--alarm); font-size: 12px; margin-top: 4px; }
+.toast.crit { box-shadow: 0 0 0 2px var(--crit), 0 10px 30px rgba(0,0,0,.5); }
 .temps { display: grid; grid-template-columns: repeat(3, 1fr); }
 .gaspumps { display: flex; align-items: center; gap: 12px; }
 .gascol { width: 110px; display: flex; flex-direction: column; align-items: center; flex: none; }
@@ -154,7 +165,7 @@ svg.ic { width: 24px; height: 24px; fill: currentColor; }
 .rulecard:hover { background: #1e252d; }
 
 /* dialogs, toasts */
-.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.66); z-index: 40; overflow-y: auto; padding: 12px; }
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.66); z-index: 40; overflow-y: auto; overscroll-behavior: contain; padding: 12px; }
 .dialog { background: var(--raised); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .dialog h2 { margin: 0; font-size: 22px; font-weight: 700; }
 .alertdlg { background: var(--raised); border-radius: 28px; padding: 24px; margin: 30vh 12px 0; }
@@ -233,6 +244,7 @@ svg.ic { width: 24px; height: 24px; fill: currentColor; }
         <button class="chipbtn" data-preset="evening">Evening, alerts</button>
         <button class="chipbtn" data-preset="gas">Gas nearly empty</button>
         <button class="chipbtn" data-preset="dry">Fresh 2 runs dry</button>
+        <button class="chipbtn" data-preset="flat">Battery running flat</button>
         <button class="chipbtn" id="swapGas">Swap gas bottle</button>
       </div>
     </div>
@@ -264,23 +276,28 @@ function metricLabel(k) {
 }
 const ACTIONS = [["none", "None"], ["pumps_off", "Turn pumps off"], ["inverter_off", "Turn inverter off"], ["aircon_off", "Turn aircon off"]];
 const actionLabel = (k) => (ACTIONS.find((a) => a[0] === k) || [k, k])[1];
-const SEV = ["Info", "Warning", "Alarm"];
-const sevColor = (s) => s === 2 ? "var(--alarm)" : s === 1 ? "var(--warn)" : "var(--water)";
+const SEV = ["Info", "Warning", "Alarm", "Critical"];
+const sevColor = (s) => s >= 3 ? "var(--crit)" : s === 2 ? "var(--alarm)" : s === 1 ? "var(--warn)" : "var(--water)";
+// A rule's steps: the first threshold plus up to 2 deeper levels (hub "lv").
+const steps = (r) => [{ thr: r.thr, sev: r.sev }, ...(r.lv || [])];
+const maxSev = (r) => Math.max(...steps(r).map((x) => x.sev));
+const deeper = (r, t, prev) => r.cmp === ">" ? t > prev : t < prev;
 
 const DEFAULT_RULES = () => [
   [1, "Battery low", "bat_v", "<", 12.4, 0.3, 60, 1], [2, "Battery critical", "bat_v", "<", 11.8, 0.6, 30, 2, "inverter_off"],
-  [3, "Battery over-voltage", "bat_v", ">", 14.8, 0.3, 10, 2], [4, "Charge below 30%", "bat_soc", "<", 30, 5, 60, 1],
-  [5, "Charge below 15%", "bat_soc", "<", 15, 5, 60, 2, "aircon_off"], [6, "High load", "load_a", ">", 180, 20, 15, 1],
-  [7, "Fridge warm", "temp_fridge", ">", 6, 1, 1200, 2], [8, "Fridge freezing", "temp_fridge", "<", -1, 1, 1800, 1, "none", false],
-  [9, "Inside hot", "temp_in", ">", 35, 2, 300, 1], [10, "Inside cold", "temp_in", "<", 5, 1, 300, 1],
-  [11, "Tank 1 low", "tank1", "<", 15, 5, 30, 0], [12, "Tank 2 low", "tank2", "<", 15, 5, 30, 0],
-  [13, "Grey tank full", "tank3", ">", 85, 5, 30, 1], [14, "Strong wind forecast", "wx_gust", ">", 50, 10, 0, 1],
-  [15, "Gas low", "gas", "<", 20, 5, 60, 1],
-].map(([id, name, m, cmp, thr, hys, dly, sev, act = "none", ntf = true]) => ({ id, en: true, name, m, cmp, thr, hys, dly, sev, ntf, act }));
+  [3, "Battery over-voltage", "bat_v", ">", 14.8, 0.3, 10, 2],
+  [4, "Battery charge low", "bat_soc", "<", 30, 5, 60, 1, "aircon_off", true, [{ thr: 15, sev: 2 }, { thr: 5, sev: 3 }]],
+  [5, "High load", "load_a", ">", 180, 20, 15, 1],
+  [6, "Fridge warm", "temp_fridge", ">", 6, 1, 1200, 2], [7, "Fridge freezing", "temp_fridge", "<", -1, 1, 1800, 1, "none", false],
+  [8, "Inside hot", "temp_in", ">", 35, 2, 300, 1], [9, "Inside cold", "temp_in", "<", 5, 1, 300, 1],
+  [10, "Tank 1 low", "tank1", "<", 15, 5, 30, 0], [11, "Tank 2 low", "tank2", "<", 15, 5, 30, 0],
+  [12, "Grey tank full", "tank3", ">", 85, 5, 30, 1], [13, "Strong wind forecast", "wx_gust", ">", 50, 10, 0, 1],
+  [14, "Gas low", "gas", "<", 20, 5, 60, 1],
+].map(([id, name, m, cmp, thr, hys, dly, sev, act = "none", ntf = true, lv = []]) => ({ id, en: true, name, m, cmp, thr, hys, dly, sev, ntf, act, lv }));
 
 const fmtNum = (v) => Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
 const fmtDelay = (s) => s <= 0 ? "no delay" : s % 3600 === 0 ? `${s / 3600} h` : s % 60 === 0 ? `${s / 60} min` : `${s} s`;
-const describe = (r) => `${metricLabel(r.m)} ${r.cmp === ">" ? "above" : "below"} ${fmtNum(r.thr)} ${metric(r.m).unit}${r.dly > 0 ? " for " + fmtDelay(r.dly) : ""}`;
+const describe = (r) => `${metricLabel(r.m)} ${r.cmp === ">" ? "above" : "below"} ${steps(r).map((x) => fmtNum(x.thr)).join(" → ")} ${metric(r.m).unit}${r.dly > 0 ? " for " + fmtDelay(r.dly) : ""}`;
 const f1 = (v) => v.toFixed(1), f2 = (v) => v.toFixed(2), deg = (v) => String(Math.round(v) || 0);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -294,7 +311,7 @@ const S = {
   tank: [80, 45, 30], pump: [true, false], lock: [false, false], pumpRun: [42, 0],
   gas: 63, yieldKwh: [1.9, 2.4], peak: [538, 686],
   acA: 0, acOn: false, acSince: -1, bat: {}, sol: [0, 0],
-  rules: DEFAULT_RULES(), alerts: [], pend: {}, rc: true, sleep: 300,
+  rules: DEFAULT_RULES(), alerts: [], pend: {}, esc: {}, rc: true, sleep: 300,
   settings: { host: "", user: "admin", pass: "secret", bg: true, ntfyServer: "https://ntfy.sh", ntfyTopic: "caravan-alerts-8f3k2", ntfyToken: "" },
 };
 
@@ -352,31 +369,52 @@ function value(m) {
     solar1_w: S.sol[0], solar2_w: S.sol[1], temp_in: S.inside, temp_out: S.outside, temp_fridge: S.fridge,
     tank1: S.tank[0], tank2: S.tank[1], tank3: S.tank[2], wx_gust: 31, wx_rain: 20, gas: S.gas }[m];
 }
+// Stepped rules: each step fires once; drifting inside a step never re-fires;
+// recovering past a step (+ hysteresis) drops back silently and re-arms it.
 function evaluateRules(dtSec) {
   for (const r of S.rules) {
-    const v = value(r.m), active = S.alerts.find((a) => a.id === r.id);
-    if (!r.en) { if (active) clearAlert(r, v); delete S.pend[r.id]; continue; }
-    const bad = r.cmp === ">" ? v > r.thr : v < r.thr;
+    const v = value(r.m), active = S.alerts.find((a) => a.id === r.id), st = steps(r);
+    if (!r.en) { if (active) clearAlert(r, v); delete S.pend[r.id]; delete S.esc[r.id]; continue; }
+    const tripped = (t) => r.cmp === ">" ? v > t : v < t;
+    const recovered = (t) => r.cmp === ">" ? v <= t - r.hys : v >= t + r.hys;
+    let deepest = -1;
+    st.forEach((x, k) => { if (tripped(x.thr)) deepest = k; });
     if (active) {
-      const ok = r.cmp === ">" ? v < r.thr - r.hys : v > r.thr + r.hys;
-      if (ok) clearAlert(r, v); else active.val = v;
-    } else if (bad) {
+      active.val = v;
+      if (active.lvl >= st.length) active.lvl = st.length - 1;  // rule edited
+      while (active.lvl > 0 && recovered(st[active.lvl].thr)) { active.lvl--; logLine(`${esc(r.name)} back to ${SEV[st[active.lvl].sev].toLowerCase()}`); }
+      active.sev = st[active.lvl].sev; active.msg = alertMsg(r, v, active.lvl);
+      if (deepest > active.lvl) {
+        S.esc[r.id] = (S.esc[r.id] || 0) + dtSec;
+        if (S.esc[r.id] >= r.dly) { delete S.esc[r.id]; fireStep(r, active, deepest, v); }
+      } else delete S.esc[r.id];
+      if (active.lvl === 0 && recovered(r.thr)) clearAlert(r, v);
+    } else if (deepest >= 0) {
       S.pend[r.id] = (S.pend[r.id] || 0) + dtSec;
-      if (S.pend[r.id] >= r.dly) raiseAlert(r, v);
+      if (S.pend[r.id] >= r.dly) raiseAlert(r, v, deepest);
     } else delete S.pend[r.id];
   }
 }
-function alertMsg(r, v) { return `${metricLabel(r.m)} ${fmtNum(Math.round(v * 10) / 10)} ${metric(r.m).unit} (${r.cmp === ">" ? "above" : "below"} ${fmtNum(r.thr)})`; }
-function raiseAlert(r, v) {
+function alertMsg(r, v, k = 0) { return `${metricLabel(r.m)} ${fmtNum(Math.round(v * 10) / 10)} ${metric(r.m).unit} (${r.cmp === ">" ? "above" : "below"} ${fmtNum(steps(r)[k].thr)})`; }
+function raiseAlert(r, v, k) {
   delete S.pend[r.id];
-  const a = { id: r.id, sev: r.sev, ack: false, val: v, msg: alertMsg(r, v) };
+  const a = { id: r.id, sev: 0, ack: false, val: v, lvl: 0, msg: "" };
   S.alerts.push(a);
-  logLine(`<b>${esc(r.name)}</b> raised`);
-  if (r.act === "pumps_off" && S.pump.some((p) => p)) { S.pump = [false, false]; logLine("Action: pumps off"); }
+  fireStep(r, a, k, v);
+}
+function fireStep(r, a, k, v) {
+  const st = steps(r);
+  a.lvl = k; a.sev = st[k].sev; a.ack = false; a.val = v; a.msg = alertMsg(r, v, k);
+  S.alerts.sort((x, y) => y.sev - x.sev);
+  logLine(`<b>${esc(r.name)}</b> ${SEV[a.sev].toLowerCase()} (${r.cmp === ">" ? "above" : "below"} ${fmtNum(st[k].thr)})`);
+  if (k === st.length - 1 && r.act === "pumps_off" && S.pump.some((p) => p)) { S.pump = [false, false]; logLine("Action: pumps off"); }
+  if (k === st.length - 1 && r.act !== "none" && r.act !== "pumps_off") logLine(`Action: ${actionLabel(r.act).toLowerCase()}`);
+  if (k === st.length - 1 && r.act === "aircon_off" && S.bigLoad) { S.bigLoad = false; setSwitch("simLoad", false); }
   if (r.ntf && S.settings.bg && S.conn) notify(r, a);
 }
 function clearAlert(r) {
   S.alerts = S.alerts.filter((a) => a.id !== r.id);
+  delete S.esc[r.id];
   logLine(`${esc(r.name)} cleared`);
   if (toastFor === r.id) hideToast();
 }
@@ -391,10 +429,14 @@ const ICON = {
   gear: '<svg class="ic" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.46.46 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>',
   more: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>',
   plus: '<svg class="ic" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>',
+  // Font Awesome Free 6 "droplet" and "faucet-drip" (CC BY 4.0, fontawesome.com/license/free), same as the touchscreen.
+  drop: '<svg class="capic" viewBox="-64 0 512 512" aria-hidden="true"><path d="M192 512C86 512 0 426 0 320C0 228.8 130.2 57.7 166.6 11.7C172.6 4.2 181.5 0 191.1 0h1.8c9.6 0 18.5 4.2 24.5 11.7C253.8 57.7 384 228.8 384 320c0 106-86 192-192 192zM96 336c0-8.8-7.2-16-16-16s-16 7.2-16 16c0 61.9 50.1 112 112 112c8.8 0 16-7.2 16-16s-7.2-16-16-16c-44.2 0-80-35.8-80-80z"/></svg>',
+  tap: '<svg class="pic" viewBox="0 0 512 512" aria-hidden="true"><path d="M224 0c17.7 0 32 14.3 32 32V44l96-12c17.7 0 32 14.3 32 32s-14.3 32-32 32L256 84l-31-3.9-1-.1-1 .1L192 84 96 96C78.3 96 64 81.7 64 64s14.3-32 32-32l96 12V32c0-17.7 14.3-32 32-32zM0 224c0-17.7 14.3-32 32-32h96l22.6-22.6c6-6 14.1-9.4 22.6-9.4H192V116.2l32-4 32 4V160h18.7c8.5 0 16.6 3.4 22.6 9.4L320 192h32c88.4 0 160 71.6 160 160c0 17.7-14.3 32-32 32H416c-17.7 0-32-14.3-32-32s-14.3-32-32-32H315.9c-20.2 29-53.9 48-91.9 48s-71.7-19-91.9-48H32c-17.7 0-32-14.3-32-32V224zM436.8 423.4c1.9-4.5 6.3-7.4 11.2-7.4s9.2 2.9 11.2 7.4l18.2 42.4c1.8 4.1 2.7 8.6 2.7 13.1V480c0 17.7-14.3 32-32 32s-32-14.3-32-32v-1.2c0-4.5 .9-8.9 2.7-13.1l18.2-42.4z"/></svg>',
 };
 
-function card(title, color, body, extra = "") {
-  return `<section class="card ${extra}"><div class="cap"><span class="dot" style="background:${color}"></span>${esc(title)}</div>${body}</section>`;
+function card(title, color, body, extra = "", icon = "") {
+  const mark = icon ? `<span style="color:${color};display:flex">${icon}</span>` : `<span class="dot" style="background:${color}"></span>`;
+  return `<section class="card ${extra}"><div class="cap">${mark}${esc(title)}</div>${body}</section>`;
 }
 const bar = (frac, color) => `<div class="bar"><i style="width:${Math.max(0, Math.min(100, frac * 100))}%;background:${color}"></i></div>`;
 const stat = (l, v, color = "") => `<div class="stat"><div class="l">${l}</div><div class="v" style="${color ? "color:" + color : ""}">${v}</div></div>`;
@@ -418,8 +460,9 @@ function connStrip(withSetup) {
   return `<div class="strip" style="background:rgba(255,169,77,.15);color:var(--warn)"><span style="flex:1">Hub not found. Are you on the caravan's Wi-Fi?</span>${withSetup ? '<button class="btn text" data-go="2">Setup</button>' : ""}</div>`;
 }
 function alertRow(a) {
-  return `<div class="arow"><span class="dot" style="background:${a.ack ? "var(--muted)" : sevColor(a.sev)}"></span>
-    <div style="flex:1;min-width:0"><b>${esc(ruleName(a.id) || SEV[a.sev])}</b><div class="hint">${esc(a.msg)}</div></div>
+  const crit = a.sev >= 3 && !a.ack;
+  return `<div class="arow ${crit ? "crit" : ""}"><span class="dot" style="background:${a.ack ? "var(--muted)" : sevColor(a.sev)}"></span>
+    <div style="flex:1;min-width:0"><b>${crit ? '<span class="crittag">CRITICAL</span>' : ""}${esc(ruleName(a.id) || SEV[a.sev])}</b><div class="hint">${esc(a.msg)}</div></div>
     ${a.ack ? '<span class="hint">seen</span>' : ""}</div>`;
 }
 function gasBottle(p) {
@@ -449,14 +492,14 @@ function homeHTML() {
     <div class="hint" style="padding-bottom:5px">${Math.floor(S.acA * b.v)} W · bulk · estimated</div></div><div style="height:6px"></div>${bar(S.acA / 120, "var(--mains)")}`);
   out += card("Solar", "var(--solar)", `<div class="big" style="font-size:28px;color:var(--solar)">${S.sol[0] + S.sol[1]} W</div><div style="height:6px"></div>` +
     S.sol.map((w, i) => `<div class="line"><span>${META.sol[i]}</span><span>${w} W · ${f2(S.yieldKwh[i])} kWh today</span></div>`).join(""));
-  out += card("Water", "var(--water)", S.tank.map((p, i) => `<div class="line" style="padding:2px 0"><span>${META.tank[i]}</span><span>${Math.floor(p)}%</span></div>${bar(p / 100, "var(--water)")}<div style="height:8px"></div>`).join(""));
+  out += card("Water", "var(--water)", S.tank.map((p, i) => `<div class="line" style="padding:2px 0"><span>${META.tank[i]}</span><span>${Math.floor(p)}%</span></div>${bar(p / 100, "var(--water)")}<div style="height:8px"></div>`).join(""), "", ICON.drop);
   const temps = [S.inside, S.outside, S.fridge];
   out += card("Temperatures", "var(--climate)", `<div class="temps">${temps.map((c, i) => `<div>
     <div class="stat"><div class="l">${META.tmp[i]}</div></div><div style="font-size:26px;font-weight:600;color:${tempColor(i, c)}">${deg(c)}°</div>
     <div class="hint">${deg(S.lo[i])}° / ${deg(S.hi[i])}°</div></div>`).join("")}</div>`);
   out += card("Gas & pumps", "var(--gas)", `<div class="gaspumps"><div class="gascol">${gasBottle(S.gas)}
     <div class="big" style="font-size:22px;margin-top:6px;color:${gasColor(S.gas)}">${Math.floor(S.gas)}%</div><div class="hint">Gas bottle</div></div>
-    <div class="pumps">${S.pump.map((on, i) => `<button class="pump ${on ? "on" : ""}" data-pump="${i}" ${S.lock[i] ? "disabled" : ""}>${META.pump[i]}<span>${S.lock[i] ? "Locked (dry)" : on ? "On" : "Off"}</span></button>`).join("")}</div></div>`);
+    <div class="pumps">${S.pump.map((on, i) => `<button class="pump ${on ? "on" : ""}" data-pump="${i}" ${S.lock[i] ? "disabled" : ""}>${ICON.tap}${META.pump[i]}<span>${S.lock[i] ? "Locked (dry)" : on ? "On" : "Off"}</span></button>`).join("")}</div></div>`);
   out += card("Weather · Bright", "var(--climate)", `<div class="stats">${stat("Now", deg(S.outside) + " °C", tempColor(1, S.outside))}${stat("Wind", "14 km/h")}${stat("Gusts", "31 km/h")}</div>`);
   return out;
 }
@@ -469,9 +512,9 @@ function alertsHTML() {
     (un.length ? '<div class="btnrow"><button class="btn" data-act="ack">Acknowledge all</button></div>' : ""));
   out += `<div style="padding:8px 4px 0"><div class="ctl-label" style="font-weight:500">Rules</div><div class="hint">Tap a rule to change it. The hub checks these all the time, even with your phone away.</div></div>`;
   if (!S.conn) out += '<div style="color:var(--muted)">Connect to the hub to see its rules.</div>';
-  else out += S.rules.map((r) => card(SEV[r.sev], sevColor(r.sev), `<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0">
+  else out += S.rules.map((r) => card(steps(r).map((x) => SEV[x.sev]).join(" → "), sevColor(maxSev(r)), `<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0">
       <div style="font-weight:600;color:${r.en ? "var(--text)" : "var(--muted)"}">${esc(r.name || "(unnamed)")}</div><div class="hint">${esc(describe(r))}</div>
-      ${[!r.ntf && "no phone alert", r.act !== "none" && "then: " + actionLabel(r.act).toLowerCase()].filter(Boolean).map((t) => `<div class="hint">${t}</div>`).join("")}</div>
+      ${[!r.ntf && "no phone alert", r.act !== "none" && ((r.lv || []).length ? "at the last level: " : "then: ") + actionLabel(r.act).toLowerCase()].filter(Boolean).map((t) => `<div class="hint">${t}</div>`).join("")}</div>
       <button class="switch ${r.en ? "on" : ""}" data-toggle="${r.id}" aria-label="Rule on"></button></div>`, `rulecard" data-rule="${r.id}`)).join("");
   return out;
 }
@@ -550,7 +593,7 @@ function render(force = false) {
 const DELAYS = [0, 10, 30, 60, 120, 300, 600, 900, 1800, 3600];
 const DEF_THR = { bat_v: 12, bat_soc: 30, bat_a: 30, load_a: 30, charge_a: 40, solar_w: 50, solar1_w: 50, solar2_w: 50, temp_in: 35, temp_out: 40, temp_fridge: 8, tank1: 20, tank2: 20, tank3: 20, wx_gust: 60, wx_rain: 70, gas: 20 };
 function openEditor(r) {
-  editing = { ...r, thr: fmtNum(r.thr), hys: fmtNum(r.hys) };
+  editing = { ...r, thr: fmtNum(r.thr), hys: fmtNum(r.hys), lv: (r.lv || []).map((l) => ({ thr: fmtNum(l.thr), sev: l.sev })) };
   drawEditor();
 }
 function drawEditor() {
@@ -558,6 +601,15 @@ function drawEditor() {
   const delays = [...new Set([...DELAYS, e.dly])].sort((a, b) => a - b);
   const acts = ACTIONS.filter((a, i) => i < 2 || a[0] === e.act);
   const thrOk = !isNaN(parseFloat(e.thr)), hysOk = !isNaN(parseFloat(e.hys)) && parseFloat(e.hys) >= 0;
+  // Each level must be deeper than the one before (lower for "below", higher for "above").
+  const lvErr = e.lv.map((l, i) => {
+    const v = parseFloat(l.thr), prev = parseFloat(i ? e.lv[i - 1].thr : e.thr);
+    if (isNaN(v)) return "Enter a number";
+    if (!isNaN(prev) && !deeper(e, v, prev)) return `Must be ${e.cmp === ">" ? "above" : "below"} ${fmtNum(prev)} ${m.unit}`;
+    return "";
+  });
+  const allOk = thrOk && hysOk && lvErr.every((x) => !x);
+  const sevChips = (cur, attr) => `<div class="sevchips">${SEV.map((s, i) => `<button class="chip ${cur === i ? "on" : ""}" ${attr}="${i}" style="color:${sevColor(i)}">${s}</button>`).join("")}</div>`;
   $("overlay").innerHTML = `<div class="scrim" id="scrim"><div class="dialog" role="dialog" aria-label="Edit alert rule">
     <h2>${isNew ? "New alert rule" : "Edit alert rule"}</h2>
     <div class="tf"><label for="eName">Name (shown in the notification)</label><input id="eName" maxlength="27" value="${esc(e.name)}" placeholder="${esc(metricLabel(e.m))}"></div>
@@ -569,12 +621,19 @@ function drawEditor() {
       <button class="round" data-bump="hys" data-d="-1" aria-label="Lower">−</button><button class="round" data-bump="hys" data-d="1" aria-label="Raise">+</button></div>
       <div class="hint" style="margin-top:4px">Stops the alert flapping on and off around the threshold.</div></div>
     <div class="field"><span class="lab">Only if it lasts</span><select class="sel" id="eDly">${delays.map((d) => `<option value="${d}" ${d === e.dly ? "selected" : ""}>${fmtDelay(d)}</option>`).join("")}</select></div>
-    <div class="field"><span class="lab">Severity</span><div class="chips">${SEV.map((s, i) => `<button class="chip ${e.sev === i ? "on" : ""}" data-sev="${i}">${s}</button>`).join("")}</div></div>
+    <div class="field"><span class="lab">${e.lv.length ? `Severity at ${esc(e.thr)} ${m.unit}` : "Severity"}</span>${sevChips(e.sev, "data-sev")}</div>
+    ${e.lv.map((l, i) => `<div class="level"><div class="head"><span style="flex:1">Then at level ${i + 2}</span><button class="btn text" data-lvdel="${i}">Remove</button></div>
+      <div><div class="numrow"><div class="tf ${lvErr[i] ? "err" : ""}"><label for="eLv${i}">${e.cmp === ">" ? "Above" : "Below"} (${m.unit})</label><input id="eLv${i}" inputmode="decimal" value="${esc(l.thr)}"></div>
+        <button class="round" data-lvbump="${i}" data-d="-1" aria-label="Lower">−</button><button class="round" data-lvbump="${i}" data-d="1" aria-label="Raise">+</button></div>
+        ${lvErr[i] ? `<div class="lverr">${lvErr[i]}</div>` : ""}</div>
+      ${sevChips(l.sev, `data-lvi="${i}" data-lvsev`)}</div>`).join("")}
+    ${e.lv.length < 2 ? '<button class="btn tonal" data-lvadd="1" style="width:100%">+ Add a level</button>' : ""}
+    <div class="hint">${e.lv.length ? "Each level alerts once. It won't alert again until the value recovers by the amount above." : "Add a level to step up, e.g. a warning at 30 %, an alarm at 15 % and critical at 5 %."}</div>
     <div class="swrow"><span>Send a phone notification</span><button class="switch ${e.ntf ? "on" : ""}" data-flag="ntf" aria-label="Notify"></button></div>
-    <div class="field"><span class="lab">Also do this automatically</span><select class="sel" id="eAct">${acts.map(([k, l]) => `<option value="${k}" ${k === e.act ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+    <div class="field"><span class="lab">${e.lv.length ? "At the last level, also" : "Also do this automatically"}</span><select class="sel" id="eAct">${acts.map(([k, l]) => `<option value="${k}" ${k === e.act ? "selected" : ""}>${l}</option>`).join("")}</select></div>
     <div class="swrow"><span>Rule switched on</span><button class="switch ${e.en ? "on" : ""}" data-flag="en" aria-label="Rule on"></button></div>
     <div style="display:flex;align-items:center;gap:8px">${isNew ? "" : '<button class="btn danger" data-ed="delete">Delete</button>'}<span style="flex:1"></span>
-      <button class="btn text" data-ed="cancel">Cancel</button><button class="btn" data-ed="save" ${thrOk && hysOk ? "" : "disabled"}>Save</button></div>
+      <button class="btn text" data-ed="cancel">Cancel</button><button class="btn" data-ed="save" ${allOk ? "" : "disabled"}>Save</button></div>
   </div></div>` + (confirmDelete ? `<div class="scrim" style="z-index:45"><div class="alertdlg"><h3>Delete this rule?</h3>
     <div class="btnrow" style="justify-content:flex-end"><button class="btn text" data-ed="nodel">Cancel</button><button class="btn text" data-ed="yesdel">Delete</button></div></div></div>` : "");
 }
@@ -583,6 +642,7 @@ function readEditorFields() {
   const v = (id) => $(id) && $(id).value;
   editing.name = v("eName") ?? editing.name; editing.thr = v("eThr") ?? editing.thr; editing.hys = v("eHys") ?? editing.hys;
   editing.dly = +(v("eDly") ?? editing.dly); editing.act = v("eAct") ?? editing.act;
+  editing.lv.forEach((l, i) => { l.thr = v("eLv" + i) ?? l.thr; });
 }
 function drawConfirmReset() {
   $("overlay").innerHTML = `<div class="scrim"><div class="alertdlg"><h3>Restore default rules?</h3>
@@ -594,8 +654,9 @@ function drawConfirmReset() {
 let toastTimer = 0, snackTimer = 0;
 function notify(r, a) {
   toastFor = r.id;
+  $("toast").classList.toggle("crit", a.sev >= 3);
   $("toast").innerHTML = `<div class="app"><span class="dot" style="background:${sevColor(a.sev)}"></span>Caravan · now</div>
-    <b>${esc(r.name)}</b><div class="hint" style="color:#c9d1d9">${esc(a.msg)}</div>
+    <b>${a.sev >= 3 ? '<span class="crittag">CRITICAL</span>' : ""}${esc(r.name)}</b><div class="hint" style="color:#c9d1d9">${esc(a.msg)}</div>
     <div class="acts"><button class="btn text" data-act="ack">Acknowledge</button><button class="btn text" data-act="openAlerts">Open</button></div>`;
   $("toast").classList.add("show");
   clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 8000);
@@ -623,7 +684,15 @@ document.addEventListener("click", (ev) => {
   if (editing) {
     readEditorFields();
     if (d.cmp) { editing.cmp = d.cmp; drawEditor(); return; }
+    if (d.lvsev != null) { editing.lv[+d.lvi].sev = +d.lvsev; drawEditor(); return; }
     if (d.sev != null) { editing.sev = +d.sev; drawEditor(); return; }
+    if (d.lvdel != null) { editing.lv.splice(+d.lvdel, 1); drawEditor(); return; }
+    if (d.lvbump != null) { const l = editing.lv[+d.lvbump], cur = parseFloat(l.thr) || 0;
+      l.thr = fmtNum(Math.round((cur + metric(editing.m).step * +d.d) * 100) / 100); drawEditor(); return; }
+    if (d.lvadd) { const st = metric(editing.m).step, last = editing.lv[editing.lv.length - 1];
+      const prev = parseFloat(last ? last.thr : editing.thr) || 0, gap = Math.max(st, Math.abs(prev) / 2);
+      const next = Math.round((editing.cmp === ">" ? prev + gap : prev - gap) / st) * st;
+      editing.lv.push({ thr: fmtNum(Math.round(next * 100) / 100), sev: Math.min(3, (last ? last.sev : editing.sev) + 1) }); drawEditor(); return; }
     if (d.flag) { editing[d.flag] = !editing[d.flag]; drawEditor(); return; }
     if (d.bump) { const stepv = metric(editing.m).step * +d.d, cur = parseFloat(editing[d.bump]) || 0;
       editing[d.bump] = fmtNum(Math.round((cur + stepv) * 100) / 100); drawEditor(); return; }
@@ -633,10 +702,11 @@ document.addEventListener("click", (ev) => {
     if (d.ed === "yesdel") { confirmDelete = false; S.rules = S.rules.filter((r) => r.id !== editing.id); S.alerts = S.alerts.filter((a) => a.id !== editing.id);
       logLine(`Rule "${esc(editing.name)}" deleted`); editing = null; $("overlay").innerHTML = ""; render(); snack("Rule deleted"); return; }
     if (d.ed === "save") {
-      const r = { ...editing, name: editing.name.trim() || metricLabel(editing.m), thr: parseFloat(editing.thr), hys: parseFloat(editing.hys) };
+      const r = { ...editing, name: editing.name.trim() || metricLabel(editing.m), thr: parseFloat(editing.thr), hys: parseFloat(editing.hys),
+        lv: editing.lv.map((l) => ({ thr: parseFloat(l.thr), sev: l.sev })) };
       const i = S.rules.findIndex((x) => x.id === r.id);
       if (i >= 0) S.rules[i] = r; else S.rules.push(r);
-      S.alerts.forEach((a) => { if (a.id === r.id) a.msg = alertMsg(r, a.val); });
+      S.alerts.forEach((a) => { if (a.id === r.id) { a.lvl = Math.min(a.lvl || 0, r.lv.length); a.sev = steps(r)[a.lvl].sev; a.msg = alertMsg(r, a.val, a.lvl); } });
       logLine(`Rule "${esc(r.name)}" saved`); editing = null; $("overlay").innerHTML = ""; render(); snack("Saved on the hub"); return;
     }
   }
@@ -646,8 +716,8 @@ document.addEventListener("click", (ev) => {
     case "menu": menuOpen = !menuOpen; render(); break;
     case "reset": menuOpen = false; drawConfirmReset(); break;
     case "noreset": $("overlay").innerHTML = ""; render(); break;
-    case "yesreset": S.rules = DEFAULT_RULES(); S.alerts = []; S.pend = {}; $("overlay").innerHTML = ""; logLine("Rules restored to defaults"); render(); snack("Default rules restored"); break;
-    case "new": openEditor({ id: Math.max(0, ...S.rules.map((r) => r.id)) + 1, en: true, name: "", m: "bat_soc", cmp: "<", thr: 30, hys: 5, dly: 60, sev: 1, ntf: true, act: "none" }); break;
+    case "yesreset": S.rules = DEFAULT_RULES(); S.alerts = []; S.pend = {}; S.esc = {}; $("overlay").innerHTML = ""; logLine("Rules restored to defaults"); render(); snack("Default rules restored"); break;
+    case "new": openEditor({ id: Math.max(0, ...S.rules.map((r) => r.id)) + 1, en: true, name: "", m: "bat_soc", cmp: "<", thr: 30, hys: 5, dly: 60, sev: 1, ntf: true, act: "none", lv: [] }); break;
     case "saveConn": snack("Saved. Reconnecting…"); break;
     case "saveNtfy": S.settings.ntfyTopic = $("ntfyTopic").value; S.settings.ntfyServer = $("ntfyServer").value; snack("Saved"); break;
     case "bg": S.settings.bg = !S.settings.bg; t.classList.toggle("on", S.settings.bg); snack(S.settings.bg ? "Watching for alerts in the background" : "Background alerts off"); break;
@@ -659,14 +729,18 @@ document.addEventListener("click", (ev) => {
 document.addEventListener("change", (ev) => {
   const id = ev.target.id;
   if (id === "eMetric" && editing) { readEditorFields(); editing.m = ev.target.value; editing.thr = fmtNum(DEF_THR[editing.m] ?? 0); editing.hys = fmtNum(metric(editing.m).step); drawEditor(); }
+  if (editing && /^e(Thr|Lv\d)$/.test(id)) { readEditorFields(); drawEditor(); }  // show level hints on leaving a field
   if (id === "sleep") { S.sleep = +ev.target.value; logLine(`Touchscreen dims after ${ev.target.selectedOptions[0].text}`); snack("Saved on the hub"); }
 });
 document.addEventListener("input", (ev) => {
-  if (!editing || (ev.target.id !== "eThr" && ev.target.id !== "eHys")) return;
+  if (!editing || !/^e(Thr|Hys|Lv\d)$/.test(ev.target.id)) return;
   readEditorFields();
-  const ok = (s, min) => !isNaN(parseFloat(s)) && (min == null || parseFloat(s) >= min);
-  ev.target.closest(".tf").classList.toggle("err", !ok(ev.target.value, ev.target.id === "eHys" ? 0 : null));
-  document.querySelector('[data-ed="save"]').disabled = !(ok(editing.thr) && ok(editing.hys, 0));
+  const e = editing, num = (x) => !isNaN(parseFloat(x));
+  const lvOk = e.lv.map((l, i) => num(l.thr) && deeper(e, parseFloat(l.thr), parseFloat(i ? e.lv[i - 1].thr : e.thr)));
+  e.lv.forEach((l, i) => { const f = $("eLv" + i); if (f) f.closest(".tf").classList.toggle("err", !lvOk[i]); });
+  $("eThr").closest(".tf").classList.toggle("err", !num(e.thr));
+  $("eHys").closest(".tf").classList.toggle("err", !(num(e.hys) && parseFloat(e.hys) >= 0));
+  document.querySelector('[data-ed="save"]').disabled = !(num(e.thr) && num(e.hys) && parseFloat(e.hys) >= 0 && lvOk.every(Boolean));
 });
 
 // ---------------- simulator panel
@@ -690,10 +764,11 @@ function preset(p) {
   if (p === "evening") { Object.assign(S, { min: Math.floor(S.min / 1440) * 1440 + 19 * 60 + 30, mains: false, soc: 31, fridgeOpen: true, fridge: 5.8, bigLoad: false });
     S.tank[1] = Math.min(S.tank[1], 12); S.speed = 60; }
   if (p === "gas") S.gas = 22;
+  if (p === "flat") { Object.assign(S, { min: Math.floor(S.min / 1440) * 1440 + 21 * 60, mains: false, soc: 33, bigLoad: true }); S.speed = 60; }
   if (p === "dry") { S.tank[1] = 6; S.pump[1] = true; S.lock[1] = false; }
   setSwitch("simMains", S.mains); setSwitch("simFridge", S.fridgeOpen); setSwitch("simLoad", S.bigLoad);
   [...$("speed").children].forEach((c) => c.classList.toggle("on", +c.dataset.s === S.speed));
-  logLine(`Jumped to: ${{ charging: "mains charging", evening: "evening with the fridge door open", gas: "gas nearly empty", dry: "Fresh 2 running dry" }[p]}`);
+  logLine(`Jumped to: ${{ charging: "mains charging", evening: "evening with the fridge door open", gas: "gas nearly empty", dry: "Fresh 2 running dry", flat: "night with the aircon on, battery running down (watch 30 → 15 → 5 %)" }[p]}`);
   step(0); render(true);
 }
 $("simChip").addEventListener("click", (e) => { e.stopPropagation(); $("panel").classList.add("open"); });

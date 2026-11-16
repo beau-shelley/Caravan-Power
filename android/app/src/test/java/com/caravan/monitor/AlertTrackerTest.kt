@@ -31,4 +31,14 @@ class AlertTrackerTest {
         t.update(emptyList())
         assertEquals(listOf(1), t.update(listOf(a(1))).show.map { it.id })
     }
+
+    @Test fun escalationShowsAgainButNotOnTheWayDown() {
+        val t = AlertTracker()
+        fun s(sev: Int) = ActiveAlert(4, sev, false, 0, 0.0, "charge")
+        assertEquals(1, t.update(listOf(s(Severity.WARN))).show.size)
+        assertEquals(1, t.update(listOf(s(Severity.ALARM))).show.size)
+        assertEquals(1, t.update(listOf(s(Severity.CRIT))).show.size)
+        assertEquals(0, t.update(listOf(s(Severity.ALARM))).show.size)   // recovered a step: silent
+        assertEquals(1, t.update(listOf(s(Severity.CRIT))).show.size)    // fell again: alert again
+    }
 }

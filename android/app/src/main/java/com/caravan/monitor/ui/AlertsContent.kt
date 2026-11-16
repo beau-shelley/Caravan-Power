@@ -119,7 +119,8 @@ fun AlertsContent(
 
 @Composable
 private fun RuleRow(r: Rule, meta: Meta, enabled: Boolean, onClick: () -> Unit, onToggle: (Boolean) -> Unit) {
-    SectionCard(Severity.label(r.sev), sevColor(r.sev), Modifier.clickable(enabled = enabled, onClick = onClick)) {
+    val header = if (r.levels.isEmpty()) Severity.label(r.sev) else r.steps.joinToString(" → ") { Severity.label(it.sev) }
+    SectionCard(header, sevColor(r.maxSev), Modifier.clickable(enabled = enabled, onClick = onClick)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(r.name.ifBlank { "(unnamed)" }, fontWeight = FontWeight.SemiBold,
@@ -127,7 +128,8 @@ private fun RuleRow(r: Rule, meta: Meta, enabled: Boolean, onClick: () -> Unit, 
                 Hint(r.describe(meta))
                 val extras = buildList {
                     if (!r.notify) add("no phone alert")
-                    if (r.action != "none") add("then: ${Actions.label(r.action).lowercase()}")
+                    if (r.action != "none")
+                        add("${if (r.levels.isEmpty()) "then" else "at the last level"}: ${Actions.label(r.action).lowercase()}")
                 }
                 if (extras.isNotEmpty()) Hint(extras.joinToString(" · "))
             }

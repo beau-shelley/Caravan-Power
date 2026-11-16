@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.caravan.monitor.ActiveAlert
@@ -49,7 +50,10 @@ import com.caravan.monitor.Severity
 import java.util.Locale
 
 @Composable
-fun SectionCard(title: String, color: Color, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun SectionCard(
+    title: String, color: Color, modifier: Modifier = Modifier, icon: ImageVector? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Surfaces.card),
@@ -57,8 +61,9 @@ fun SectionCard(title: String, color: Color, modifier: Modifier = Modifier, cont
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-                Spacer(Modifier.width(8.dp))
+                if (icon != null) Icon(icon, null, Modifier.size(16.dp), tint = color)
+                else Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+                Spacer(Modifier.width(if (icon != null) 6.dp else 8.dp))
                 Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = Accent.muted)
             }
             Spacer(Modifier.height(10.dp))
@@ -88,13 +93,28 @@ fun ConnectionStrip(st: ConnStatus, onOpenSetup: (() -> Unit)? = null) {
     }
 }
 
+/** One active alert. An unacknowledged critical one gets a tinted fill and a CRITICAL tag. */
 @Composable
 fun AlertRow(a: ActiveAlert, title: String?) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    val crit = a.sev >= Severity.CRIT && !a.ack
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = if (crit) 4.dp else 0.dp).clip(RoundedCornerShape(12.dp))
+            .background(if (crit) Accent.critical.copy(alpha = 0.18f) else Color.Transparent)
+            .padding(horizontal = if (crit) 10.dp else 0.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Box(Modifier.size(10.dp).clip(CircleShape).background(if (a.ack) Accent.muted else sevColor(a.sev)))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(title ?: Severity.label(a.sev), fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (crit) {
+                    Text("CRITICAL", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                        color = Color.White, modifier = Modifier.clip(RoundedCornerShape(4.dp))
+                            .background(Accent.critical).padding(horizontal = 5.dp, vertical = 1.dp))
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(title ?: Severity.label(a.sev), fontWeight = FontWeight.SemiBold)
+            }
             Text(a.msg, style = MaterialTheme.typography.bodySmall, color = Accent.muted)
         }
         if (a.ack) Text("seen", style = MaterialTheme.typography.labelSmall, color = Accent.muted)

@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -152,7 +153,7 @@ private fun SolarCard(s: HubState, meta: Meta) {
 @Composable
 private fun TanksCard(s: HubState, meta: Meta) {
     if (s.tank.none { it.on }) return
-    SectionCard("Water", Accent.water) {
+    SectionCard("Water", Accent.water, icon = CaravanIcons.Drop) {
         s.tank.forEachIndexed { i, t ->
             if (!t.on) return@forEachIndexed
             Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
@@ -205,6 +206,8 @@ private fun GasAndPumpsCard(s: HubState, meta: Meta, onPump: (Int, Boolean) -> U
                         colors = if (p.on) ButtonDefaults.buttonColors(containerColor = Accent.water)
                         else ButtonDefaults.buttonColors(containerColor = Surfaces.track, contentColor = Surfaces.text),
                     ) {
+                        Icon(CaravanIcons.Tap, null, Modifier.size(22.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text(label, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         Text(when { p.lockout -> "Locked (dry)"; p.on -> "On"; else -> "Off" },
                             style = MaterialTheme.typography.labelLarge)

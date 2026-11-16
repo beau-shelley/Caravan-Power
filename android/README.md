@@ -9,6 +9,9 @@ touchscreen for setup and sends alerts as phone notifications.
   gas bottle, Internal/External pumps (tap to switch), weather.
 - **Alerts:** active alerts with *Acknowledge*, and the hub's alert rules: add, edit,
   delete, switch on/off, restore defaults. Same rules as the touchscreen and web page.
+  A rule can step up through up to two more levels, e.g. battery charge below 30 %
+  warning, below 15 % alarm, below 5 % critical. Each level alerts once and re-arms
+  only after the value recovers by the rule's hysteresis.
 - **Setup:** hub login, background alerts, ntfy, touchscreen sleep time, remote control.
 - **Notifications:**
   - On the caravan's Wi-Fi the app holds a connection to the hub and raises a
@@ -16,6 +19,7 @@ touchscreen for setup and sends alerts as phone notifications.
   - Away from the van it listens to the hub's ntfy topic (`NTFY_TOPIC`), which works
     whenever the van has internet. If the van is offline, nothing can reach the phone.
   - Rules with *Send a phone notification* off are skipped.
+  - Critical alerts use their own "Critical alarms" channel with the alarm sound.
 
 ## How it talks to the hub
 

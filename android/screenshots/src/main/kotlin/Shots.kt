@@ -26,6 +26,7 @@ import com.caravan.monitor.Conn
 import com.caravan.monitor.ConnStatus
 import com.caravan.monitor.Gas
 import com.caravan.monitor.HubState
+import com.caravan.monitor.Level
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Net
 import com.caravan.monitor.Pump
@@ -63,18 +64,18 @@ val RULES = listOf(
     Rule(1, true, "Battery low", "bat_v", false, 12.4, 0.3, 60, Severity.WARN),
     Rule(2, true, "Battery critical", "bat_v", false, 11.8, 0.6, 30, Severity.ALARM, action = "inverter_off"),
     Rule(3, true, "Battery over-voltage", "bat_v", true, 14.8, 0.3, 10, Severity.ALARM),
-    Rule(4, true, "Charge below 30%", "bat_soc", false, 30.0, 5.0, 60, Severity.WARN),
-    Rule(5, true, "Charge below 15%", "bat_soc", false, 15.0, 5.0, 60, Severity.ALARM, action = "aircon_off"),
-    Rule(6, true, "High load", "load_a", true, 180.0, 20.0, 15, Severity.WARN),
-    Rule(7, true, "Fridge warm", "temp_fridge", true, 6.0, 1.0, 1200, Severity.ALARM),
-    Rule(8, true, "Fridge freezing", "temp_fridge", false, -1.0, 1.0, 1800, Severity.WARN, notify = false),
-    Rule(9, true, "Inside hot", "temp_in", true, 35.0, 2.0, 300, Severity.WARN),
-    Rule(10, true, "Inside cold", "temp_in", false, 5.0, 1.0, 300, Severity.WARN),
-    Rule(11, true, "Tank 1 low", "tank1", false, 15.0, 5.0, 30, Severity.INFO),
-    Rule(12, true, "Tank 2 low", "tank2", false, 15.0, 5.0, 30, Severity.INFO),
-    Rule(13, true, "Grey tank full", "tank3", true, 85.0, 5.0, 30, Severity.WARN),
-    Rule(14, false, "Strong wind forecast", "wx_gust", true, 50.0, 10.0, 0, Severity.WARN),
-    Rule(15, true, "Gas low", "gas", false, 20.0, 5.0, 60, Severity.WARN),
+    Rule(4, true, "Battery charge low", "bat_soc", false, 30.0, 5.0, 60, Severity.WARN, action = "aircon_off",
+        levels = listOf(Level(15.0, Severity.ALARM), Level(5.0, Severity.CRIT))),
+    Rule(5, true, "High load", "load_a", true, 180.0, 20.0, 15, Severity.WARN),
+    Rule(6, true, "Fridge warm", "temp_fridge", true, 6.0, 1.0, 1200, Severity.ALARM),
+    Rule(7, true, "Fridge freezing", "temp_fridge", false, -1.0, 1.0, 1800, Severity.WARN, notify = false),
+    Rule(8, true, "Inside hot", "temp_in", true, 35.0, 2.0, 300, Severity.WARN),
+    Rule(9, true, "Inside cold", "temp_in", false, 5.0, 1.0, 300, Severity.WARN),
+    Rule(10, true, "Tank 1 low", "tank1", false, 15.0, 5.0, 30, Severity.INFO),
+    Rule(11, true, "Tank 2 low", "tank2", false, 15.0, 5.0, 30, Severity.INFO),
+    Rule(12, true, "Grey tank full", "tank3", true, 85.0, 5.0, 30, Severity.WARN),
+    Rule(13, false, "Strong wind forecast", "wx_gust", true, 50.0, 10.0, 0, Severity.WARN),
+    Rule(14, true, "Gas low", "gas", false, 20.0, 5.0, 60, Severity.WARN),
 )
 
 val CONNECTED = ConnStatus(Conn.CONNECTED, "192.168.1.50", "Connected")
@@ -98,15 +99,15 @@ val CHARGING = HubState(
 /** Evening off-grid: battery running down, fridge warm alarm and a warning. */
 val ALERTING = HubState(
     ts = 1731730000,
-    bat = Battery(on = true, v = 12.31, a = -18.6, soc = 27.0, ttgMin = 248, solarA = 0.0, chargerA = 0.0, loadA = 18.6),
+    bat = Battery(on = true, v = 12.31, a = -18.6, soc = 4.0, ttgMin = 22, solarA = 0.0, chargerA = 0.0, loadA = 18.6),
     sol = listOf(Solar(true, 0.0, 3.12, 541.0, 0), Solar(true, 0.0, 3.96, 690.0, 0)),
     tmp = listOf(Temp(true, 19.4, 17.2, 26.8, 80), Temp(true, 12.1, 11.5, 29.6, 75), Temp(true, 7.4, 2.8, 7.6, 90)),
     tank = listOf(Tank(true, 22.0), Tank(true, 8.0), Tank(true, 62.0)),
     pump = listOf(Pump(false, false, 0), Pump(false, true, 0)),
     alerts = listOf(
-        ActiveAlert(7, Severity.ALARM, false, 1731729000, 7.4, "Fridge temp 7.4 °C (above 6)"),
-        ActiveAlert(4, Severity.WARN, false, 1731729500, 27.0, "Battery charge 27 % (below 30)"),
-        ActiveAlert(12, Severity.INFO, true, 1731720000, 8.0, "Fresh 2 8 % (below 15)"),
+        ActiveAlert(4, Severity.CRIT, false, 1731729500, 4.0, "Battery charge low: 4% (< 5)"),
+        ActiveAlert(6, Severity.ALARM, false, 1731729000, 7.4, "Fridge temp 7.4 °C (above 6)"),
+        ActiveAlert(11, Severity.INFO, true, 1731720000, 8.0, "Fresh 2 8 % (below 15)"),
     ),
     wx = Weather(true, "Bright", 12.0, 6.0, 15.0, 1),
     net = Net(true, false, "192.168.1.50"),
@@ -191,12 +192,12 @@ fun main() {
             AlertsContent(ALERTING, RULES, META, CONNECTED, nop, { _, _ -> }, {}, nop)
         }
     }
-    shot("4-edit-rule", 1150) {
+    shot("4-edit-rule", 1500) {
         AppScaffold(1, {}, 2) {
             Box(Modifier.fillMaxSize()) {
                 AlertsContent(ALERTING, RULES, META, CONNECTED, nop, { _, _ -> }, {}, nop)
                 Box(Modifier.fillMaxSize().background(Color(0xAA000000)))
-                RuleEditorCard(RULES[6], META, nop, {}, nop,
+                RuleEditorCard(RULES[3], META, nop, {}, nop,
                     modifier = Modifier.fillMaxWidth().padding(12.dp).align(Alignment.TopCenter), scrollable = false)
             }
         }

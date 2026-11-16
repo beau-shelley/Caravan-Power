@@ -147,7 +147,15 @@ object Severity {
     const val INFO = 0
     const val WARN = 1
     const val ALARM = 2
-    fun label(sev: Int) = when (sev) { INFO -> "Info"; ALARM -> "Alarm"; else -> "Warning" }
+    const val CRIT = 3   // the top step of a stepped rule, e.g. battery at 5 %
+    fun label(sev: Int) = when (sev) { INFO -> "Info"; ALARM -> "Alarm"; CRIT -> "Critical"; else -> "Warning" }
+}
+
+/** An extra, deeper step of a rule (hub `lv`): fires once when crossed. */
+data class Level(val threshold: Double, val sev: Int)
+
+object Levels {
+    const val MAX = 2
 }
 
 data class Rule(
@@ -162,16 +170,44 @@ data class Rule(
     val sev: Int = Severity.WARN,
     val notify: Boolean = true,
     val action: String = "none",
+    /** Up to [Levels.MAX] deeper steps after [threshold], each strictly deeper than the last. */
+    val levels: List<Level> = emptyList(),
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("en", enabled).put("name", name).put("m", metric)
         .put("cmp", if (above) ">" else "<").put("thr", threshold).put("hys", hysteresis)
         .put("dly", delaySec).put("sev", sev).put("ntf", notify).put("act", action)
+        .apply {
+            if (levels.isNotEmpty()) put("lv", JSONArray().apply {
+                levels.forEach { put(JSONObject().put("thr", it.threshold).put("sev", it.sev)) }
+            })
+        }
+
+    /** Every step, the first one included: (threshold, severity). */
+    val steps: List<Level> get() = listOf(Level(threshold, sev)) + levels
+
+    /** Highest severity this rule can reach. */
+    val maxSev: Int get() = steps.maxOf { it.sev }
 
     fun describe(meta: Meta): String {
         val m = Metrics.byKey(metric)
         val dly = if (delaySec > 0) " for ${formatDelay(delaySec)}" else ""
-        return "${Metrics.label(metric, meta)} ${if (above) "above" else "below"} ${fmtNum(threshold)} ${m.unit}$dly"
+        val thr = steps.joinToString(" → ") { fmtNum(it.threshold) }
+        return "${Metrics.label(metric, meta)} ${if (above) "above" else "below"} $thr ${m.unit}$dly"
+    }
+
+    /** Is [t] strictly deeper than [prev] in this rule's direction? */
+    fun deeper(t: Double, prev: Double) = if (above) t > prev else t < prev
+
+    /** Drops levels that aren't strictly deeper than the step before (as the hub does). */
+    fun withValidLevels(): Rule {
+        val out = mutableListOf<Level>()
+        var prev = threshold
+        for (l in levels) {
+            if (out.size >= Levels.MAX) break
+            if (deeper(l.threshold, prev)) { out += l; prev = l.threshold }
+        }
+        return copy(levels = out)
     }
 
     companion object {
@@ -181,7 +217,10 @@ data class Rule(
             threshold = o.optDouble("thr", 0.0), hysteresis = o.optDouble("hys", 0.0),
             delaySec = o.optInt("dly"), sev = o.optInt("sev", Severity.WARN),
             notify = o.optBoolean("ntf", true), action = o.optString("act", "none"),
-        )
+            levels = o.optJSONArray("lv").objects().map {
+                Level(it.optDouble("thr", 0.0), it.optInt("sev", Severity.ALARM).coerceIn(0, Severity.CRIT))
+            },
+        ).withValidLevels()
 
         fun parseList(a: JSONArray?): List<Rule> = a.objects().map { parse(it) }
     }

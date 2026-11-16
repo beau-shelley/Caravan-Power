@@ -1,6 +1,12 @@
 package com.caravan.monitor.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,8 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.caravan.monitor.Actions
+import com.caravan.monitor.Level
+import com.caravan.monitor.Levels
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Metrics
 import com.caravan.monitor.Rule
@@ -63,12 +73,25 @@ fun RuleEditorCard(
     var notify by remember { mutableStateOf(initial.notify) }
     var action by remember { mutableStateOf(initial.action) }
     var enabled by remember { mutableStateOf(initial.enabled) }
+    // Extra steps as editable text: (threshold, severity).
+    var levels by remember { mutableStateOf(initial.levels.map { fmtNum(it.threshold) to it.sev }) }
     var confirmDelete by remember { mutableStateOf(false) }
 
     val m = Metrics.byKey(metric)
     val thrVal = thr.replace(',', '.').toDoubleOrNull()
     val hysVal = hys.replace(',', '.').toDoubleOrNull()
-    val valid = thrVal != null && hysVal != null && hysVal >= 0
+    val levelVals = levels.map { it.first.replace(',', '.').toDoubleOrNull() }
+    // Each step must be deeper than the one before it (lower for "below", higher for "above").
+    val levelErrors = levelVals.mapIndexed { i, v ->
+        val prev = if (i == 0) thrVal else levelVals[i - 1]
+        when {
+            v == null -> "Enter a number"
+            prev != null && !(if (above) v > prev else v < prev) ->
+                "Must be ${if (above) "above" else "below"} ${fmtNum(prev)} ${m.unit}"
+            else -> null
+        }
+    }
+    val valid = thrVal != null && hysVal != null && hysVal >= 0 && levelErrors.all { it == null }
 
     Surface(
             modifier.fillMaxWidth(),
@@ -112,17 +135,44 @@ fun RuleEditorCard(
                     Picker(formatDelay(delay), (DELAYS + delay).distinct().sorted().map { it to formatDelay(it) }) { delay = it }
                 }
 
-                Field("Severity") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(Severity.INFO, Severity.WARN, Severity.ALARM).forEach { s ->
-                            FilterChip(selected = sev == s, onClick = { sev = s }, label = { Text(Severity.label(s)) })
+                Field(if (levels.isEmpty()) "Severity" else "Severity at ${thr.ifBlank { "?" }} ${m.unit}") {
+                    SeverityChips(sev) { sev = it }
+                }
+
+                // Stepped levels: e.g. warning at 30 %, alarm at 15 %, critical at 5 %.
+                levels.forEachIndexed { i, (t, s) ->
+                    Column(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Surfaces.card)
+                            .padding(horizontal = 8.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Then at level ${i + 2}", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { levels = levels.filterIndexed { j, _ -> j != i } }) { Text("Remove") }
                         }
+                        NumberField("${if (above) "Above" else "Below"} (${m.unit})", t,
+                            { v -> levels = levels.mapIndexed { j, l -> if (j == i) v to l.second else l } }, m.step,
+                            error = levelErrors[i])
+                        SeverityChips(s) { v -> levels = levels.mapIndexed { j, l -> if (j == i) l.first to v else l } }
                     }
                 }
+                if (levels.size < Levels.MAX) {
+                    OutlinedButton(onClick = {
+                        val prev = levelVals.lastOrNull() ?: thrVal ?: defaultThreshold(metric)
+                        val gap = maxOf(m.step, Math.abs(prev) / 2)
+                        val next = Math.round((if (above) prev + gap else prev - gap) / m.step) * m.step
+                        val prevSev = levels.lastOrNull()?.second ?: sev
+                        levels = levels + (fmtNum(next) to minOf(prevSev + 1, Severity.CRIT))
+                    }, modifier = Modifier.fillMaxWidth()) { Text("+ Add a level") }
+                }
+                Hint(
+                    if (levels.isEmpty()) "Add a level to step up, e.g. a warning at 30 %, an alarm at 15 % and critical at 5 %."
+                    else "Each level alerts once. It won't alert again until the value recovers by the amount above."
+                )
 
                 SwitchRow("Send a phone notification", notify) { notify = it }
 
-                Field("Also do this automatically") {
+                Field(if (levels.isEmpty()) "Also do this automatically" else "At the last level, also") {
                     val opts = Actions.visible.toMutableList()
                     if (opts.none { it.first == action }) opts.add(action to Actions.label(action))
                     Picker(Actions.label(action), opts) { action = it }
@@ -140,6 +190,7 @@ fun RuleEditorCard(
                             name = name.trim().ifBlank { Metrics.label(metric, meta) }, metric = metric, above = above,
                             threshold = thrVal!!, hysteresis = hysVal!!, delaySec = delay, sev = sev,
                             notify = notify, action = action, enabled = enabled,
+                            levels = levels.mapIndexed { i, l -> Level(levelVals[i]!!, l.second) },
                         ))
                     }) { Text("Save") }
                 }
@@ -168,8 +219,27 @@ private fun defaultThreshold(key: String) = when (key) {
 
 
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NumberField(label: String, value: String, onChange: (String) -> Unit, step: Double, help: String? = null) {
+private fun SeverityChips(sev: Int, onPick: (Int) -> Unit) {
+    // Four equal chips so "Critical" still fits inside a level card; the label carries the colour.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(Severity.INFO, Severity.WARN, Severity.ALARM, Severity.CRIT).forEach { s ->
+            FilterChip(
+                selected = sev == s, onClick = { onPick(s) }, modifier = Modifier.weight(1f),
+                label = {
+                    Text(Severity.label(s), maxLines = 1, color = sevColor(s), fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp, letterSpacing = 0.sp,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun NumberField(label: String, value: String, onChange: (String) -> Unit, step: Double, help: String? = null,
+                        error: String? = null) {
     fun bump(d: Double) {
         val v = value.replace(',', '.').toDoubleOrNull() ?: 0.0
         onChange(fmtNum(Math.round((v + d) * 100) / 100.0))
@@ -178,7 +248,7 @@ private fun NumberField(label: String, value: String, onChange: (String) -> Unit
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value, onChange, label = { Text(label) }, singleLine = true,
-                isError = value.replace(',', '.').toDoubleOrNull() == null,
+                isError = error != null || value.replace(',', '.').toDoubleOrNull() == null,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.weight(1f),
             )
@@ -186,7 +256,8 @@ private fun NumberField(label: String, value: String, onChange: (String) -> Unit
             FilledTonalIconButton(onClick = { bump(-step) }) { Text("−") }
             FilledTonalIconButton(onClick = { bump(step) }) { Text("+") }
         }
-        if (help != null) Text(help, style = MaterialTheme.typography.bodySmall, color = Accent.muted)
+        if (error != null) Text(error, style = MaterialTheme.typography.bodySmall, color = Accent.alarm)
+        else if (help != null) Text(help, style = MaterialTheme.typography.bodySmall, color = Accent.muted)
     }
 }
 
