@@ -455,7 +455,7 @@ static void updateShell() {
   } else if (top && worst >= cv::SEV_WARN) {
     lv_obj_clear_flag(gBanner, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(gBannerBtn, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_bg_color(gBanner, c(worst == cv::SEV_ALARM ? col::ALARM : col::WARN), 0);
+    lv_obj_set_style_bg_color(gBanner, c(sevColor(worst)), 0);
     if (unacked > 1) setText(gBannerText, LV_SYMBOL_WARNING "  %s  (+%d more)", top->msg, unacked - 1);
     else setText(gBannerText, LV_SYMBOL_WARNING "  %s", top->msg);
   } else {

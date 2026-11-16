@@ -97,7 +97,9 @@ struct Level {
   uint16_t trackMm = 1900, jockeyMm = 4500;
 };
 
-enum Severity : uint8_t { SEV_INFO = 0, SEV_WARN = 1, SEV_ALARM = 2 };
+// SEV_CRIT is the top step of a stepped rule (e.g. battery at 5 %): shown and
+// pushed like an alarm but louder/redder. Anything >= SEV_ALARM sounds the buzzer.
+enum Severity : uint8_t { SEV_INFO = 0, SEV_WARN = 1, SEV_ALARM = 2, SEV_CRIT = 3 };
 
 struct ActiveAlert {
   uint8_t ruleId = 0;
@@ -163,6 +165,16 @@ enum Action : uint8_t { ACT_NONE = 0, ACT_AIRCON_OFF, ACT_INVERTER_OFF, ACT_PUMP
 const char *actionKey(Action a);
 Action actionFromKey(const char *k);
 
+// A rule can step up through extra levels after its first threshold, e.g.
+// charge < 30 % warning, then < 15 % alarm, then < 5 % critical. Each level is
+// strictly deeper than the one before (lower for "<", higher for ">") and
+// fires once; it re-arms only after the value recovers past it + hysteresis.
+constexpr int MAX_LEVELS = 2;  // extra levels on top of threshold/sev
+struct RuleLevel {
+  float threshold = 0;
+  Severity sev = SEV_ALARM;
+};
+
 struct Rule {
   uint8_t id = 0;
   bool enabled = true;
@@ -174,7 +186,12 @@ struct Rule {
   uint16_t delaySec = 0;  // condition must hold this long before firing
   Severity sev = SEV_WARN;
   bool notify = true;     // push to phone
-  Action action = ACT_NONE;
+  Action action = ACT_NONE;  // runs when the rule reaches its deepest level
+  uint8_t levelCount = 0;
+  RuleLevel levels[MAX_LEVELS];
+  // Level 0 is threshold/sev; 1..levelCount are levels[].
+  float levelThreshold(int k) const { return k <= 0 ? threshold : levels[k - 1].threshold; }
+  Severity levelSev(int k) const { return k <= 0 ? sev : levels[k - 1].sev; }
 };
 
 struct RuleSet {

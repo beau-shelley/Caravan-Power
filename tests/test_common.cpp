@@ -145,6 +145,94 @@ static void testAlerts() {
   CHECK(s.alertCount == 0);
 }
 
+// Stepped rule: 30 % warning -> 15 % alarm -> 5 % critical. Each step fires
+// once; drifting around inside a step doesn't re-fire; recovering re-arms.
+static void testAlertLevels() {
+  State s;
+  s.bat.online = true;
+  s.bat.source = BAT_SRC_SHUNT;
+  s.bat.soc = 50;
+  RuleSet rs;
+  Rule r;
+  strcpy(r.name, "Battery charge low");
+  r.metric = M_BAT_SOC;
+  r.cmp = CMP_LT;
+  r.threshold = 30;
+  r.hysteresis = 5;
+  r.delaySec = 0;
+  r.sev = SEV_WARN;
+  r.action = ACT_PUMPS_OFF;
+  r.levelCount = 2;
+  r.levels[0] = {15, SEV_ALARM};
+  r.levels[1] = {5, SEV_CRIT};
+  rs.upsert(r);
+
+  struct Log { int raised = 0, cleared = 0; uint8_t lastSev = 0; float lastThr = 0; Action lastAct = ACT_NONE; } log;
+  auto cb = [](const AlertEngine::Event &ev, void *ctx) {
+    Log *l = (Log *)ctx;
+    if (ev.type == AlertEngine::RAISED) {
+      l->raised++;
+      l->lastSev = ev.rule.sev;
+      l->lastThr = ev.rule.threshold;
+      l->lastAct = ev.rule.action;
+    } else {
+      l->cleared++;
+    }
+  };
+  AlertEngine e;
+  uint32_t t = 0;
+  auto step = [&](float soc) { s.bat.soc = soc; e.evaluate(s, rs, t += 1000, 0, cb, &log); };
+
+  step(50);
+  CHECK(log.raised == 0);
+  step(29);
+  CHECK(log.raised == 1 && log.lastSev == SEV_WARN && log.lastAct == ACT_NONE);
+  step(28); step(31); step(29); step(20);  // inside the band: no repeat
+  CHECK(log.raised == 1);
+  step(14);
+  CHECK(log.raised == 2 && log.lastSev == SEV_ALARM && log.lastThr == 15);
+  CHECK(s.alertCount == 1 && s.alerts[0].sev == SEV_ALARM && !s.alerts[0].acked);
+  CHECK(strstr(s.alerts[0].msg, "< 15") != nullptr);
+  step(12); step(16);
+  CHECK(log.raised == 2);
+  step(4);
+  CHECK(log.raised == 3 && log.lastSev == SEV_CRIT && log.lastAct == ACT_PUMPS_OFF);
+  CHECK(e.anyUnackedAlarm());
+  step(8);  // recovered past 5 + 5? no: still critical
+  CHECK(s.alerts[0].sev == SEV_CRIT);
+  step(11); // >= 5 + 5: drops back to the alarm step, silently
+  CHECK(log.raised == 3 && s.alerts[0].sev == SEV_ALARM && log.cleared == 0);
+  step(4);  // falls again: critical re-fires
+  CHECK(log.raised == 4 && log.lastSev == SEV_CRIT);
+  step(36); // recovered past everything: one CLEARED
+  CHECK(log.cleared == 1 && s.alertCount == 0);
+
+  // Dropping straight past several steps fires once, at the deepest.
+  step(3);
+  CHECK(log.raised == 5 && log.lastSev == SEV_CRIT);
+
+  // JSON round trip keeps the levels; invalid (not deeper) levels are dropped.
+  JsonDocument d;
+  ruleToJson(rs.rules[0], d.to<JsonObject>());
+  CHECK(d["lv"].size() == 2 && d["lv"][1]["sev"] == 3);
+  Rule back;
+  CHECK(ruleFromJson(back, d.as<JsonObjectConst>()));
+  CHECK(back.levelCount == 2 && back.levels[0].threshold == 15 && back.levels[1].sev == SEV_CRIT);
+  d["lv"][1]["thr"] = 20;  // shallower than 15: dropped
+  ruleFromJson(back, d.as<JsonObjectConst>());
+  CHECK(back.levelCount == 1);
+  JsonDocument plain;
+  ruleToJson(Rule(), plain.to<JsonObject>());
+  CHECK(!plain["lv"].is<JsonArrayConst>());  // no levels: old format unchanged
+
+  RuleSet defs;
+  loadDefaultRules(defs);
+  bool found = false;
+  for (int i = 0; i < defs.count; i++)
+    if (defs.rules[i].metric == M_BAT_SOC) found = defs.rules[i].levelCount == 2;
+  CHECK(found);
+}
+
 static void testJsonRoundTrip() {
   State s;
   s.ts = 1762560000;
@@ -199,7 +287,8 @@ static void testJsonRoundTrip() {
   rulesFromJson(rs2, rd2.as<JsonArrayConst>());
   CHECK(rs2.count == rs.count);
   CHECK(rs2.rules[1].action == ACT_INVERTER_OFF);
-  CHECK(rs2.rules[6].metric == M_TEMP_FRIDGE && rs2.rules[6].delaySec == 1200);
+  CHECK(rs2.rules[5].metric == M_TEMP_FRIDGE && rs2.rules[5].delaySec == 1200);
+  CHECK(rs2.rules[3].levelCount == 2 && rs2.rules[3].levels[1].sev == SEV_CRIT);
   CHECK(strcmp(rs2.rules[0].name, rs.rules[0].name) == 0);
 
   Meta m;
@@ -552,6 +641,7 @@ int main() {
   testVictronBle();
   testVeDirect();
   testAlerts();
+  testAlertLevels();
   testJsonRoundTrip();
   testSoc();
   testLink();

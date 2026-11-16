@@ -18,7 +18,7 @@
   --bg:#0b1220; --card:#131c2e; --tile:#1a2438; --border:#1e293b;
   --text:#e2e8f0; --muted:#94a3b8; --dim:#475569;
   --solar:#fbbf24; --charge:#34d399; --load:#f87171; --water:#38bdf8; --gas:#fb923c;
-  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444; --mains:#60a5fa;
+  --climate:#a78bfa; --accent:#22d3ee; --warn:#f59e0b; --alarm:#ef4444; --mains:#60a5fa; --crit:#d946ef;
   --radius:16px;
 }
 @media (prefers-color-scheme: light) {
@@ -26,7 +26,7 @@
     --bg:#eef2f7; --card:#ffffff; --tile:#f1f5f9; --border:#dbe3ee;
     --text:#0f172a; --muted:#475569; --dim:#94a3b8;
     --solar:#d97706; --charge:#059669; --load:#dc2626; --water:#0284c7; --gas:#ea580c;
-    --climate:#7c3aed; --accent:#0891b2; --mains:#2563eb;
+    --climate:#7c3aed; --accent:#0891b2; --mains:#2563eb; --crit:#c026d3;
   }
 }
 * { box-sizing:border-box; }
@@ -77,6 +77,12 @@ main { padding:12px 16px 40px; max-width:1200px; margin:0 auto; }
 .tog b { display:block; font-weight:600; } .tog span { font-size:12px; color:var(--muted); }
 .tog.on { border-color:var(--c, var(--accent)); background:color-mix(in srgb, var(--c, var(--accent)) 22%, var(--tile)); }
 .tog:disabled { opacity:.5; cursor:not-allowed; }
+.ico { width:1.1em; height:1.1em; vertical-align:-.18em; fill:currentColor; }
+.cap .ico { width:14px; height:14px; color:var(--dot, var(--accent)); }
+.cap:has(.ico)::before { display:none; }
+.tog b .ico { color:var(--c, var(--water)); margin-right:6px; }
+.lvls { grid-column:1/-1; display:grid; gap:8px; }
+.lvl { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end; }
 .alerts { display:flex; flex-direction:column; gap:8px; }
 .alert { border-left:4px solid var(--c); background:color-mix(in srgb, var(--c) 14%, var(--card)); padding:10px 12px; border-radius:10px; }
 .btn { border:0; background:var(--tile); color:var(--text); padding:8px 14px; border-radius:10px; font:inherit; cursor:pointer; }
@@ -124,6 +130,12 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Same icons as the touchscreen and the Android app: Font Awesome 6 "droplet" (water) and "faucet-drip" (pumps).
+       Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com, icons CC BY 4.0. -->
+  <symbol id="i-drop" viewBox="0 0 384 512"><path d="M192 512C86 512 0 426 0 320C0 228.8 130.2 57.7 166.6 11.7C172.6 4.2 181.5 0 191.1 0h1.8c9.6 0 18.5 4.2 24.5 11.7C253.8 57.7 384 228.8 384 320c0 106-86 192-192 192zM96 336c0-8.8-7.2-16-16-16s-16 7.2-16 16c0 61.9 50.1 112 112 112c8.8 0 16-7.2 16-16s-7.2-16-16-16c-44.2 0-80-35.8-80-80z"/></symbol>
+  <symbol id="i-tap" viewBox="0 0 512 512"><path d="M224 0c17.7 0 32 14.3 32 32V44l96-12c17.7 0 32 14.3 32 32s-14.3 32-32 32L256 84l-31-3.9-1-.1-1 .1L192 84 96 96C78.3 96 64 81.7 64 64s14.3-32 32-32l96 12V32c0-17.7 14.3-32 32-32zM0 224c0-17.7 14.3-32 32-32h96l22.6-22.6c6-6 14.1-9.4 22.6-9.4H192V116.2l32-4 32 4V160h18.7c8.5 0 16.6 3.4 22.6 9.4L320 192h32c88.4 0 160 71.6 160 160c0 17.7-14.3 32-32 32H416c-17.7 0-32-14.3-32-32s-14.3-32-32-32H315.9c-20.2 29-53.9 48-91.9 48s-71.7-19-91.9-48H32c-17.7 0-32-14.3-32-32V224zM436.8 423.4c1.9-4.5 6.3-7.4 11.2-7.4s9.2 2.9 11.2 7.4l18.2 42.4c1.8 4.1 2.7 8.6 2.7 13.1V480c0 17.7-14.3 32-32 32s-32-14.3-32-32v-1.2c0-4.5 .9-8.9 2.7-13.1l18.2-42.4z"/></symbol>
+</svg>
 <header>
   <h1>⚡ Caravan Power</h1>
   <span class="sp"></span>
@@ -177,7 +189,7 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
         <div id="temps"></div>
       </div>
       <div class="card span4" style="--dot:var(--water)">
-        <div class="cap">Water</div>
+        <div class="cap"><svg class="ico"><use href="#i-drop"/></svg>Water</div>
         <div id="tanks" class="tanks"></div>
       </div>
       <div class="card span4" style="--dot:var(--gas)">
@@ -287,12 +299,17 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
       <div><label>Threshold</label><input name="thr" type="number" step="any" required></div>
       <div><label>Hysteresis (to clear)</label><input name="hys" type="number" step="any" min="0" value="0"></div>
       <div><label>Delay (seconds)</label><input name="dly" type="number" min="0" max="65535" value="0"></div>
-      <div><label>Severity</label><select name="sev"><option value="0">Info</option><option value="1">Warning</option><option value="2">Alarm</option></select></div>
+      <div><label>Severity</label><select name="sev"></select></div>
       <div><label>Push to phone</label><select name="ntf"><option value="1">Yes</option><option value="0">No</option></select></div>
       <div><label>Automatic action</label><select name="act">
         <option value="none">None</option><option value="aircon_off" data-feat="aircon">Turn aircon off</option>
         <option value="inverter_off" data-feat="inverter">Turn inverter off</option><option value="pumps_off">Turn pumps off</option></select></div>
       <div><label>Enabled</label><select name="en"><option value="1">Yes</option><option value="0">No</option></select></div>
+      <div class="lvls">
+        <label style="margin-top:4px">Further levels: each alerts once, when the reading gets that much worse (e.g. 30 % warning, then 15 % alarm, then 5 % critical)</label>
+        <div id="lvlRows" class="lvls"></div>
+        <div><button type="button" class="btn" id="addLvl">+ Add a level</button></div>
+      </div>
     </div>
     <div class="row" style="margin-top:14px; justify-content:flex-end">
       <button class="btn" value="cancel" formnovalidate>Cancel</button>
@@ -313,7 +330,9 @@ const METRICS = [
   ["temp_out","Outside temp","°C"],["temp_fridge","Fridge temp","°C"],["tank1","Tank 1","%"],
   ["tank2","Tank 2","%"],["tank3","Tank 3","%"],["gas","Gas bottle","%"]];
 const CS = {0:"Off",2:"Fault",3:"Bulk",4:"Absorption",5:"Float",7:"Equalise",245:"Starting",247:"Auto EQ",252:"Ext control"};
-const SEV = ["Info","Warning","Alarm"], SEVC = ["var(--accent)","var(--warn)","var(--alarm)"];
+const SEV = ["Info","Warning","Alarm","Critical"], SEVC = ["var(--accent)","var(--warn)","var(--alarm)","var(--crit)"];
+const SEV_OPTS = SEV.map((n, i) => `<option value="${i}">${n}</option>`).join("");
+const MAX_EXTRA_LEVELS = 2;
 
 // Inverter and aircon control are switched off for now (to be added later).
 // Matches FEATURE_INVERTER_CONTROL / FEATURE_AIRCON_CONTROL in the display's ui.h.
@@ -426,7 +445,7 @@ function render() {
   const acName = S.ac.on && S.ac.pre >= 0 ? (META.acp[S.ac.pre] || "On") : "Off";
   $("#ctrls").innerHTML = [
     ...S.pump.map((p, i) => `<button class="tog ${p.on ? "on" : ""}" style="--c:${p.lk ? "var(--warn)" : "var(--water)"}" data-act="pump" data-i="${i}" ${rc ? "" : "disabled"}>
-      <b>${esc(META.pump[i])}</b><span>${p.lk ? "Locked - tank empty" : p.on ? `Running ${Math.floor(p.rt / 60)}m` : "Off"}</span></button>`),
+      <b><svg class="ico"><use href="#i-tap"/></svg>${esc(META.pump[i])}</b><span>${p.lk ? "Locked - tank empty" : p.on ? `Running ${Math.floor(p.rt / 60)}m` : "Off"}</span></button>`),
     FEATURES.inverter ? `<button class="tog ${S.inv.on ? "on" : ""}" style="--c:var(--solar)" data-act="inv" ${rc ? "" : "disabled"}><b>Inverter</b><span>${S.inv.on ? (S.inv.ac ? "On · 240 V present" : "On") : "Off"}</span></button>` : "",
     FEATURES.aircon ? `<button class="tog ${S.ac.on ? "on" : ""}" style="--c:var(--climate)" data-act="ac" ${rc ? "" : "disabled"}><b>Aircon</b><span>${esc(acName)}</span></button>` : ""
   ].join("");
@@ -471,7 +490,8 @@ function ruleText(r) {
   const m = METRICS.find((x) => x[0] === r.m) || [r.m, r.m, ""];
   const dly = r.dly >= 60 ? ` for ${Math.round(r.dly / 60)} min` : r.dly ? ` for ${r.dly} s` : "";
   const extra = [SEV[r.sev], r.ntf ? "push" : "no push", r.act === "none" ? "" : r.act.replace("_", " ")].filter(Boolean).join(" · ");
-  return `${esc(m[1])} ${r.cmp === ">" ? "above" : "below"} ${r.thr} ${esc(m[2])}${dly}<br><span class="small">${esc(extra)}</span>`;
+  const lv = (r.lv || []).map((l) => `<span style="color:${SEVC[l.sev]}">${l.thr} ${esc(m[2])} ${SEV[l.sev].toLowerCase()}</span>`).join(", ");
+  return `${esc(m[1])} ${r.cmp === ">" ? "above" : "below"} ${r.thr} ${esc(m[2])}${dly}${lv ? `, then ${lv}` : ""}<br><span class="small">${esc(extra)}</span>`;
 }
 function renderRules() {
   $("#rulesList").innerHTML = RULES.length ? RULES.map((r) => `
@@ -575,6 +595,7 @@ function demoTransport() {
       rules:[{ id:1, en:true, name:"Battery low", m:"bat_v", cmp:"<", thr:12.4, hys:0.3, dly:60, sev:1, ntf:true, act:"none" },
              { id:2, en:true, name:"Battery critical", m:"bat_v", cmp:"<", thr:11.8, hys:0.6, dly:30, sev:2, ntf:true, act:"inverter_off" },
              { id:7, en:true, name:"Fridge warm", m:"temp_fridge", cmp:">", thr:6, hys:1, dly:1200, sev:2, ntf:true, act:"none" },
+             { id:4, en:true, name:"Battery charge low", m:"bat_soc", cmp:"<", thr:30, hys:3, dly:60, sev:1, ntf:true, act:"none", lv:[{ thr:15, sev:2 }, { thr:5, sev:3 }] },
              { id:11, en:true, name:"Tank 1 low", m:"tank1", cmp:"<", thr:15, hys:5, dly:30, sev:0, ntf:true, act:"none" }] });
     onMessage(st);
   }, 50);
@@ -675,19 +696,61 @@ $("#rcSw").onchange = (e) => send({ c:"remote_control", on:e.target.checked });
 // rules editor
 const dlg = $("#ruleDlg"), form = $("#ruleForm");
 form.m.innerHTML = METRICS.map(([k, l, u]) => `<option value="${k}">${l} (${u})</option>`).join("");
+form.sev.innerHTML = SEV_OPTS;
 let editing = null;
+function lvlRow(l) {
+  const d = document.createElement("div");
+  d.className = "lvl";
+  d.innerHTML = `<div><label>Then at</label><input data-lv-thr type="number" step="any" required value="${l.thr}"></div>
+    <div><label>Severity</label><select data-lv-sev>${SEV_OPTS}</select></div>
+    <button type="button" class="btn danger" data-lv-del aria-label="Remove level">✕</button>`;
+  d.querySelector("[data-lv-sev]").value = l.sev;
+  $("#lvlRows").appendChild(d);
+  $("#addLvl").hidden = $("#lvlRows").children.length >= MAX_EXTRA_LEVELS;
+}
+$("#lvlRows").addEventListener("click", (e) => { if (!e.target.closest("[data-lv-del]")) return;
+  e.target.closest(".lvl").remove(); $("#addLvl").hidden = false; });
+$("#addLvl").onclick = () => {
+  // Suggest a level a step deeper than the last one, one severity higher.
+  const rows = [...$("#lvlRows").children], below = form.cmp.value === "<";
+  const last = rows.length ? +rows[rows.length - 1].querySelector("[data-lv-thr]").value : +form.thr.value;
+  const lastSev = rows.length ? +rows[rows.length - 1].querySelector("[data-lv-sev]").value : +form.sev.value;
+  const step = Math.abs(last) >= 20 ? Math.round(Math.abs(last) / 2) : 1;
+  lvlRow({ thr: below ? last - step : last + step, sev: Math.min(3, lastSev + 1) });
+};
+function readLevels() {
+  return [...$("#lvlRows").children].map((d) => ({ thr: +d.querySelector("[data-lv-thr]").value, sev: +d.querySelector("[data-lv-sev]").value }));
+}
+// Each level must be further past the threshold than the one before it.
+function levelsError() {
+  const below = form.cmp.value === "<";
+  let prev = +form.thr.value;
+  for (const l of readLevels()) {
+    if (below ? !(l.thr < prev) : !(l.thr > prev)) return `Each level must be ${below ? "lower" : "higher"} than the one before it (${prev}).`;
+    prev = l.thr;
+  }
+  return "";
+}
 function openRule(r) {
   editing = r || { id:0, en:true, name:"", m:"bat_v", cmp:"<", thr:12, hys:0, dly:0, sev:1, ntf:true, act:"none" };
   for (const k of ["name","m","cmp","thr","hys","dly","sev","act"]) form[k].value = editing[k];
   form.ntf.value = editing.ntf ? "1" : "0"; form.en.value = editing.en ? "1" : "0";
+  $("#lvlRows").innerHTML = "";
+  $("#addLvl").hidden = false;
+  (editing.lv || []).forEach(lvlRow);
   dlg.showModal();
 }
 $("#newRule").onclick = () => openRule(null);
 $("#rulesReset").onclick = () => { if (confirm("Replace all alert rules with the defaults?")) send({ c:"rules_reset" }); };
+form.addEventListener("submit", (e) => {
+  if (e.submitter?.value !== "save") return;
+  const err = levelsError();
+  if (err) { e.preventDefault(); toast(err); }
+});
 dlg.addEventListener("close", () => {
   if (dlg.returnValue !== "save") return;
   const r = { id: editing.id, name: form.name.value, m: form.m.value, cmp: form.cmp.value, thr: +form.thr.value, hys: +form.hys.value,
-    dly: +form.dly.value, sev: +form.sev.value, ntf: form.ntf.value === "1", act: form.act.value, en: form.en.value === "1" };
+    dly: +form.dly.value, sev: +form.sev.value, ntf: form.ntf.value === "1", act: form.act.value, en: form.en.value === "1", lv: readLevels() };
   send({ c:"rule_set", rule:r });
 });
 $("#rulesList").addEventListener("click", (e) => {
