@@ -27,10 +27,17 @@ exactly as before. Everything it hears goes to the Surface over USB.
 2. On the phone, open the hub's page > Setup > Victron solar controllers,
    paste each key and press Find nearby. Within a few seconds the log shows
    `[victron] solar 1 ...: 13.42 V 5.1 A 68 W` lines.
-3. Use the van normally for 15-30 minutes while it logs: switch a pump on and
-   off, run a tap so a tank level moves, turn the heater on and off with its
-   own remote/app, open the BMPRO app. Each change shows up in the raw data and
-   makes the BMPRO and heater messages much easier to decode.
+3. Easiest: run the guided test instead of the monitor (close the monitor
+   first, only one program can use COM4). Double-click
+   `firmware\hub\tools\guided-survey.bat`. It tells you what to do one step
+   at a time (pumps on/off 3 times, heater on, change temperature...), marks
+   each step in the log, and shows which devices changed while you did it.
+   Press Enter after each step, `s` to skip one, `q` to finish. The log is
+   saved as `van-test-<date>-<time>.log` in `firmware\hub`.
+
+   Without the script: use the van for 15-30 minutes while the monitor logs:
+   switch a pump on and off, run a tap so a tank level moves, turn the heater on
+   and off with its own remote/app, open the BMPRO app, noting the times.
 4. Send the log file back.
 
 ## Reading the log
