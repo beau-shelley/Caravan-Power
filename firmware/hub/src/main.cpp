@@ -768,7 +768,7 @@ void setup() {
     gBmproOn = true;
     heapMark("bmpro");
   }
-  xTaskCreatePinnedToCore(netTask, "net", 12288, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(netTask, "net", 10240, nullptr, 1, nullptr, 0);  // ~4.3 KB seen under load; HTTPS weather/TLS needs headroom
   heapMark("net task");
 
   // Watchdog: if loop() stops running for 30 s (a hang or a deadlock), the
