@@ -11,6 +11,7 @@
 #include "Bmpro.h"
 #include "CaravanModel.h"
 #include "Comms.h"
+#include "Demo.h"
 #include "HubConfig.h"
 #include "Inputs.h"
 #include "Outputs.h"
@@ -66,8 +67,8 @@ static bool applyLocation(float lat, float lon, const char *name, uint8_t src, c
 // the last known spot survives a reboot without wearing out the flash).
 static void gpsLoop(uint32_t now) {
   if (!gGpsOn) return;
-  while (Serial2.available()) {
-    if (!gGps.feed((uint8_t)Serial2.read())) continue;
+  while (GPS_SERIAL.available()) {
+    if (!gGps.feed((uint8_t)GPS_SERIAL.read())) continue;
     gGpsFixMs = now;
     LocationCfg &loc = gConfig.location;
     float lat = (float)gGps.lat(), lon = (float)gGps.lon();
@@ -90,12 +91,18 @@ static bool gVeDirectOn[cv::NUM_SOLAR] = {};
 static void startSolar(int i) {
   const VictronCfg &v = gConfig.victron[i];
   if (v.src == SOLAR_VEDIRECT && !gVeDirectOn[i]) {
-    if (i == 0) gVictron[0].begin(Serial1, PIN_VE1_RX, PIN_VE1_TX);
-    else {
-      gGpsOn = false;  // UART2 is shared with the optional GPS
+    if (i == GPS_SHARES_SOLAR) gGpsOn = false;  // this UART is shared with the optional GPS
+    if (i == 0) {
+      gVictron[0].begin(Serial1, PIN_VE1_RX, PIN_VE1_TX);
+      gVeDirectOn[i] = true;
+    } else {
+#if HUB_HAS_VE2
       gVictron[1].begin(Serial2, PIN_VE2_RX, PIN_VE2_TX);
+      gVeDirectOn[i] = true;
+#else
+      Serial.println("[victron] solar 2: no spare UART for a VE.Direct cable on this board - use Bluetooth");
+#endif
     }
-    gVeDirectOn[i] = true;
   }
   if (v.src == SOLAR_BLE) {
     if (!gVictronBleOn) {
@@ -592,12 +599,13 @@ void setup() {
   applyOutputConfig();
   gAircon.begin(PIN_IR_TX, PIN_IR_RX);
 
-  gLink.begin(Serial0, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE);
+  gLink.begin(LINK_SERIAL, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE);
+  if (demo::kOn) demo::begin(gState);
   gNet.begin();
   gNotify.begin();
   for (int i = 0; i < cv::NUM_SOLAR; i++) startSolar(i);
-  if (gConfig.victron[1].src != SOLAR_VEDIRECT) {  // UART2 is free for a GPS
-    Serial2.begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
+  if (gConfig.victron[GPS_SHARES_SOLAR].src != SOLAR_VEDIRECT) {  // the shared UART is free for a GPS
+    GPS_SERIAL.begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
     gGpsOn = true;
   }
   for (auto s : gConfig.tempSrc)
@@ -613,6 +621,7 @@ void loop() {
   uint32_t now = millis();
   {
     StateLock l;
+    if (!demo::kOn) {
     for (int i = 0; i < cv::NUM_SOLAR; i++) {
       uint8_t src = gConfig.victron[i].src;
       if (src == SOLAR_VEDIRECT && gVeDirectOn[i]) gVictron[i].poll(gState.solar[i]);
@@ -638,8 +647,10 @@ void loop() {
       bool pumps = gConfig.pumpViaBmpro(0) || gConfig.pumpViaBmpro(1);
       gBmpro.loop(gState, gConfig.bat.source == cv::BAT_SRC_BMPRO, gConfig.tankSource == TANK_BMPRO, pumps);
     }
+    }  // !demo::kOn
     updateLoads(now);
     gNet.loop(gState);
+    if (demo::kOn) demo::tick(gState, now);
 
     static uint32_t nextEval = 0;
     if ((int32_t)(now - nextEval) >= 0) {

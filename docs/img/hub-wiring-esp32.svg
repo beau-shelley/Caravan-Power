@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 780" font-family="Segoe UI, Arial, sans-serif" font-size="14">
+  <style>
+    .box{fill:#f7f7f9;stroke:#333;stroke-width:2}
+    .title{font-weight:700;font-size:17px}
+    .pin{font-size:13px;font-family:Consolas, Menlo, monospace}
+    .note{font-size:13px;fill:#444}
+    .w12{stroke:#d22;stroke-width:4;fill:none}
+    .w5{stroke:#f08a00;stroke-width:3.5;fill:none}
+    .w33{stroke:#c9a400;stroke-width:3;fill:none}
+    .gnd{stroke:#111;stroke-width:3;fill:none}
+    .sda{stroke:#1f7ae0;stroke-width:3;fill:none}
+    .scl{stroke:#16a34a;stroke-width:3;fill:none}
+    .ttl{stroke:#8b5cf6;stroke-width:3;fill:none}
+    .de{stroke:#db2777;stroke-width:3;fill:none}
+    .a{stroke:#0e9488;stroke-width:3.5;fill:none}
+    .b{stroke:#64748b;stroke-width:3.5;fill:none;stroke-dasharray:8 4}
+    .dot{fill:#333}
+  </style>
+  <rect width="1100" height="780" fill="#fff"/>
+  <text x="20" y="34" font-size="22" font-weight="700">Hub (classic ESP32) on the back of the 7" display: wiring</text>
+  <text x="20" y="58" class="note">BMPRO (OdysseyLink), BC300, Victrons, thermometers and the aircon Puck.js are all Bluetooth: no wires to them.</text>
+
+  <!-- ===== power ===== -->
+  <rect x="20" y="85" width="190" height="90" rx="10" class="box"/>
+  <text x="35" y="112" class="title">12 V feed</text>
+  <text x="35" y="136" class="note">existing 12 V at the</text>
+  <text x="35" y="154" class="note">Trek 3 spot</text>
+  <rect x="235" y="98" width="80" height="34" rx="6" class="box"/>
+  <text x="250" y="120" class="pin">2 A fuse</text>
+  <path class="w12" d="M210 115 H235"/>
+  <path class="w12" d="M315 115 H340"/>
+  <path class="gnd" d="M210 150 H340"/>
+
+  <rect x="340" y="80" width="220" height="100" rx="10" class="box"/>
+  <text x="355" y="106" class="title">Buck 12 V → 5 V, 3 A</text>
+  <text x="355" y="128" class="pin">IN+  IN-   OUT+  OUT-</text>
+  <text x="355" y="150" class="note">e.g. Mini560 / LM2596 module</text>
+  <text x="355" y="168" class="note">set to 5.1 V before connecting</text>
+  <circle cx="560" cy="115" r="5" class="dot"/><circle cx="560" cy="150" r="5" class="dot"/>
+  <text x="566" y="108" class="pin" font-size="11">OUT+</text>
+  <text x="566" y="166" class="pin" font-size="11">OUT-</text>
+
+  <!-- ===== display ===== -->
+  <rect x="800" y="80" width="280" height="220" rx="10" class="box"/>
+  <text x="815" y="106" class="title">Waveshare 7B display</text>
+  
+  <circle cx="800" cy="115" r="5" class="dot"/><circle cx="800" cy="150" r="5" class="dot"/>
+  <text x="815" y="120" class="pin" font-size="12">5V</text>
+  <text x="815" y="155" class="pin" font-size="12">GND</text>
+  <text x="860" y="140" class="pin">POWER header (PH2.0)</text>
+  <text x="860" y="158" class="note">5 V in; leave USB-C unplugged</text>
+  <text x="815" y="215" class="pin">RS485 header (PH2.0)</text>
+  <text x="815" y="235" class="note">120 Ω DIP: leave as shipped</text>
+  <circle cx="900" cy="300" r="5" class="dot"/><circle cx="960" cy="300" r="5" class="dot"/>
+  <text x="893" y="285" class="pin">A</text><text x="953" y="285" class="pin">B</text>
+  <path class="w5" d="M560 115 H800"/>
+  <path class="gnd" d="M560 150 H800"/>
+  <text x="640" y="108" class="note">PH2.0 lead, 5 V + GND</text>
+
+  <!-- ===== hub ===== -->
+  <rect x="380" y="270" width="180" height="420" rx="10" class="box"/>
+  <text x="392" y="296" class="title">ESP32 DevKit</text>
+  <text x="392" y="314" class="note">30-pin, USB-C (CH340)</text>
+  <g class="pin" text-anchor="end">
+    <text x="550" y="345">VIN 5V</text>
+    <text x="550" y="375">GND</text>
+    <text x="550" y="405">3V3</text>
+    <text x="550" y="435">GND</text>
+    <text x="550" y="485">GPIO16 RX2</text>
+    <text x="550" y="515">GPIO17 TX2</text>
+    <text x="550" y="545">GPIO4</text>
+  </g>
+  <g class="pin">
+    <text x="390" y="585">3V3</text>
+    <text x="390" y="615">GND</text>
+    <text x="390" y="645">GPIO21 SDA</text>
+    <text x="390" y="675">GPIO22 SCL</text>
+  </g>
+  <g>
+    <circle cx="560" cy="340" r="5" class="dot"/><circle cx="560" cy="370" r="5" class="dot"/>
+    <circle cx="560" cy="400" r="5" class="dot"/><circle cx="560" cy="430" r="5" class="dot"/>
+    <circle cx="560" cy="480" r="5" class="dot"/><circle cx="560" cy="510" r="5" class="dot"/>
+    <circle cx="560" cy="540" r="5" class="dot"/>
+    <circle cx="380" cy="580" r="5" class="dot"/><circle cx="380" cy="610" r="5" class="dot"/>
+    <circle cx="380" cy="640" r="5" class="dot"/><circle cx="380" cy="670" r="5" class="dot"/>
+  </g>
+  <!-- buck to hub -->
+  <circle cx="600" cy="115" r="4" class="dot"/><circle cx="625" cy="150" r="4" class="dot"/>
+  <path class="w5" d="M600 115 V340 H560"/>
+  <path class="gnd" d="M625 150 V370 H560"/>
+
+  <!-- ===== MAX485 ===== -->
+  <rect x="680" y="380" width="200" height="190" rx="10" class="box"/>
+  <text x="695" y="400" class="title" font-size="15">MAX485 module</text>
+  <g class="pin">
+    <text x="692" y="405" dy="0"> </text>
+    <text x="692" y="425">VCC</text>
+    <text x="692" y="455">GND</text>
+    <text x="692" y="505">RO</text>
+    <text x="692" y="535">DI</text>
+    <text x="692" y="565" font-size="12">DE+RE bridged</text>
+    <text x="868" y="425" text-anchor="end">A</text>
+    <text x="868" y="455" text-anchor="end">B</text>
+  </g>
+  <g>
+    <circle cx="680" cy="420" r="5" class="dot"/><circle cx="680" cy="450" r="5" class="dot"/>
+    <circle cx="680" cy="500" r="5" class="dot"/><circle cx="680" cy="530" r="5" class="dot"/>
+    <circle cx="680" cy="560" r="5" class="dot"/>
+    <circle cx="880" cy="420" r="5" class="dot"/><circle cx="880" cy="450" r="5" class="dot"/>
+  </g>
+  <path class="w33" d="M560 400 H650 V420 H680"/>
+  <path class="gnd" d="M560 430 H640 V450 H680"/>
+  <path class="ttl" d="M560 480 H660 V500 H680"/>
+  <path class="ttl" d="M560 510 H650 V530 H680"/>
+  <path class="de" d="M560 540 H640 V560 H680"/>
+  <text x="585" y="474" class="note" font-size="11">RX2 ← RO</text>
+  <text x="585" y="526" class="note" font-size="11">TX2 → DI</text>
+  <!-- A / B up to display -->
+  <path class="a" d="M880 420 H900 V300"/>
+  <path class="b" d="M880 450 H960 V300"/>
+  <text x="970" y="400" class="note">A → A, B → B</text>
+  <text x="970" y="418" class="note">(swap if no data)</text>
+
+  <!-- ===== MPU-6050 ===== -->
+  <rect x="40" y="550" width="210" height="150" rx="10" class="box"/>
+  <text x="55" y="574" class="title">MPU-6050 (GY-521)</text>
+  <g class="pin" text-anchor="end">
+    <text x="240" y="585">VCC</text>
+    <text x="240" y="615">GND</text>
+    <text x="240" y="645">SDA</text>
+    <text x="240" y="675">SCL</text>
+  </g>
+  <text x="55" y="600" class="note">AD0, INT,</text>
+  <text x="55" y="617" class="note">XDA, XCL:</text>
+  <text x="55" y="634" class="note">not connected</text>
+  <g>
+    <circle cx="250" cy="580" r="5" class="dot"/><circle cx="250" cy="610" r="5" class="dot"/>
+    <circle cx="250" cy="640" r="5" class="dot"/><circle cx="250" cy="670" r="5" class="dot"/>
+  </g>
+  <path class="w33" d="M250 580 H380"/>
+  <path class="gnd" d="M250 610 H380"/>
+  <path class="sda" d="M250 640 H380"/>
+  <path class="scl" d="M250 670 H380"/>
+
+  <!-- ===== notes + legend ===== -->
+  <g class="note">
+    <text x="20" y="735">• All grounds are common through the buck, so the RS485 link needs only A and B (no third wire).</text>
+    <text x="20" y="755">• Firmware: <tspan class="pin">pio run -e hub-esp32 -t upload</tspan>. Pin map: firmware/hub/src/pins.h.</text>
+    <text x="20" y="775">• To flash either board over USB, switch the 12 V off first, so the PC's USB 5 V and the buck's 5 V never meet.</text>
+  </g>
+  <g font-size="12">
+    <rect x="910" y="595" width="170" height="140" fill="#fff" stroke="#bbb"/>
+    <path class="w12" d="M920 612 H950"/><text x="958" y="616">12 V</text>
+    <path class="w5" d="M920 630 H950"/><text x="958" y="634">5 V</text>
+    <path class="w33" d="M920 648 H950"/><text x="958" y="652">3.3 V</text>
+    <path class="gnd" d="M920 666 H950"/><text x="958" y="670">GND</text>
+    <path class="sda" d="M920 684 H935"/><path class="scl" d="M935 684 H950"/><text x="958" y="688">I²C SDA / SCL</text>
+    <path class="ttl" d="M920 702 H950"/><text x="958" y="706">UART</text>
+    <path class="a" d="M920 720 H935"/><path class="b" d="M937 720 H950"/><text x="958" y="724">RS485 A / B</text>
+  </g>
+</svg>
