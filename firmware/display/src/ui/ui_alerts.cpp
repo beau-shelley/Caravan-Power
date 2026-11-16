@@ -65,7 +65,10 @@ static void rebuildRules() {
   for (int i = 0; i < app::rules.count && i < cv::MAX_RULES; i++) {
     const cv::Rule &r = app::rules.rules[i];
     lv_obj_t *row = lv_obj_create(ruleList);
-    lv_obj_set_size(row, lv_pct(100), LARGE ? 58 : 50);
+    // Height follows the text, so a stepped rule ("30%, 15% alarm, 5% critical
+    // > aircon off") wraps onto a second line instead of being cut off.
+    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_min_height(row, LARGE ? 58 : 50, 0);
     lv_obj_set_style_bg_color(row, c(col::TILE), 0);
     lv_obj_set_style_border_width(row, 0, 0);
     lv_obj_set_style_radius(row, 12, 0);
@@ -77,8 +80,7 @@ static void rebuildRules() {
     lv_obj_set_pos(rr.name, 4, 0);
     rr.desc = lbl(row, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
     lv_obj_set_width(rr.desc, RULE_LIST_W - 12 - 8 - STATE_W);
-    lv_label_set_long_mode(rr.desc, LV_LABEL_LONG_DOT);
-    lv_obj_set_height(rr.desc, lv_font_get_line_height(lv_obj_get_style_text_font(rr.desc, 0)));
+    lv_label_set_long_mode(rr.desc, LV_LABEL_LONG_WRAP);
     lv_label_set_recolor(rr.desc, true);  // stepped levels in their severity colour
     lv_obj_set_pos(rr.desc, 4, LARGE ? 24 : 21);
     rr.state = lbl(row, &lv_font_montserrat_14, col::CHARGE, "");
