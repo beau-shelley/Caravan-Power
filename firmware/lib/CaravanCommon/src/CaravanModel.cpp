@@ -86,7 +86,7 @@ const char *chargeStateName(uint8_t cs) {
 }
 
 const char *severityName(uint8_t sev) {
-  return sev == SEV_ALARM ? "alarm" : sev == SEV_WARN ? "warning" : "info";
+  return sev >= SEV_CRIT ? "critical" : sev == SEV_ALARM ? "alarm" : sev == SEV_WARN ? "warning" : "info";
 }
 
 // ---------------------------------------------------------------- rules
@@ -119,7 +119,7 @@ bool RuleSet::remove(uint8_t id) {
   return false;
 }
 
-static void addRule(RuleSet &rs, const char *name, Metric m, Cmp c, float thr, float hyst,
+static Rule *addRule(RuleSet &rs, const char *name, Metric m, Cmp c, float thr, float hyst,
                     uint16_t delay, Severity sev, Action act = ACT_NONE, bool enabled = true) {
   Rule r;
   strncpy(r.name, name, sizeof(r.name) - 1);
@@ -131,7 +131,7 @@ static void addRule(RuleSet &rs, const char *name, Metric m, Cmp c, float thr, f
   r.sev = sev;
   r.action = act;
   r.enabled = enabled;
-  rs.upsert(r);
+  return rs.upsert(r);
 }
 
 // Sensible starting points for a 12 V lithium caravan setup. Every one of
@@ -141,8 +141,13 @@ void loadDefaultRules(RuleSet &rs) {
   addRule(rs, "Battery low", M_BAT_V, CMP_LT, 12.4f, 0.3f, 60, SEV_WARN);
   addRule(rs, "Battery critical", M_BAT_V, CMP_LT, 11.8f, 0.6f, 30, SEV_ALARM, ACT_INVERTER_OFF);
   addRule(rs, "Battery over-voltage", M_BAT_V, CMP_GT, 14.8f, 0.3f, 10, SEV_ALARM);
-  addRule(rs, "Charge below 30%", M_BAT_SOC, CMP_LT, 30, 5, 60, SEV_WARN);
-  addRule(rs, "Charge below 15%", M_BAT_SOC, CMP_LT, 15, 5, 60, SEV_ALARM, ACT_AIRCON_OFF);
+  // One stepped rule: warning at 30 %, alarm at 15 %, critical at 5 %.
+  Rule *soc = addRule(rs, "Battery charge low", M_BAT_SOC, CMP_LT, 30, 5, 60, SEV_WARN, ACT_AIRCON_OFF);
+  if (soc) {
+    soc->levelCount = 2;
+    soc->levels[0] = {15, SEV_ALARM};
+    soc->levels[1] = {5, SEV_CRIT};
+  }
   addRule(rs, "High load", M_LOAD_A, CMP_GT, 180, 20, 15, SEV_WARN);
   addRule(rs, "Fridge warm", M_TEMP_FRIDGE, CMP_GT, 6, 1, 1200, SEV_ALARM);
   addRule(rs, "Fridge freezing", M_TEMP_FRIDGE, CMP_LT, -1, 1, 1800, SEV_WARN, ACT_NONE, false);
@@ -349,6 +354,14 @@ void ruleToJson(const Rule &r, JsonObject o) {
   o["sev"] = r.sev;
   o["ntf"] = r.notify;
   o["act"] = actionKey(r.action);
+  if (r.levelCount) {
+    JsonArray lv = o["lv"].to<JsonArray>();
+    for (int i = 0; i < r.levelCount; i++) {
+      JsonObject l = lv.add<JsonObject>();
+      l["thr"] = r2(r.levels[i].threshold);
+      l["sev"] = r.levels[i].sev;
+    }
+  }
 }
 
 bool ruleFromJson(Rule &r, JsonObjectConst o) {
@@ -365,9 +378,23 @@ bool ruleFromJson(Rule &r, JsonObjectConst o) {
   if (r.hysteresis < 0) r.hysteresis = 0;
   r.delaySec = o["dly"] | 0;
   uint8_t sev = o["sev"] | (uint8_t)SEV_WARN;
-  r.sev = (Severity)(sev > (uint8_t)SEV_ALARM ? (uint8_t)SEV_ALARM : sev);
+  r.sev = (Severity)(sev > (uint8_t)SEV_CRIT ? (uint8_t)SEV_CRIT : sev);
   r.notify = o["ntf"] | true;
   r.action = actionFromKey(o["act"] | "none");
+  // Optional extra levels: [{"thr":15,"sev":2},{"thr":5,"sev":3}]. Levels that
+  // aren't strictly deeper than the previous one are dropped.
+  r.levelCount = 0;
+  for (JsonObjectConst l : o["lv"].as<JsonArrayConst>()) {
+    if (r.levelCount >= MAX_LEVELS) break;
+    if (!l["thr"].is<float>()) continue;
+    float thr = l["thr"].as<float>();
+    float prev = r.levelThreshold(r.levelCount);
+    if (r.cmp == CMP_LT ? !(thr < prev) : !(thr > prev)) continue;
+    uint8_t ls = l["sev"] | (uint8_t)SEV_ALARM;
+    r.levels[r.levelCount].threshold = thr;
+    r.levels[r.levelCount].sev = (Severity)(ls > (uint8_t)SEV_CRIT ? (uint8_t)SEV_CRIT : ls);
+    r.levelCount++;
+  }
   return true;
 }
 

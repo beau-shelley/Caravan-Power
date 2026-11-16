@@ -85,6 +85,13 @@ All setup is done from the phone (the web dashboard's **Alerts & rules** and **S
 
 `meta` keys: `sol`, `tmp`, `tank`, `pump` (names), `acp` (aircon preset names), `cap` battery Ah, `rc` remote control allowed, `tcal` tanks need calibrating here, `ls`/`ln` weather location source/name, `ss` screen dim timeout in seconds, `fw`.
 
+Rule JSON: `{id, en, name, m, cmp ("<" or ">"), thr, hys, dly, sev, ntf, act, lv?}`. Severity: 0 info, 1 warning, 2 alarm, 3 critical.
+Optional `lv` adds up to 2 deeper steps to one rule, e.g. charge `thr:30, sev:1, lv:[{"thr":15,"sev":2},{"thr":5,"sev":3}]`.
+Each step must be strictly deeper than the one before (lower for `<`, higher for `>`); others are dropped.
+Each step fires once (an alert with that step's severity, unacknowledged again, pushed again). Moving around inside a step never re-fires it.
+A step re-arms when the value recovers past its threshold ± `hys`, and the alert drops back to the step above without a push. It clears when the value recovers past `thr` ± `hys`.
+The rule's `act` runs when it reaches its deepest step (the only step for a rule without `lv`). `dly` applies to every step.
+
 ## Hub config (`GET/POST /api/config`)
 
 `meta` (names, aircon presets, `rc`), `rules`, and the following:

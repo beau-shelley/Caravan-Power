@@ -63,7 +63,11 @@ constexpr uint32_t TEXT = 0xE2E8F0, MUTED = 0x94A3B8, DIM = 0x475569;
 constexpr uint32_t SOLAR = 0xFBBF24, CHARGE = 0x34D399, LOAD = 0xF87171, WATER = 0x38BDF8;
 constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0x22D3EE, WARN = 0xF59E0B, ALARM = 0xEF4444;
 constexpr uint32_t OK = 0x22C55E, TILE = 0x1A2438;
+constexpr uint32_t CRIT = 0xD946EF;  // critical alerts (same colour as the phone page)
 }  // namespace col
+inline uint32_t sevColor(int sev) {
+  return sev >= cv::SEV_CRIT ? col::CRIT : sev == cv::SEV_ALARM ? col::ALARM : sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
+}
 
 // ---------------------------------------------------------------- helpers (ui_common.cpp)
 inline lv_color_t c(uint32_t hex) { return lv_color_hex(hex); }

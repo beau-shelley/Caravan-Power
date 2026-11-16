@@ -33,18 +33,26 @@ static void describeRule(const cv::Rule &r, char *buf, size_t n) {
   const char *act = r.action == cv::ACT_AIRCON_OFF     ? "  > aircon off"
                     : r.action == cv::ACT_INVERTER_OFF ? "  > inverter off"
                     : r.action == cv::ACT_PUMPS_OFF    ? "  > pumps off" : "";
-  snprintf(buf, n, "%s %s %.*f%s%s%s", mi.label, r.cmp == cv::CMP_GT ? ">" : "<", mi.step < 1 ? 1 : 0,
-           r.threshold, mi.unit, dly, act);
+  int dp = mi.step < 1 ? 1 : 0;
+  // Stepped rules: "Battery charge < 30% for 1m, 15% alarm, 5% critical"
+  char steps[96] = "";
+  for (int k = 0, o = 0; k < r.levelCount && o < (int)sizeof(steps); k++)
+    o += snprintf(steps + o, sizeof(steps) - o, ",  #%06X %.*f%s %s#", (unsigned)sevColor(r.levels[k].sev), dp,
+                  r.levels[k].threshold, mi.unit,
+                  r.levels[k].sev >= cv::SEV_CRIT ? "critical" : r.levels[k].sev == cv::SEV_ALARM ? "alarm"
+                  : r.levels[k].sev == cv::SEV_WARN ? "warning" : "info");
+  snprintf(buf, n, "%s %s %.*f%s%s%s%s", mi.label, r.cmp == cv::CMP_GT ? ">" : "<", dp, r.threshold, mi.unit, dly,
+           steps, act);
 }
 
 static void refreshRow(int i) {
   cv::Rule *r = app::rules.find(rows[i].id);
   if (!r) return;
-  char buf[96];
+  char buf[160];
   describeRule(*r, buf, sizeof(buf));
   setText(rows[i].desc, "%s", buf);
   setText(rows[i].name, "%s", r->name);
-  uint32_t sc = r->sev == cv::SEV_ALARM ? col::ALARM : r->sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
+  uint32_t sc = sevColor(r->levelSev(r->levelCount));  // colour of its worst step
   lv_obj_set_style_text_color(rows[i].name, c(r->enabled ? sc : col::DIM), 0);
   lv_obj_set_style_text_color(rows[i].desc, c(r->enabled ? col::MUTED : col::DIM), 0);
   setText(rows[i].state, "%s", r->enabled ? "On" : "Off");
@@ -70,6 +78,8 @@ static void rebuildRules() {
     rr.desc = lbl(row, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
     lv_obj_set_width(rr.desc, RULE_LIST_W - 12 - 8 - STATE_W);
     lv_label_set_long_mode(rr.desc, LV_LABEL_LONG_DOT);
+    lv_obj_set_height(rr.desc, lv_font_get_line_height(lv_obj_get_style_text_font(rr.desc, 0)));
+    lv_label_set_recolor(rr.desc, true);  // stepped levels in their severity colour
     lv_obj_set_pos(rr.desc, 4, LARGE ? 24 : 21);
     rr.state = lbl(row, &lv_font_montserrat_14, col::CHARGE, "");
     lv_obj_align(rr.state, LV_ALIGN_RIGHT_MID, -4, 0);
@@ -118,7 +128,7 @@ void updateAlerts() {
       const cv::ActiveAlert &al = s.alerts[i];
       if (al.acked) continue;  // acknowledged alerts drop off the list
       shown++;
-      uint32_t cc = al.sev == cv::SEV_ALARM ? col::ALARM : al.sev == cv::SEV_WARN ? col::WARN : col::ACCENT;
+      uint32_t cc = sevColor(al.sev);
       lv_obj_t *it = lv_obj_create(alList);
       lv_obj_set_size(it, lv_pct(100), LV_SIZE_CONTENT);
       lv_obj_set_style_bg_color(it, lv_color_mix(c(cc), c(col::CARD), 50), 0);
