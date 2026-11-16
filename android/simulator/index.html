@@ -40,7 +40,7 @@ button { cursor: pointer; }
   font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 .screen { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scrollbar-width: none; }
 .screen::-webkit-scrollbar { display: none; }
-.pad { padding: 16px; display: flex; flex-direction: column; gap: 12px; padding-bottom: 96px; }
+.pad { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; padding-bottom: 96px; }
 
 /* ---- side panel ---- */
 .panel { width: 330px; background: var(--panel); border: 1px solid #232a32; border-radius: 18px; padding: 18px;
@@ -91,6 +91,14 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 /* ---- app components (mirror the Compose screens) ---- */
 .h1 { font-size: 28px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
 .card { background: var(--card); border-radius: 16px; padding: 16px; }
+.card.compact { padding: 12px; }
+.card.compact .cap { margin-bottom: 6px; min-height: 18px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.minis { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.mini .l { font-size: 11px; color: var(--muted); font-weight: 500; }
+.mini .v { font-size: 16px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.line.sm { font-size: 14px; }
+.btn.small { padding: 5px 14px; font-size: 13px; text-transform: none; letter-spacing: 0; }
 .cap { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
   color: var(--muted); margin-bottom: 10px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
@@ -124,9 +132,9 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 .toast.crit { box-shadow: 0 0 0 2px var(--crit), 0 10px 30px rgba(0,0,0,.5); }
 .temps { display: grid; grid-template-columns: repeat(3, 1fr); }
 .gaspumps { display: flex; align-items: center; gap: 12px; }
-.gascol { width: 110px; display: flex; flex-direction: column; align-items: center; flex: none; }
+.gascol { width: 118px; display: flex; align-items: center; gap: 10px; flex: none; }
 .pumps { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.pump { height: 56px; border: 0; border-radius: 999px; display: flex; align-items: center; padding: 0 22px; background: var(--track);
+.pump { height: 42px; border: 0; border-radius: 999px; display: flex; align-items: center; padding: 0 16px; background: var(--track);
   color: var(--text); font-weight: 600; font-size: 14px; transition: background .2s; }
 .pump span { margin-left: auto; font-weight: 500; }
 .pump.on { background: var(--water); color: var(--on-primary); }
@@ -465,9 +473,9 @@ function alertRow(a) {
     <div style="flex:1;min-width:0"><b>${crit ? '<span class="crittag">CRITICAL</span>' : ""}${esc(ruleName(a.id) || SEV[a.sev])}</b><div class="hint">${esc(a.msg)}</div></div>
     ${a.ack ? '<span class="hint">seen</span>' : ""}</div>`;
 }
-function gasBottle(p) {
+function gasBottle(p, dispW = 64) {
   const h = 96, w = 64, bodyTop = 20, bodyH = h - bodyTop - 2, fillH = p == null ? 0 : bodyH * Math.max(0, Math.min(1, p / 100));
-  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+  return `<svg width="${dispW}" height="${dispW * h / w}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
     <defs><clipPath id="gb"><rect x="1.5" y="${bodyTop}" width="${w - 3}" height="${bodyH}" rx="18"/></clipPath></defs>
     ${p == null ? "" : `<rect clip-path="url(#gb)" x="0" y="${bodyTop + bodyH - fillH}" width="${w}" height="${fillH}" fill="${gasColor(p)}"/>`}
     <rect x="1.5" y="${bodyTop}" width="${w - 3}" height="${bodyH}" rx="18" fill="none" stroke="#8A96A3" stroke-width="2.5"/>
@@ -475,32 +483,35 @@ function gasBottle(p) {
     <line x1="4" x2="${w - 4}" y1="${bodyTop + bodyH / 2}" y2="${bodyTop + bodyH / 2}" stroke="#8A96A3" stroke-opacity=".5" stroke-width="1.5"/></svg>`;
 }
 
+// Home fits on one phone screen: compact cards, Solar and Water side by side,
+// weather folded into Temperatures, and alerts only while something is unacknowledged.
 function homeHTML() {
-  let out = `<h1 class="h1">Caravan</h1>${connStrip(true)}`;
-  if (!S.conn) return out + `<div style="color:var(--muted)">Waiting for the hub…</div>`;
+  let out = connStrip(true);
+  if (!S.conn) return `<h1 class="h1">Caravan</h1>` + out + `<div style="color:var(--muted)">Waiting for the hub…</div>`;
   const b = S.bat, un = S.alerts.filter((a) => !a.ack);
-  if (S.alerts.length) out += card("Alerts", un.length ? sevColor(Math.max(...un.map((a) => a.sev))) : "var(--muted)",
-    S.alerts.slice(0, 3).map(alertRow).join("") +
-    `<div class="btnrow">${un.length ? '<button class="btn" data-act="ack">Acknowledge</button>' : ""}<button class="btn tonal" data-go="1">All alerts</button></div>`);
+  if (un.length) out += `<section class="card compact" data-go="1" style="cursor:pointer"><div class="cap"><span class="dot" style="background:${sevColor(Math.max(...un.map((a) => a.sev)))}"></span>
+      <span style="flex:1">Alerts${un.length > 2 ? " · " + un.length : ""}</span><button class="btn small" data-act="ack">Acknowledge</button></div>
+      ${un.slice(0, 2).map(alertRow).join("")}</section>`;
+  const mini = (l, v, c = "") => `<div class="mini"><div class="l">${l}</div><div class="v" style="${c ? "color:" + c : ""}">${v}</div></div>`;
   out += card("Battery", "var(--battery)", `
-    <div style="display:flex;align-items:flex-end;gap:12px"><div class="big" style="font-size:44px;line-height:1.1;color:${socColor(b.soc)}">${Math.floor(b.soc)}%</div>
-    <div style="padding-bottom:8px"><div style="font-variant-numeric:tabular-nums">${f2(b.v)} V &nbsp;·&nbsp; ${b.a > 0 ? "+" : ""}${f1(b.a)} A</div><div class="hint">${ttgText(b.a, b.ttg)}</div></div></div>
-    <div style="height:6px"></div>${bar(b.soc / 100, socColor(b.soc))}<div style="height:10px"></div>
-    <div class="stats">${stat("Solar", f1(b.solarA) + " A")}${stat("BMPRO", f1(b.chargerA) + " A")}${stat("Load", f1(b.loadA) + " A")}</div>`);
-  if (S.acOn) out += card("Mains charging", "var(--mains)", `
-    <div style="display:flex;align-items:flex-end;gap:12px"><div class="big" style="font-size:28px;color:var(--mains)">${Math.floor(S.acA)} A</div>
-    <div class="hint" style="padding-bottom:5px">${Math.floor(S.acA * b.v)} W · bulk · estimated</div></div><div style="height:6px"></div>${bar(S.acA / 120, "var(--mains)")}`);
-  out += card("Solar", "var(--solar)", `<div class="big" style="font-size:28px;color:var(--solar)">${S.sol[0] + S.sol[1]} W</div><div style="height:6px"></div>` +
-    S.sol.map((w, i) => `<div class="line"><span>${META.sol[i]}</span><span>${w} W · ${f2(S.yieldKwh[i])} kWh today</span></div>`).join(""));
-  out += card("Water", "var(--water)", S.tank.map((p, i) => `<div class="line" style="padding:2px 0"><span>${META.tank[i]}</span><span>${Math.floor(p)}%</span></div>${bar(p / 100, "var(--water)")}<div style="height:8px"></div>`).join(""), "", ICON.drop);
+    <div style="display:flex;align-items:center;gap:12px"><div class="big" style="font-size:34px;line-height:1.1;color:${socColor(b.soc)}">${Math.floor(b.soc)}%</div>
+    <div><div style="font-variant-numeric:tabular-nums">${f2(b.v)} V &nbsp;·&nbsp; ${b.a > 0 ? "+" : ""}${f1(b.a)} A</div><div class="hint">${ttgText(b.a, b.ttg)}</div></div></div>
+    <div style="height:6px"></div>${bar(b.soc / 100, socColor(b.soc))}<div style="height:6px"></div>
+    <div class="minis">${S.acOn ? mini("Mains", Math.floor(S.acA) + " A", "var(--mains)") : ""}${mini("Solar", f1(b.solarA) + " A")}${mini("BMPRO", f1(b.chargerA) + " A")}${mini("Load", f1(b.loadA) + " A")}</div>`, "compact");
+  out += `<div class="two">` +
+    card("Solar", "var(--solar)", `<div class="big" style="font-size:24px;color:var(--solar)">${S.sol[0] + S.sol[1]} W</div>` +
+      S.sol.map((w, i) => `<div class="line sm"><span>${META.sol[i]}</span><span>${w} W</span></div>`).join("") +
+      `<div class="hint">${f1(S.yieldKwh[0] + S.yieldKwh[1])} kWh today</div>`, "compact") +
+    card("Water", "var(--water)", S.tank.map((p, i) => `<div class="line sm" style="padding:0"><span>${META.tank[i]}</span><span>${Math.floor(p)}%</span></div>
+      <div style="height:2px"></div>${bar(p / 100, "var(--water)")}<div style="height:4px"></div>`).join(""), "compact", ICON.drop) + `</div>`;
   const temps = [S.inside, S.outside, S.fridge];
   out += card("Temperatures", "var(--climate)", `<div class="temps">${temps.map((c, i) => `<div>
-    <div class="stat"><div class="l">${META.tmp[i]}</div></div><div style="font-size:26px;font-weight:600;color:${tempColor(i, c)}">${deg(c)}°</div>
-    <div class="hint">${deg(S.lo[i])}° / ${deg(S.hi[i])}°</div></div>`).join("")}</div>`);
-  out += card("Gas & pumps", "var(--gas)", `<div class="gaspumps"><div class="gascol">${gasBottle(S.gas)}
-    <div class="big" style="font-size:22px;margin-top:6px;color:${gasColor(S.gas)}">${Math.floor(S.gas)}%</div><div class="hint">Gas bottle</div></div>
-    <div class="pumps">${S.pump.map((on, i) => `<button class="pump ${on ? "on" : ""}" data-pump="${i}" ${S.lock[i] ? "disabled" : ""}>${ICON.tap}${META.pump[i]}<span>${S.lock[i] ? "Locked (dry)" : on ? "On" : "Off"}</span></button>`).join("")}</div></div>`);
-  out += card("Weather · Bright", "var(--climate)", `<div class="stats">${stat("Now", deg(S.outside) + " °C", tempColor(1, S.outside))}${stat("Wind", "14 km/h")}${stat("Gusts", "31 km/h")}</div>`);
+    <div class="stat"><div class="l">${META.tmp[i]}</div></div><div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:24px;font-weight:600;color:${tempColor(i, c)}">${deg(c)}°</span>
+    <span class="hint">${deg(S.lo[i])}/${deg(S.hi[i])}°</span></div></div>`).join("")}</div>
+    <div class="hint">Wind 14 km/h, gusts 31 km/h · Bright</div>`, "compact");
+  out += card("Gas & pumps", "var(--gas)", `<div class="gaspumps"><div class="gascol">${gasBottle(S.gas, 40)}
+    <div><div class="big" style="font-size:22px;color:${gasColor(S.gas)}">${Math.floor(S.gas)}%</div><div class="hint">Gas</div></div></div>
+    <div class="pumps">${S.pump.map((on, i) => `<button class="pump ${on ? "on" : ""}" data-pump="${i}" ${S.lock[i] ? "disabled" : ""}>${ICON.tap}${META.pump[i]}<span>${S.lock[i] ? "Dry" : on ? "On" : "Off"}</span></button>`).join("")}</div></div>`, "compact");
   return out;
 }
 
@@ -672,7 +683,7 @@ function logLine(html) {
 // ---------------- events
 document.addEventListener("click", (ev) => {
   if ($("panel").classList.contains("open") && !ev.target.closest("#panel")) { $("panel").classList.remove("open"); return; }
-  const t = ev.target.closest("button, [data-rule]");
+  const t = ev.target.closest("button, [data-rule], [data-go]");
   if (!t) { if (menuOpen) { menuOpen = false; render(); } return; }
   const d = t.dataset;
   if (menuOpen && d.act !== "menu" && d.act !== "reset") { menuOpen = false; render(); }

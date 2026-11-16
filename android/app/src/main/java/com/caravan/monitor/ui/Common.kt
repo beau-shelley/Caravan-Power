@@ -52,6 +52,8 @@ import java.util.Locale
 @Composable
 fun SectionCard(
     title: String, color: Color, modifier: Modifier = Modifier, icon: ImageVector? = null,
+    compact: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
@@ -59,14 +61,16 @@ fun SectionCard(
         colors = CardDefaults.cardColors(containerColor = Surfaces.card),
         shape = RoundedCornerShape(16.dp),
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(if (compact) 12.dp else 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (icon != null) Icon(icon, null, Modifier.size(16.dp), tint = color)
                 else Box(Modifier.size(8.dp).clip(CircleShape).background(color))
                 Spacer(Modifier.width(if (icon != null) 6.dp else 8.dp))
-                Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = Accent.muted)
+                Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = Accent.muted,
+                    modifier = Modifier.weight(1f))
+                trailing?.invoke()
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
             content()
         }
     }

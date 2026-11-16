@@ -1,8 +1,12 @@
 package com.caravan.monitor.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,6 +39,8 @@ import com.caravan.monitor.HubState
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Rule
 
+// Home is laid out to fit on one phone screen without scrolling (it still
+// scrolls on very small screens): compact cards, two columns where it fits.
 @Composable
 fun HomeContent(
     state: HubState?,
@@ -48,168 +53,163 @@ fun HomeContent(
     onOpenSetup: () -> Unit,
 ) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Caravan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         ConnectionStrip(status, onOpenSetup)
         val s = state
         if (s == null) {
+            Text("Caravan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("Waiting for the hub…", color = Accent.muted)
             return@Column
         }
 
+        // Only shown while something needs attention; acknowledged alerts stay on the Alerts tab.
         val unacked = s.alerts.filter { !it.ack }
-        if (s.alerts.isNotEmpty()) {
-            SectionCard("Alerts", if (unacked.isNotEmpty()) sevColor(unacked.maxOf { it.sev }) else Accent.muted) {
-                s.alerts.take(3).forEach { a -> AlertRow(a, rules.firstOrNull { it.id == a.id }?.name) }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (unacked.isNotEmpty()) Button(onClick = onAck) { Text("Acknowledge") }
-                    FilledTonalButton(onClick = onOpenAlerts) { Text("All alerts") }
-                }
+        if (unacked.isNotEmpty()) {
+            // Tap the card for the Alerts tab; Acknowledge sits in the header to save a row.
+            SectionCard(
+                if (unacked.size > 2) "Alerts · ${unacked.size}" else "Alerts", sevColor(unacked.maxOf { it.sev }),
+                Modifier.clickable(onClick = onOpenAlerts), compact = true,
+                trailing = {
+                    Button(onClick = onAck, modifier = Modifier.height(32.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Acknowledge", style = MaterialTheme.typography.labelLarge) }
+                },
+            ) {
+                unacked.take(2).forEach { a -> AlertRow(a, rules.firstOrNull { it.id == a.id }?.name) }
             }
         }
 
         BatteryCard(s)
-        if (s.bat.on && s.bat.acOn) MainsCard(s)
-        SolarCard(s, meta)
-        TanksCard(s, meta)
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SolarCard(s, meta, Modifier.weight(1f).fillMaxHeight())
+            TanksCard(s, meta, Modifier.weight(1f).fillMaxHeight())
+        }
         TempsCard(s, meta)
         GasAndPumpsCard(s, meta, onPump)
-        if (s.wx.ok) {
-            SectionCard("Weather${if (s.wx.place.isNotBlank()) " · ${s.wx.place}" else ""}", Accent.climate) {
-                Row(Modifier.fillMaxWidth()) {
-                    Stat("Now", "${fmtDeg(s.wx.tempC)} °C", Modifier.weight(1f), valueColor = tempColor(1, s.wx.tempC))
-                    Stat("Wind", "${s.wx.windKmh.toInt()} km/h", Modifier.weight(1f))
-                    Stat("Gusts", "${s.wx.gustKmh.toInt()} km/h", Modifier.weight(1f))
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
     }
 }
 
 @Composable
 private fun BatteryCard(s: HubState) {
     val b = s.bat
-    SectionCard("Battery", Accent.battery) {
+    SectionCard("Battery", Accent.battery, compact = true) {
         if (!b.on) { Text("Offline", color = Accent.muted); return@SectionCard }
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text("${b.soc.toInt()}%", fontSize = 44.sp, fontWeight = FontWeight.Bold, color = socColor(b.soc))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("${b.soc.toInt()}%", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = socColor(b.soc))
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.padding(bottom = 8.dp)) {
+            Column {
                 Text("${fmt2(b.v)} V  ·  ${signed(b.a)} A", style = MaterialTheme.typography.bodyLarge)
                 Hint(ttgText(b.a, b.ttgMin))
             }
         }
         Spacer(Modifier.height(6.dp))
         Bar(b.soc / 100.0, socColor(b.soc))
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth()) {
-            Stat("Solar", "${fmt1(b.solarA)} A", Modifier.weight(1f))
-            Stat("BMPRO", "${fmt1(b.chargerA)} A", Modifier.weight(1f))
-            Stat("Load", "${fmt1(b.loadA)} A", Modifier.weight(1f))
+            // Mains is only shown while the hub detects bulk mains charging (worked out, not measured).
+            if (b.acOn) MiniStat("Mains", "${b.acA.toInt()} A", Modifier.weight(1f), Accent.mains)
+            MiniStat("Solar", "${fmt1(b.solarA)} A", Modifier.weight(1f))
+            MiniStat("BMPRO", "${fmt1(b.chargerA)} A", Modifier.weight(1f))
+            MiniStat("Load", "${fmt1(b.loadA)} A", Modifier.weight(1f))
         }
     }
 }
 
-// Only shown while the hub detects bulk mains charging (it debounces, so this
-// doesn't flicker). The figure is worked out, not measured.
 @Composable
-private fun MainsCard(s: HubState) {
-    val b = s.bat
-    SectionCard("Mains charging", Accent.mains) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text("${b.acA.toInt()} A", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Accent.mains)
-            Spacer(Modifier.width(12.dp))
-            Text(
-                "${(b.acA * (if (b.v > 0) b.v else 13.6)).toInt()} W · bulk · estimated",
-                Modifier.padding(bottom = 4.dp), style = MaterialTheme.typography.bodySmall, color = Accent.muted,
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Bar(b.acA / 120.0, Accent.mains)  // 2 x 60 A chargers
-    }
-}
-
-@Composable
-private fun SolarCard(s: HubState, meta: Meta) {
+private fun SolarCard(s: HubState, meta: Meta, modifier: Modifier) {
     val total = s.sol.filter { it.on }.sumOf { it.w }
-    SectionCard("Solar", Accent.solar) {
-        Text("${total.toInt()} W", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Accent.solar)
-        Spacer(Modifier.height(6.dp))
+    SectionCard("Solar", Accent.solar, modifier, compact = true) {
+        Text("${total.toInt()} W", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Accent.solar)
         s.sol.forEachIndexed { i, p ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-                Text(meta.solarNames.getOrElse(i) { "Solar ${i + 1}" }, Modifier.weight(1f))
-                Text(
-                    if (p.on) "${p.w.toInt()} W · ${fmt2(p.yieldKwh)} kWh today" else "offline",
-                    color = if (p.on) Surfaces.text else Accent.muted,
-                )
+            Row(Modifier.fillMaxWidth().padding(top = 3.dp)) {
+                Text(meta.solarNames.getOrElse(i) { "Solar ${i + 1}" }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text(if (p.on) "${p.w.toInt()} W" else "off", style = MaterialTheme.typography.bodyMedium,
+                    color = if (p.on) Surfaces.text else Accent.muted)
             }
         }
+        Hint("${fmt1(s.sol.filter { it.on }.sumOf { it.yieldKwh })} kWh today")
     }
 }
 
 @Composable
-private fun TanksCard(s: HubState, meta: Meta) {
-    if (s.tank.none { it.on }) return
-    SectionCard("Water", Accent.water, icon = CaravanIcons.Drop) {
+private fun TanksCard(s: HubState, meta: Meta, modifier: Modifier) {
+    SectionCard("Water", Accent.water, modifier, icon = CaravanIcons.Drop, compact = true) {
+        if (s.tank.none { it.on }) { Text("No tanks", color = Accent.muted); return@SectionCard }
         s.tank.forEachIndexed { i, t ->
             if (!t.on) return@forEachIndexed
-            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                Text(meta.tankNames.getOrElse(i) { "Tank ${i + 1}" }, Modifier.weight(1f))
-                Text("${t.pct.toInt()}%")
+            Row(Modifier.fillMaxWidth()) {
+                Text(meta.tankNames.getOrElse(i) { "Tank ${i + 1}" }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text("${t.pct.toInt()}%", style = MaterialTheme.typography.bodyMedium)
             }
+            Spacer(Modifier.height(2.dp))
             Bar(t.pct / 100.0, Accent.water)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
         }
     }
 }
 
 @Composable
 private fun TempsCard(s: HubState, meta: Meta) {
-    if (s.tmp.none { it.on }) return
-    SectionCard("Temperatures", Accent.climate) {
+    SectionCard("Temperatures", Accent.climate, compact = true) {
         Row(Modifier.fillMaxWidth()) {
             s.tmp.forEachIndexed { i, t ->
                 Column(Modifier.weight(1f)) {
                     Text(meta.tempNames.getOrElse(i) { "Temp ${i + 1}" }, style = MaterialTheme.typography.labelSmall, color = Accent.muted)
-                    Text(if (t.on) "${fmtDeg(t.c)}°" else "–", fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
-                        color = if (t.on) tempColor(i, t.c) else Accent.muted)
-                    if (t.on) Hint("${fmtDeg(t.lo)}° / ${fmtDeg(t.hi)}°")
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(if (t.on) "${fmtDeg(t.c)}°" else "–", fontSize = 24.sp, fontWeight = FontWeight.SemiBold,
+                            color = if (t.on) tempColor(i, t.c) else Accent.muted)
+                        if (t.on) Text("  ${fmtDeg(t.lo)}/${fmtDeg(t.hi)}°", style = MaterialTheme.typography.bodySmall,
+                            color = Accent.muted, modifier = Modifier.padding(bottom = 4.dp))
+                    }
                 }
             }
         }
+        // Today's forecast, folded in to save a card.
+        if (s.wx.ok) Hint("Wind ${s.wx.windKmh.toInt()} km/h, gusts ${s.wx.gustKmh.toInt()} km/h" +
+            if (s.wx.place.isNotBlank()) " · ${s.wx.place}" else "")
+    }
+}
+
+/** Label over value, small enough for four across. */
+@Composable
+private fun MiniStat(label: String, value: String, modifier: Modifier, color: androidx.compose.ui.graphics.Color = Surfaces.text) {
+    Column(modifier) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Accent.muted)
+        Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = color)
     }
 }
 
 /** Gas bottle gauge on the left, the two pumps stacked on the right (like the touchscreen). */
 @Composable
 private fun GasAndPumpsCard(s: HubState, meta: Meta, onPump: (Int, Boolean) -> Unit) {
-    SectionCard("Gas & pumps", Accent.gas) {
+    SectionCard("Gas & pumps", Accent.gas, compact = true) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.width(110.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                GasBottle(if (s.gas.on) s.gas.pct else null, Modifier.size(width = 64.dp, height = 96.dp))
-                Spacer(Modifier.height(6.dp))
-                Text(if (s.gas.on) "${s.gas.pct.toInt()}%" else "--", fontSize = 22.sp, fontWeight = FontWeight.Bold,
-                    color = if (s.gas.on) gasColor(s.gas.pct) else Accent.muted)
-                Hint("Gas bottle")
+            Row(Modifier.width(118.dp), verticalAlignment = Alignment.CenterVertically) {
+                GasBottle(if (s.gas.on) s.gas.pct else null, Modifier.size(width = 40.dp, height = 62.dp))
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(if (s.gas.on) "${s.gas.pct.toInt()}%" else "--", fontSize = 22.sp, fontWeight = FontWeight.Bold,
+                        color = if (s.gas.on) gasColor(s.gas.pct) else Accent.muted)
+                    Hint("Gas")
+                }
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 s.pump.forEachIndexed { i, p ->
                     val label = meta.pumpNames.getOrElse(i) { "Pump ${i + 1}" }
                     Button(
                         onClick = { onPump(i, !p.on) },
                         enabled = !p.lockout,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
                         colors = if (p.on) ButtonDefaults.buttonColors(containerColor = Accent.water)
                         else ButtonDefaults.buttonColors(containerColor = Surfaces.track, contentColor = Surfaces.text),
                     ) {
-                        Icon(CaravanIcons.Tap, null, Modifier.size(22.dp))
+                        Icon(CaravanIcons.Tap, null, Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(label, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        Text(when { p.lockout -> "Locked (dry)"; p.on -> "On"; else -> "Off" },
+                        Text(when { p.lockout -> "Dry"; p.on -> "On"; else -> "Off" },
                             style = MaterialTheme.typography.labelLarge)
                     }
                 }

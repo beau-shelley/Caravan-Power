@@ -177,12 +177,12 @@ fun shot(name: String, heightDp: Int, content: @Composable () -> Unit) {
 
 fun main() {
     val nop: () -> Unit = {}
-    shot("1-home-mains-charging", 1310) {
+    shot("1-home-mains-charging", 840) {
         AppScaffold(0, {}, 0) {
             HomeContent(CHARGING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop)
         }
     }
-    shot("2-home-alerts", 1400) {
+    shot("2-home-alerts", 840) {
         AppScaffold(0, {}, 2) {
             HomeContent(ALERTING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop)
         }
