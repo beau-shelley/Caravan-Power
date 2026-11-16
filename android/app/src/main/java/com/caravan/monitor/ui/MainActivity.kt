@@ -61,6 +61,7 @@ private fun App() {
         when (tab) {
             0 -> HomeScreen(onOpenAlerts = { tab = 1 }, onOpenSetup = { tab = 2 })
             1 -> AlertsScreen()
+            3 -> ClimateScreen(onOpenSetup = { tab = 2 })
             else -> SetupScreen()
         }
     }

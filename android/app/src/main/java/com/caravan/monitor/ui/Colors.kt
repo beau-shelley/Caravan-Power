@@ -11,6 +11,7 @@ object Accent {
     val water = Color(0xFF4DA3FF)
     val mains = Color(0xFF60A5FA)
     val gas = Color(0xFFFF8A3D)
+    val heat = Color(0xFFFB923C)  // diesel heater, same orange as the touchscreen and web page
     val climate = Color(0xFFB48CFF)
     val warn = Color(0xFFFFA94D)
     val alarm = Color(0xFFFF5C5C)

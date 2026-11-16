@@ -25,6 +25,7 @@ import com.caravan.monitor.Battery
 import com.caravan.monitor.Conn
 import com.caravan.monitor.ConnStatus
 import com.caravan.monitor.Gas
+import com.caravan.monitor.Heater
 import com.caravan.monitor.HubState
 import com.caravan.monitor.Level
 import com.caravan.monitor.Meta
@@ -38,6 +39,7 @@ import com.caravan.monitor.Tank
 import com.caravan.monitor.Temp
 import com.caravan.monitor.Weather
 import com.caravan.monitor.ui.AlertsContent
+import com.caravan.monitor.ui.ClimateContent
 import com.caravan.monitor.ui.AppScaffold
 import com.caravan.monitor.ui.HomeContent
 import com.caravan.monitor.ui.RuleEditorCard
@@ -206,6 +208,18 @@ fun main() {
         AppScaffold(2, {}, 0) {
             SetupContent(SETTINGS, CONNECTED, META, "0.2.0", batteryExempt = false,
                 onSaveSettings = { _, _ -> }, onBatteryExempt = nop, onScreenSleep = {}, onRemoteControl = {}, onOpenWebPage = nop)
+        }
+    }
+    // Diesel heater: running on the thermostat on a cold evening (Bluetooth status)
+    val cold = ALERTING.copy(alerts = emptyList(),
+        tmp = listOf(Temp(true, 18.6, 12.4, 21.0, 80), Temp(true, 7.8, 6.1, 19.5, 75), Temp(true, 3.4, 2.8, 4.6, 90)),
+        htr = Heater(link = 1, online = true, phase = 2, mode = 0, setC = 22, level = 6, cabinC = 18.6, bodyC = 142.0, supplyV = 12.9))
+    shot("7-climate-heater", 840) {
+        AppScaffold(3, {}, 0) { ClimateContent(cold, META, CONNECTED, { _, _ -> }, nop) }
+    }
+    shot("8-climate-heater-fault", 840) {
+        AppScaffold(3, {}, 0) {
+            ClimateContent(cold.copy(htr = cold.htr!!.copy(phase = 0, err = 2, bodyC = 16.0)), META, CONNECTED, { _, _ -> }, nop)
         }
     }
     shot("6-home-not-connected", 915) {

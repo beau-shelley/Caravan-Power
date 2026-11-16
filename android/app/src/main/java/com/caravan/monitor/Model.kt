@@ -19,6 +19,42 @@ data class Temp(val on: Boolean, val c: Double, val lo: Double, val hi: Double, 
 data class Tank(val on: Boolean, val pct: Double)
 data class Pump(val on: Boolean, val lockout: Boolean, val runSec: Int)
 data class Gas(val on: Boolean = false, val pct: Double = 0.0)
+/**
+ * Diesel heater as the hub reports it ("htr"; absent until one is set up).
+ * link 1 = Bluetooth (full status), 2 = 433 MHz remote (no status back).
+ * phase 0 off, 1 heating up, 2 running, 3 cooling down. mode 0 thermostat, 1 power level.
+ */
+data class Heater(
+    val link: Int, val online: Boolean, val phase: Int, val mode: Int, val setC: Int, val level: Int,
+    val cabinC: Double? = null, val bodyC: Double? = null, val supplyV: Double? = null, val err: Int = 0,
+) {
+    val running get() = phase == 1 || phase == 2
+    val hasStatus get() = link == 1 && online
+    companion object {
+        const val MIN_C = 8
+        const val MAX_C = 36
+        const val LEVELS = 10
+        val PHASES = listOf("Off", "Heating up", "Running", "Cooling down")
+        // Same wording as the touchscreen and web page (CaravanModel.cpp heaterErrorText).
+        fun errorText(e: Int) = when (e) {
+            1 -> "Didn't start (E-01)"; 2 -> "Out of fuel (E-02)"; 3 -> "Supply voltage fault (E-03)"
+            4 -> "Outlet sensor fault (E-04)"; 5 -> "Inlet sensor fault (E-05)"; 6 -> "Fuel pump fault (E-06)"
+            7 -> "Fan fault (E-07)"; 8 -> "Glow plug fault (E-08)"; 9 -> "Overheated (E-09)"
+            10 -> "Overheat sensor fault (E-10)"; else -> "Heater fault"
+        }
+        fun parse(h: JSONObject?): Heater? {
+            if (h == null || h.optInt("ln") == 0) return null
+            return Heater(
+                link = h.optInt("ln"), online = h.optBoolean("on"), phase = h.optInt("ph"), mode = h.optInt("md"),
+                setC = h.optInt("st", 20), level = h.optInt("lv", 5),
+                cabinC = if (h.has("cab")) h.optDouble("cab") else null,
+                bodyC = if (h.has("hx")) h.optDouble("hx") else null,
+                supplyV = if (h.has("v")) h.optDouble("v") else null,
+                err = h.optInt("err"),
+            )
+        }
+    }
+}
 data class ActiveAlert(val id: Int, val sev: Int, val ack: Boolean, val since: Long, val value: Double, val msg: String)
 data class Weather(val ok: Boolean, val place: String, val tempC: Double, val windKmh: Double, val gustKmh: Double, val code: Int)
 data class Net(val wifi: Boolean, val cloud: Boolean, val ip: String)
@@ -34,6 +70,7 @@ data class HubState(
     val wx: Weather,
     val net: Net,
     val gas: Gas = Gas(),
+    val htr: Heater? = null,
 ) {
     companion object {
         fun parse(o: JSONObject): HubState {
@@ -65,6 +102,7 @@ data class HubState(
                     w.optDouble("g", 0.0), w.optInt("c", -1)),
                 net = Net(n.optBoolean("wifi"), n.optBoolean("cloud"), n.optString("ip")),
                 gas = Gas(g.optBoolean("on"), g.optDouble("p", 0.0)),
+                htr = Heater.parse(o.optJSONObject("htr")),
             )
         }
     }

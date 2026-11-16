@@ -53,6 +53,15 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
 }
 
 @Composable
+fun ClimateScreen(onOpenSetup: () -> Unit) {
+    val hub = CaravanApp.instance.hub
+    val state by hub.state.collectAsStateWithLifecycle()
+    val meta by hub.meta.collectAsStateWithLifecycle()
+    val status by hub.status.collectAsStateWithLifecycle()
+    ClimateContent(state, meta, status, onHeater = { k, v -> hub.send("heater", k to v) }, onOpenSetup = onOpenSetup)
+}
+
+@Composable
 fun AlertsScreen() {
     val hub = CaravanApp.instance.hub
     val state by hub.state.collectAsStateWithLifecycle()
