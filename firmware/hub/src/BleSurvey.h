@@ -7,11 +7,16 @@
 // captured without touching anything in the van. The BMPRO link is not
 // started, and the commands that could talk to the BMPRO are refused.
 //
+// Every advert is labelled (cv::bleClassify): bmpro?, victron-solar...,
+// heater?, thermometer, or ? for unknown. Phones, laptops and earbuds are
+// counted but not logged, so a busy caravan park doesn't drown the log.
+//
 // Serial output (115200 baud), one line per advert whose payload changed
-// (at most one line per device per second):
-//   ADV <ms> <mac> rssi=<dBm> [name="..."] [mfr=<hex>] raw=<hex>
-// and every 60 s a summary of every device heard so far:
-//   SEEN <mac> rssi=<last> n=<adverts> [name="..."] [mfr_id=<hex>]
+// (our devices at most once a second, unknown ones once every 5 s):
+//   ADV <ms> <mac> rssi=<dBm> tag=<label> [name="..."] [temp=<C>] [mfr=<hex>] raw=<hex>
+// and every 60 s a summary of every device heard so far, ours first:
+//   SEEN <mac> tag=<label> rssi=<last> n=<adverts> payloads=<n> age=<s> [name="..."] [mfr_id=<hex>]
+// Victrons with a key saved also log their decoded readings ([victron] lines).
 #pragma once
 
 namespace hub {
