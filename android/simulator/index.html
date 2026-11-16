@@ -1,0 +1,685 @@
+<title>Caravan App Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: on a wide screen, a phone-sized app beside a simulator control panel.
+   On a phone, the app fills the screen and the controls open from a "Sim" chip.
+   The app itself is dark-only, like the Android app, so this page commits to one dark look. */
+:root {
+  color-scheme: dark;
+  --bg: #101418;       /* app background (Surfaces.background) */
+  --card: #1A2027;     /* Surfaces.card */
+  --raised: #222A33;   /* Surfaces.raised */
+  --track: #2A333D;    /* Surfaces.track */
+  --text: #E6EAEE;     /* Surfaces.text */
+  --muted: #8A96A3;
+  --primary: #4DA3FF;
+  --on-primary: #00213F;
+  --tonal: #1F3A57;
+  --battery: #4CC38A; --solar: #F5B841; --water: #4DA3FF; --mains: #60A5FA;
+  --gas: #FF8A3D; --climate: #B48CFF; --warn: #FFA94D; --alarm: #FF5C5C;
+  --page: #0A0D10;     /* around the phone */
+  --panel: #151A20;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+html, body { height: 100%; }
+body { background: var(--page); color: var(--text); font-family: var(--font); font-size: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-tap-highlight-color: transparent; }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.stage { display: flex; gap: 28px; justify-content: center; align-items: flex-start; padding-block: 24px; min-height: 100%; }
+.phone { width: 412px; max-width: 100%; height: min(880px, calc(100vh - 48px)); background: var(--bg); border-radius: 36px;
+  border: 10px solid #000; box-shadow: 0 0 0 1px #2a3138, 0 30px 80px rgba(0,0,0,.6); position: relative; overflow: hidden;
+  display: flex; flex-direction: column; flex: none; }
+.statusbar { height: 28px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 22px;
+  font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.screen { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scrollbar-width: none; }
+.screen::-webkit-scrollbar { display: none; }
+.pad { padding: 16px; display: flex; flex-direction: column; gap: 12px; padding-bottom: 96px; }
+
+/* ---- side panel ---- */
+.panel { width: 330px; background: var(--panel); border: 1px solid #232a32; border-radius: 18px; padding: 18px;
+  display: flex; flex-direction: column; gap: 16px; position: sticky; top: 24px; }
+.panel h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+.panel p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.ctl { display: flex; flex-direction: column; gap: 8px; }
+.ctl-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { flex: 1; border: 0; background: transparent; padding: 7px 6px; border-radius: 8px; font-size: 13px; color: var(--muted); }
+.seg button.on { background: var(--tonal); color: var(--text); font-weight: 600; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row .grow { flex: 1; min-width: 0; font-size: 14px; }
+.row .clock { font-size: 28px; }
+.chipbtn { border: 1px solid #2f3842; background: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+.chipbtn:hover { border-color: var(--primary); }
+.clock { font-variant-numeric: tabular-nums; font-size: 28px; font-weight: 700; }
+input[type=range] { width: 100%; accent-color: var(--primary); }
+.simchip { display: none; }
+.sheet-close { display: none; }
+
+@media (max-width: 760px) {
+  body { padding-left: 0; padding-right: 0; }
+  .stage { padding: 0; height: 100%; display: block; }
+  .phone { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+  .statusbar { display: none; }
+  .panel { position: fixed; inset: auto 0 0 0; width: auto; top: auto; border-radius: 20px 20px 0 0; z-index: 50;
+    max-height: 80%; overflow-y: auto; transform: translateY(105%); transition: transform .25s ease;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    padding-left: max(18px, env(safe-area-inset-left, 0px)); padding-right: max(18px, env(safe-area-inset-right, 0px)); }
+  .panel.open { transform: none; box-shadow: 0 -20px 60px rgba(0,0,0,.6); }
+  .menu { top: 64px; }
+  .simchip { display: block; position: absolute; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); left: max(12px, env(safe-area-inset-left, 0px));
+    z-index: 20; border: 1px solid #2f3842; background: var(--raised); color: var(--text); border-radius: 999px; padding: 6px 12px;
+    font-size: 13px; font-weight: 600; }
+  .sheet-close { display: block; position: absolute; right: 14px; top: 12px; border: 0; background: none; font-size: 22px; color: var(--muted); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---- app components (mirror the Compose screens) ---- */
+.h1 { font-size: 28px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+.card { background: var(--card); border-radius: 16px; padding: 16px; }
+.cap { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 10px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.hint { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); }
+.stat .l { font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: .02em; }
+.stat .v { font-size: 16px; font-weight: 500; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.bar { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 4px; transition: width .6s ease; }
+.big { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.line { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-variant-numeric: tabular-nums; }
+.btn { border: 0; border-radius: 999px; padding: 10px 22px; font-weight: 500; font-size: 14px; background: var(--primary); color: var(--on-primary); }
+.btn.tonal { background: var(--tonal); color: var(--text); }
+.btn.text { background: none; color: var(--primary); padding: 10px 12px; }
+.btn.danger { background: none; color: var(--alarm); padding: 10px 12px; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.arow { display: flex; align-items: center; gap: 12px; padding: 6px 0; }
+.arow .dot { width: 10px; height: 10px; }
+.arow b { font-weight: 600; display: block; }
+.temps { display: grid; grid-template-columns: repeat(3, 1fr); }
+.gaspumps { display: flex; align-items: center; gap: 12px; }
+.gascol { width: 110px; display: flex; flex-direction: column; align-items: center; flex: none; }
+.pumps { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.pump { height: 56px; border: 0; border-radius: 999px; display: flex; align-items: center; padding: 0 22px; background: var(--track);
+  color: var(--text); font-weight: 600; font-size: 14px; transition: background .2s; }
+.pump span { margin-left: auto; font-weight: 500; }
+.pump.on { background: var(--water); color: var(--on-primary); }
+.pump:disabled { opacity: .45; cursor: default; }
+.strip { display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+
+.switch { width: 52px; height: 32px; border-radius: 16px; border: 2px solid #8A96A3; background: var(--track); position: relative; flex: none; padding: 0;
+  transition: background .15s, border-color .15s; }
+.switch::after { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #8A96A3; left: 6px; top: 6px;
+  transition: all .15s; }
+.switch.on { background: var(--primary); border-color: var(--primary); }
+.switch.on::after { width: 24px; height: 24px; left: 22px; top: 2px; background: var(--on-primary); }
+.switch:disabled { opacity: .4; }
+
+.nav { flex: none; height: 80px; background: var(--card); display: grid; grid-template-columns: repeat(3, 1fr);
+  padding-bottom: env(safe-area-inset-bottom, 0px); }
+.nav button { border: 0; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font-size: 12px; font-weight: 500; color: var(--muted); }
+.nav .pill { width: 64px; height: 32px; border-radius: 16px; display: grid; place-items: center; position: relative; }
+.nav button.on { color: var(--text); }
+.nav button.on .pill { background: var(--tonal); }
+.badge { position: absolute; top: 0; right: 12px; background: var(--alarm); color: #fff; font-size: 10px; font-weight: 700; min-width: 16px;
+  height: 16px; border-radius: 8px; display: grid; place-items: center; padding: 0 4px; }
+svg.ic { width: 24px; height: 24px; fill: currentColor; }
+
+.fab { position: absolute; right: 16px; bottom: 96px; z-index: 5; border: 0; background: var(--tonal); color: var(--text);
+  border-radius: 16px; padding: 16px 20px; display: flex; align-items: center; gap: 10px; font-weight: 500; font-size: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.4); }
+.menu { position: absolute; right: 16px; top: 92px; background: var(--raised); border-radius: 6px; padding: 8px 0; z-index: 30;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5); min-width: 220px; }
+.menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 12px 16px; font-size: 14px; }
+.menu button:hover { background: var(--track); }
+.iconbtn { border: 0; background: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--text); }
+.iconbtn:hover { background: var(--raised); }
+.rulecard { cursor: pointer; }
+.rulecard:hover { background: #1e252d; }
+
+/* dialogs, toasts */
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.66); z-index: 40; overflow-y: auto; padding: 12px; }
+.dialog { background: var(--raised); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.dialog h2 { margin: 0; font-size: 22px; font-weight: 700; }
+.alertdlg { background: var(--raised); border-radius: 28px; padding: 24px; margin: 30vh 12px 0; }
+.alertdlg h3 { margin: 0 0 12px; font-size: 22px; font-weight: 500; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > .lab { font-size: 12px; font-weight: 500; color: var(--muted); }
+.tf { position: relative; }
+.tf input, .tf select { width: 100%; background: transparent; border: 1px solid #8A96A3; border-radius: 4px; padding: 15px 14px; font-size: 16px; }
+.tf input:focus, .tf select:focus { border: 2px solid var(--primary); outline: none; padding: 14px 13px; }
+.tf label { position: absolute; left: 10px; top: -8px; background: var(--card); padding: 0 4px; font-size: 12px; color: var(--muted); }
+.dialog .tf label { background: var(--raised); }
+.tf.err input { border-color: var(--alarm); }
+.sel { width: 100%; appearance: none; background: transparent url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M7 10l5 5 5-5z" fill="%234DA3FF"/></svg>') no-repeat right 14px center;
+  border: 1px solid #8A96A3; border-radius: 999px; padding: 11px 44px 11px 20px; color: var(--primary); font-weight: 500; font-size: 14px; }
+.sel option { background: var(--raised); color: var(--text); }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { border: 1px solid #8A96A3; background: none; border-radius: 8px; padding: 6px 16px; font-size: 14px; font-weight: 500; }
+.chip.on { background: var(--tonal); border-color: var(--tonal); }
+.numrow { display: flex; align-items: center; gap: 8px; }
+.numrow .tf { flex: 1; }
+.round { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--tonal); font-size: 18px; flex: none; }
+.swrow { display: flex; align-items: center; gap: 10px; }
+.swrow > span { flex: 1; }
+
+.toast { position: absolute; left: 8px; right: 8px; top: 8px; z-index: 60; background: #2b333c; border-radius: 22px; padding: 14px 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55); transform: translateY(-140%); transition: transform .3s ease; }
+.toast.show { transform: none; }
+.toast .app { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.toast b { display: block; margin-top: 4px; }
+.toast .acts { display: flex; gap: 4px; margin-top: 8px; }
+.snack { position: absolute; left: 12px; right: 12px; bottom: 92px; z-index: 60; background: #E6EAEE; color: #101418; border-radius: 6px;
+  padding: 14px 16px; font-size: 14px; transform: translateY(20px); opacity: 0; transition: all .25s; pointer-events: none; }
+.snack.show { transform: none; opacity: 1; }
+.log { font-size: 12px; color: var(--muted); max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+  font-variant-numeric: tabular-nums; }
+.log div b { color: var(--text); font-weight: 500; }
+</style>
+
+<div class="stage">
+  <div class="phone" id="phone">
+    <div class="statusbar"><span id="sbTime">12:00</span><span>▲ ●●● 87%</span></div>
+    <button class="simchip" id="simChip" aria-controls="panel">Sim</button>
+    <div class="screen" id="screen"></div>
+    <nav class="nav" id="nav"></nav>
+    <div id="fabLayer"></div>
+    <div class="toast" id="toast" role="status"></div>
+    <div class="snack" id="snack" role="status"></div>
+    <div id="overlay"></div>
+  </div>
+
+  <aside class="panel" id="panel" aria-label="Simulator controls">
+    <button class="sheet-close" id="sheetClose" aria-label="Close">×</button>
+    <div>
+      <h1>Simulator</h1>
+      <p>Demo data for the Caravan Android app. The caravan's day runs fast so things change while you watch. Nothing here talks to the real hub.</p>
+    </div>
+    <div class="ctl">
+      <div class="ctl-label">Caravan time</div>
+      <div class="row"><span class="clock grow" id="clock">12:00</span><button class="chipbtn" id="pause">Pause</button></div>
+      <div class="seg" id="speed">
+        <button data-s="1">1×</button><button data-s="60" class="on">1 min/s</button><button data-s="600">10 min/s</button>
+      </div>
+      <input type="range" id="tod" min="0" max="1439" step="5" aria-label="Time of day">
+    </div>
+    <div class="ctl">
+      <div class="ctl-label">What's happening</div>
+      <div class="row"><span class="grow">Plugged in to mains</span><button class="switch" id="simMains" aria-label="Plugged in to mains"></button></div>
+      <div class="row"><span class="grow">Fridge door left open</span><button class="switch" id="simFridge" aria-label="Fridge door left open"></button></div>
+      <div class="row"><span class="grow">Aircon-sized load (+80 A)</span><button class="switch" id="simLoad" aria-label="Big load"></button></div>
+      <div class="row"><span class="grow">Phone on the caravan Wi-Fi</span><button class="switch on" id="simConn" aria-label="Phone on the caravan Wi-Fi"></button></div>
+    </div>
+    <div class="ctl">
+      <div class="ctl-label">Jump to</div>
+      <div class="row" style="flex-wrap:wrap">
+        <button class="chipbtn" data-preset="charging">Mains charging</button>
+        <button class="chipbtn" data-preset="evening">Evening, alerts</button>
+        <button class="chipbtn" data-preset="gas">Gas nearly empty</button>
+        <button class="chipbtn" data-preset="dry">Fresh 2 runs dry</button>
+        <button class="chipbtn" id="swapGas">Swap gas bottle</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <div class="ctl-label">Hub log</div>
+      <div class="log" id="log"></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+// ======================================================== data model
+const META = { sol: ["Roof", "Portable"], tmp: ["Inside", "Outside", "Fridge"], tank: ["Fresh 1", "Fresh 2", "Grey"],
+  pump: ["Internal", "External"], fw: "1.4.0" };
+const METRICS = [
+  ["bat_v", "Battery voltage", "V", 0.1], ["bat_soc", "Battery charge", "%", 1], ["bat_a", "Battery current", "A", 1],
+  ["load_a", "Load current", "A", 1], ["charge_a", "Charge current", "A", 1], ["solar_w", "Solar total", "W", 10],
+  ["solar1_w", "Solar 1", "W", 10], ["solar2_w", "Solar 2", "W", 10], ["temp_in", "Inside temp", "°C", 0.5],
+  ["temp_out", "Outside temp", "°C", 0.5], ["temp_fridge", "Fridge temp", "°C", 0.5], ["tank1", "Tank 1", "%", 5],
+  ["tank2", "Tank 2", "%", 5], ["tank3", "Tank 3", "%", 5], ["wx_gust", "Forecast gusts", "km/h", 5],
+  ["wx_rain", "Forecast rain chance", "%", 10], ["gas", "Gas bottle", "%", 5],
+].map(([key, label, unit, step]) => ({ key, label, unit, step }));
+const metric = (k) => METRICS.find((m) => m.key === k) || METRICS[0];
+function metricLabel(k) {
+  const map = { solar1_w: META.sol[0], solar2_w: META.sol[1], temp_in: META.tmp[0] + " temp", temp_out: META.tmp[1] + " temp",
+    temp_fridge: META.tmp[2] + " temp", tank1: META.tank[0], tank2: META.tank[1], tank3: META.tank[2] };
+  return map[k] || metric(k).label;
+}
+const ACTIONS = [["none", "None"], ["pumps_off", "Turn pumps off"], ["inverter_off", "Turn inverter off"], ["aircon_off", "Turn aircon off"]];
+const actionLabel = (k) => (ACTIONS.find((a) => a[0] === k) || [k, k])[1];
+const SEV = ["Info", "Warning", "Alarm"];
+const sevColor = (s) => s === 2 ? "var(--alarm)" : s === 1 ? "var(--warn)" : "var(--water)";
+
+const DEFAULT_RULES = () => [
+  [1, "Battery low", "bat_v", "<", 12.4, 0.3, 60, 1], [2, "Battery critical", "bat_v", "<", 11.8, 0.6, 30, 2, "inverter_off"],
+  [3, "Battery over-voltage", "bat_v", ">", 14.8, 0.3, 10, 2], [4, "Charge below 30%", "bat_soc", "<", 30, 5, 60, 1],
+  [5, "Charge below 15%", "bat_soc", "<", 15, 5, 60, 2, "aircon_off"], [6, "High load", "load_a", ">", 180, 20, 15, 1],
+  [7, "Fridge warm", "temp_fridge", ">", 6, 1, 1200, 2], [8, "Fridge freezing", "temp_fridge", "<", -1, 1, 1800, 1, "none", false],
+  [9, "Inside hot", "temp_in", ">", 35, 2, 300, 1], [10, "Inside cold", "temp_in", "<", 5, 1, 300, 1],
+  [11, "Tank 1 low", "tank1", "<", 15, 5, 30, 0], [12, "Tank 2 low", "tank2", "<", 15, 5, 30, 0],
+  [13, "Grey tank full", "tank3", ">", 85, 5, 30, 1], [14, "Strong wind forecast", "wx_gust", ">", 50, 10, 0, 1],
+  [15, "Gas low", "gas", "<", 20, 5, 60, 1],
+].map(([id, name, m, cmp, thr, hys, dly, sev, act = "none", ntf = true]) => ({ id, en: true, name, m, cmp, thr, hys, dly, sev, ntf, act }));
+
+const fmtNum = (v) => Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
+const fmtDelay = (s) => s <= 0 ? "no delay" : s % 3600 === 0 ? `${s / 3600} h` : s % 60 === 0 ? `${s / 60} min` : `${s} s`;
+const describe = (r) => `${metricLabel(r.m)} ${r.cmp === ">" ? "above" : "below"} ${fmtNum(r.thr)} ${metric(r.m).unit}${r.dly > 0 ? " for " + fmtDelay(r.dly) : ""}`;
+const f1 = (v) => v.toFixed(1), f2 = (v) => v.toFixed(2), deg = (v) => String(Math.round(v) || 0);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ======================================================== simulated caravan
+const CAP = 300; // Ah
+const S = {
+  min: 12 * 60, speed: 60, paused: false,
+  mains: true, fridgeOpen: false, bigLoad: false, conn: true,
+  soc: 64, fridge: 3.4, comp: false, inside: 22.6, outside: 28.4,
+  lo: [17.2, 14.9, 2.8], hi: [24.1, 29.6, 4.6],
+  tank: [80, 45, 30], pump: [true, false], lock: [false, false], pumpRun: [42, 0],
+  gas: 63, yieldKwh: [1.9, 2.4], peak: [538, 686],
+  acA: 0, acOn: false, acSince: -1, bat: {}, sol: [0, 0],
+  rules: DEFAULT_RULES(), alerts: [], pend: {}, rc: true, sleep: 300,
+  settings: { host: "", user: "admin", pass: "secret", bg: true, ntfyServer: "https://ntfy.sh", ntfyTopic: "caravan-alerts-8f3k2", ntfyToken: "" },
+};
+
+function sunFactor(min) { const h = min / 60; return h < 6.5 || h > 18.5 ? 0 : Math.sin(Math.PI * (h - 6.5) / 12); }
+function step(dtMin) {
+  const h = (S.min % 1440) / 60;
+  // weather: outside follows the day, inside lags behind it
+  S.outside = 20 + 9 * Math.sin(Math.PI * (h - 9) / 12) + (Math.random() - 0.5) * 0.2;
+  S.inside += (S.outside - 2 - S.inside) * Math.min(1, dtMin / 90);
+  // fridge: compressor cycles 3-4.5 C; door open adds heat faster than it can cope
+  const heat = S.fridgeOpen ? 0.35 : 0.03;
+  if (S.fridge > 4.5) S.comp = true; if (S.fridge < 3.0) S.comp = false;
+  S.fridge += (heat - (S.comp ? 0.09 : 0)) * dtMin;
+  // solar
+  const sf = sunFactor(S.min) * (0.92 + Math.random() * 0.08);
+  // Roof 3 x 230 W (690 W), portable 880 W; both peak near 78 % of rated at midday.
+  S.sol = [Math.round(690 * 0.78 * sf), Math.round(880 * 0.78 * sf)];
+  // loads
+  const pumpsA = S.pump.reduce((a, on) => a + (on ? 5 : 0), 0);
+  const load = 6.5 + pumpsA + (S.comp ? 4 : 0) + (S.bigLoad ? 80 : 0) + (h > 18 && h < 23 ? 4 : 0) + Math.random() * 0.8;
+  const solarA = (S.sol[0] + S.sol[1]) / 13.8;
+  // mains: 2 x 60 A chargers in bulk below ~90 %, tapering above; card shows only in bulk
+  const bulk = S.mains && S.soc < 90;
+  const taper = S.mains && !bulk ? Math.max(0, (100 - S.soc) * 4) : 0;
+  S.acA = bulk ? 117 + Math.random() * 3 : taper;
+  S.acOn = bulk;
+  const net = solarA + S.acA - load;
+  S.soc = Math.max(0, Math.min(100, S.soc + net * dtMin / 60 / CAP * 100));
+  // LiFePO4-ish: flat in the middle, falling away below 20 %
+  const v = 13.0 + (S.soc - 50) * 0.006 - (S.soc < 20 ? (20 - S.soc) * 0.04 : 0) + net * 0.002 + (bulk ? 0.5 : 0);
+  S.bat = { v, a: net, soc: S.soc, solarA, chargerA: 0.4 + (S.mains ? 0 : 0), loadA: load,
+    ttg: Math.abs(net) < 0.3 ? -1 : net > 0 ? Math.round((100 - S.soc) / 100 * CAP / net * 60) : Math.round(S.soc / 100 * CAP / -net * 60) };
+  // tanks and pumps (a pump draws its own tank; dry-run lockout below 3 %)
+  S.pump.forEach((on, i) => {
+    if (!on) return;
+    S.pumpRun[i] += dtMin * 60;
+    S.tank[i] = Math.max(0, S.tank[i] - 0.06 * dtMin);
+    S.tank[2] = Math.min(100, S.tank[2] + 0.04 * dtMin);
+    if (S.tank[i] < 3) { S.pump[i] = false; S.lock[i] = true; logLine(`${META.pump[i]} pump locked out: ${META.tank[i]} is dry`); }
+  });
+  S.gas = Math.max(0, S.gas - 0.012 * dtMin);
+  S.yieldKwh[0] += S.sol[0] * dtMin / 60 / 1000; S.yieldKwh[1] += S.sol[1] * dtMin / 60 / 1000;
+  S.peak = [Math.max(S.peak[0], S.sol[0]), Math.max(S.peak[1], S.sol[1])];
+  const t = [S.inside, S.outside, S.fridge];
+  t.forEach((c, i) => { S.lo[i] = Math.min(S.lo[i], c); S.hi[i] = Math.max(S.hi[i], c); });
+  S.min += dtMin;
+  if (Math.floor((S.min - dtMin) / 1440) !== Math.floor(S.min / 1440)) { S.yieldKwh = [0, 0]; S.peak = [0, 0]; S.lo = t.slice(); S.hi = t.slice(); }
+  evaluateRules(dtMin * 60);
+}
+
+// ======================================================== alert engine (delay + hysteresis, like AlertEngine.cpp)
+function value(m) {
+  const b = S.bat;
+  return { bat_v: b.v, bat_soc: b.soc, bat_a: b.a, load_a: b.loadA, charge_a: b.solarA + S.acA, solar_w: S.sol[0] + S.sol[1],
+    solar1_w: S.sol[0], solar2_w: S.sol[1], temp_in: S.inside, temp_out: S.outside, temp_fridge: S.fridge,
+    tank1: S.tank[0], tank2: S.tank[1], tank3: S.tank[2], wx_gust: 31, wx_rain: 20, gas: S.gas }[m];
+}
+function evaluateRules(dtSec) {
+  for (const r of S.rules) {
+    const v = value(r.m), active = S.alerts.find((a) => a.id === r.id);
+    if (!r.en) { if (active) clearAlert(r, v); delete S.pend[r.id]; continue; }
+    const bad = r.cmp === ">" ? v > r.thr : v < r.thr;
+    if (active) {
+      const ok = r.cmp === ">" ? v < r.thr - r.hys : v > r.thr + r.hys;
+      if (ok) clearAlert(r, v); else active.val = v;
+    } else if (bad) {
+      S.pend[r.id] = (S.pend[r.id] || 0) + dtSec;
+      if (S.pend[r.id] >= r.dly) raiseAlert(r, v);
+    } else delete S.pend[r.id];
+  }
+}
+function alertMsg(r, v) { return `${metricLabel(r.m)} ${fmtNum(Math.round(v * 10) / 10)} ${metric(r.m).unit} (${r.cmp === ">" ? "above" : "below"} ${fmtNum(r.thr)})`; }
+function raiseAlert(r, v) {
+  delete S.pend[r.id];
+  const a = { id: r.id, sev: r.sev, ack: false, val: v, msg: alertMsg(r, v) };
+  S.alerts.push(a);
+  logLine(`<b>${esc(r.name)}</b> raised`);
+  if (r.act === "pumps_off" && S.pump.some((p) => p)) { S.pump = [false, false]; logLine("Action: pumps off"); }
+  if (r.ntf && S.settings.bg && S.conn) notify(r, a);
+}
+function clearAlert(r) {
+  S.alerts = S.alerts.filter((a) => a.id !== r.id);
+  logLine(`${esc(r.name)} cleared`);
+  if (toastFor === r.id) hideToast();
+}
+function ackAll() { S.alerts.forEach((a) => a.ack = true); hideToast(); logLine("Alerts acknowledged (buzzer silenced)"); render(); }
+
+// ======================================================== UI
+let tab = 0, editing = null, menuOpen = false, confirmReset = false, confirmDelete = false, toastFor = null;
+const $ = (id) => document.getElementById(id);
+const ICON = {
+  home: '<svg class="ic" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>',
+  bell: '<svg class="ic" viewBox="0 0 24 24"><path d="M7.58 4.08 6.15 2.65C3.75 4.48 2.17 7.3 2.03 10.5h2a8.45 8.45 0 0 1 3.55-6.42zm12.39 6.42h2c-.15-3.2-1.73-6.02-4.12-7.85l-1.42 1.43a8.5 8.5 0 0 1 3.54 6.42zM18 11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2v-5zm-6 11c.14 0 .27-.01.4-.04a2.03 2.03 0 0 0 1.44-1.18c.1-.24.15-.5.15-.78h-4c.01 1.1.9 2 2.01 2z"/></svg>',
+  gear: '<svg class="ic" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.46.46 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg>',
+  more: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>',
+  plus: '<svg class="ic" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>',
+};
+
+function card(title, color, body, extra = "") {
+  return `<section class="card ${extra}"><div class="cap"><span class="dot" style="background:${color}"></span>${esc(title)}</div>${body}</section>`;
+}
+const bar = (frac, color) => `<div class="bar"><i style="width:${Math.max(0, Math.min(100, frac * 100))}%;background:${color}"></i></div>`;
+const stat = (l, v, color = "") => `<div class="stat"><div class="l">${l}</div><div class="v" style="${color ? "color:" + color : ""}">${v}</div></div>`;
+const socColor = (s) => s < 20 ? "var(--alarm)" : s < 40 ? "var(--warn)" : "var(--battery)";
+const gasColor = (p) => p < 10 ? "var(--alarm)" : p < 25 ? "var(--warn)" : "var(--gas)";
+function lerp(a, b, t) { const pa = a.match(/\w\w/g).map((x) => parseInt(x, 16)), pb = b.match(/\w\w/g).map((x) => parseInt(x, 16));
+  return "#" + pa.map((x, i) => Math.round(x + (pb[i] - x) * t).toString(16).padStart(2, "0")).join(""); }
+function tempColor(i, c) {
+  const N = "E6EAEE", B = "4DA3FF", W = "FFA94D", R = "FF5C5C";
+  const st = i === 2 ? [[0, B], [2, N], [5, N], [6.5, W], [8, R]] : [[10, B], [17, N], [23, N], [27, W], [30, R]];
+  if (c <= st[0][0]) return "#" + st[0][1];
+  for (let k = 1; k < st.length; k++) if (c <= st[k][0]) return lerp(st[k - 1][1], st[k][1], (c - st[k - 1][0]) / (st[k][0] - st[k - 1][0]));
+  return "#" + st[st.length - 1][1];
+}
+const hm = (m) => m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+const ttgText = (a, t) => t < 0 ? (a > 0.3 ? "Charging" : "Idle") : a > 0 ? `Full in ${hm(t)}` : `${hm(t)} left at this load`;
+const ruleName = (id) => (S.rules.find((r) => r.id === id) || {}).name;
+
+function connStrip(withSetup) {
+  if (S.conn) return "";
+  return `<div class="strip" style="background:rgba(255,169,77,.15);color:var(--warn)"><span style="flex:1">Hub not found. Are you on the caravan's Wi-Fi?</span>${withSetup ? '<button class="btn text" data-go="2">Setup</button>' : ""}</div>`;
+}
+function alertRow(a) {
+  return `<div class="arow"><span class="dot" style="background:${a.ack ? "var(--muted)" : sevColor(a.sev)}"></span>
+    <div style="flex:1;min-width:0"><b>${esc(ruleName(a.id) || SEV[a.sev])}</b><div class="hint">${esc(a.msg)}</div></div>
+    ${a.ack ? '<span class="hint">seen</span>' : ""}</div>`;
+}
+function gasBottle(p) {
+  const h = 96, w = 64, bodyTop = 20, bodyH = h - bodyTop - 2, fillH = p == null ? 0 : bodyH * Math.max(0, Math.min(1, p / 100));
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+    <defs><clipPath id="gb"><rect x="1.5" y="${bodyTop}" width="${w - 3}" height="${bodyH}" rx="18"/></clipPath></defs>
+    ${p == null ? "" : `<rect clip-path="url(#gb)" x="0" y="${bodyTop + bodyH - fillH}" width="${w}" height="${fillH}" fill="${gasColor(p)}"/>`}
+    <rect x="1.5" y="${bodyTop}" width="${w - 3}" height="${bodyH}" rx="18" fill="none" stroke="#8A96A3" stroke-width="2.5"/>
+    <rect x="${(w - 30) / 2}" y="1.5" width="30" height="15" rx="4" fill="none" stroke="#8A96A3" stroke-width="2.5"/>
+    <line x1="4" x2="${w - 4}" y1="${bodyTop + bodyH / 2}" y2="${bodyTop + bodyH / 2}" stroke="#8A96A3" stroke-opacity=".5" stroke-width="1.5"/></svg>`;
+}
+
+function homeHTML() {
+  let out = `<h1 class="h1">Caravan</h1>${connStrip(true)}`;
+  if (!S.conn) return out + `<div style="color:var(--muted)">Waiting for the hub…</div>`;
+  const b = S.bat, un = S.alerts.filter((a) => !a.ack);
+  if (S.alerts.length) out += card("Alerts", un.length ? sevColor(Math.max(...un.map((a) => a.sev))) : "var(--muted)",
+    S.alerts.slice(0, 3).map(alertRow).join("") +
+    `<div class="btnrow">${un.length ? '<button class="btn" data-act="ack">Acknowledge</button>' : ""}<button class="btn tonal" data-go="1">All alerts</button></div>`);
+  out += card("Battery", "var(--battery)", `
+    <div style="display:flex;align-items:flex-end;gap:12px"><div class="big" style="font-size:44px;line-height:1.1;color:${socColor(b.soc)}">${Math.floor(b.soc)}%</div>
+    <div style="padding-bottom:8px"><div style="font-variant-numeric:tabular-nums">${f2(b.v)} V &nbsp;·&nbsp; ${b.a > 0 ? "+" : ""}${f1(b.a)} A</div><div class="hint">${ttgText(b.a, b.ttg)}</div></div></div>
+    <div style="height:6px"></div>${bar(b.soc / 100, socColor(b.soc))}<div style="height:10px"></div>
+    <div class="stats">${stat("Solar", f1(b.solarA) + " A")}${stat("BMPRO", f1(b.chargerA) + " A")}${stat("Load", f1(b.loadA) + " A")}</div>`);
+  if (S.acOn) out += card("Mains charging", "var(--mains)", `
+    <div style="display:flex;align-items:flex-end;gap:12px"><div class="big" style="font-size:28px;color:var(--mains)">${Math.floor(S.acA)} A</div>
+    <div class="hint" style="padding-bottom:5px">${Math.floor(S.acA * b.v)} W · bulk · estimated</div></div><div style="height:6px"></div>${bar(S.acA / 120, "var(--mains)")}`);
+  out += card("Solar", "var(--solar)", `<div class="big" style="font-size:28px;color:var(--solar)">${S.sol[0] + S.sol[1]} W</div><div style="height:6px"></div>` +
+    S.sol.map((w, i) => `<div class="line"><span>${META.sol[i]}</span><span>${w} W · ${f2(S.yieldKwh[i])} kWh today</span></div>`).join(""));
+  out += card("Water", "var(--water)", S.tank.map((p, i) => `<div class="line" style="padding:2px 0"><span>${META.tank[i]}</span><span>${Math.floor(p)}%</span></div>${bar(p / 100, "var(--water)")}<div style="height:8px"></div>`).join(""));
+  const temps = [S.inside, S.outside, S.fridge];
+  out += card("Temperatures", "var(--climate)", `<div class="temps">${temps.map((c, i) => `<div>
+    <div class="stat"><div class="l">${META.tmp[i]}</div></div><div style="font-size:26px;font-weight:600;color:${tempColor(i, c)}">${deg(c)}°</div>
+    <div class="hint">${deg(S.lo[i])}° / ${deg(S.hi[i])}°</div></div>`).join("")}</div>`);
+  out += card("Gas & pumps", "var(--gas)", `<div class="gaspumps"><div class="gascol">${gasBottle(S.gas)}
+    <div class="big" style="font-size:22px;margin-top:6px;color:${gasColor(S.gas)}">${Math.floor(S.gas)}%</div><div class="hint">Gas bottle</div></div>
+    <div class="pumps">${S.pump.map((on, i) => `<button class="pump ${on ? "on" : ""}" data-pump="${i}" ${S.lock[i] ? "disabled" : ""}>${META.pump[i]}<span>${S.lock[i] ? "Locked (dry)" : on ? "On" : "Off"}</span></button>`).join("")}</div></div>`);
+  out += card("Weather · Bright", "var(--climate)", `<div class="stats">${stat("Now", deg(S.outside) + " °C", tempColor(1, S.outside))}${stat("Wind", "14 km/h")}${stat("Gusts", "31 km/h")}</div>`);
+  return out;
+}
+
+function alertsHTML() {
+  const un = S.alerts.filter((a) => !a.ack);
+  let out = `<div style="display:flex;align-items:center"><h1 class="h1" style="flex:1">Alerts</h1><button class="iconbtn" data-act="menu" aria-label="More">${ICON.more}</button></div>${connStrip(false)}`;
+  out += card("Active now", un.length ? sevColor(Math.max(...un.map((a) => a.sev))) : "var(--battery)",
+    (S.alerts.length ? S.alerts.map(alertRow).join("") : '<div style="color:var(--muted)">All clear</div>') +
+    (un.length ? '<div class="btnrow"><button class="btn" data-act="ack">Acknowledge all</button></div>' : ""));
+  out += `<div style="padding:8px 4px 0"><div class="ctl-label" style="font-weight:500">Rules</div><div class="hint">Tap a rule to change it. The hub checks these all the time, even with your phone away.</div></div>`;
+  if (!S.conn) out += '<div style="color:var(--muted)">Connect to the hub to see its rules.</div>';
+  else out += S.rules.map((r) => card(SEV[r.sev], sevColor(r.sev), `<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0">
+      <div style="font-weight:600;color:${r.en ? "var(--text)" : "var(--muted)"}">${esc(r.name || "(unnamed)")}</div><div class="hint">${esc(describe(r))}</div>
+      ${[!r.ntf && "no phone alert", r.act !== "none" && "then: " + actionLabel(r.act).toLowerCase()].filter(Boolean).map((t) => `<div class="hint">${t}</div>`).join("")}</div>
+      <button class="switch ${r.en ? "on" : ""}" data-toggle="${r.id}" aria-label="Rule on"></button></div>`, `rulecard" data-rule="${r.id}`)).join("");
+  return out;
+}
+
+function setupHTML() {
+  const s = S.settings, sleepOpts = [10, 20, 30, 60, 300, 900, 1800, 3600, 0];
+  const sl = (v) => v === 0 ? "Never" : v >= 3600 ? `${v / 3600} h` : v >= 60 ? `${v / 60} min` : `${v} s`;
+  const tf = (id, label, val, type = "text", ph = "") => `<div class="tf"><label for="${id}">${label}</label><input id="${id}" type="${type}" value="${esc(val)}" placeholder="${esc(ph)}"></div>`;
+  return `<h1 class="h1">Setup</h1>` +
+    card("Hub connection", "var(--water)", `<div id="connLine" style="color:${S.conn ? "var(--battery)" : "var(--warn)"}">${S.conn ? "Connected to 192.168.1.50" : "Hub not found. Are you on the caravan's Wi-Fi?"}</div>
+      <div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">${tf("host", "Hub address", s.host, "text", "Leave blank to find it automatically")}${tf("user", "Username", s.user)}${tf("pass", "Password", s.pass, "password")}</div>
+      <div class="hint" style="margin-top:6px">The same login as the hub's web page (WEB_USER / WEB_PASS in secrets.h).</div>
+      <div class="btnrow"><button class="btn" data-act="saveConn">Save and connect</button></div>`) +
+    card("Alerts on this phone", "var(--warn)", `<div class="swrow"><span>Watch for alerts with the app closed</span><button class="switch ${s.bg ? "on" : ""}" data-act="bg" aria-label="Background alerts"></button></div>
+      <div class="hint" style="margin-top:4px">On the caravan's Wi-Fi the app gets alerts straight from the hub, no internet needed. Android shows a small "Watching caravan" notification while this is on.</div>
+      <div class="btnrow" style="margin-top:10px"><button class="btn tonal" data-act="battery">Stop Android pausing alerts</button></div>
+      <div class="hint" style="margin-top:4px">Some phones pause background apps to save battery, which can delay alerts.</div>
+      <div style="font-weight:600;margin-top:14px">Away from the van (ntfy)</div>
+      <div class="hint">When the van has internet, the hub also sends alerts to an ntfy topic. Enter the same topic as NTFY_TOPIC in secrets.h and this app will pick them up anywhere. You don't need the ntfy app.</div>
+      <div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">${tf("ntfyTopic", "ntfy topic", s.ntfyTopic)}${tf("ntfyServer", "ntfy server", s.ntfyServer)}${tf("ntfyToken", "Access token (optional)", s.ntfyToken, "password")}</div>
+      <div class="btnrow"><button class="btn" data-act="saveNtfy">Save</button></div>`) +
+    card("Touchscreen", "var(--climate)", S.conn ? `<div class="field"><span class="lab">Screen dims after</span>
+      <select class="sel" id="sleep">${sleepOpts.map((v) => `<option value="${v}" ${v === S.sleep ? "selected" : ""}>${sl(v)}</option>`).join("")}</select></div>
+      <div class="swrow" style="margin-top:14px"><span>Allow control from the internet</span><button class="switch ${S.rc ? "on" : ""}" data-act="rc" aria-label="Remote control"></button></div>
+      <div class="hint">When off, the remote dashboard can look but not switch pumps or change settings.</div>` : '<div style="color:var(--muted)">Connect to the hub to change these.</div>') +
+    card("More setup", "var(--muted)", `<div class="hint">Victron keys, thermometers, tank calibration, BMPRO and weather location are coming to the app next. Until then, set them on the hub's web page.</div>
+      <div class="btnrow" style="margin-top:8px"><button class="btn tonal" data-act="web" ${S.conn ? "" : "disabled"}>Open hub web page</button></div>`) +
+    `<div class="hint">App 0.2.0 · hub firmware ${META.fw}</div>`;
+}
+
+function navHTML() {
+  const un = S.conn ? S.alerts.filter((a) => !a.ack).length : 0;
+  const item = (i, icon, label) => `<button class="${tab === i ? "on" : ""}" data-go="${i}"><span class="pill">${icon}${i === 1 && un ? `<span class="badge">${un}</span>` : ""}</span>${label}</button>`;
+  return item(0, ICON.home, "Home") + item(1, ICON.bell, "Alerts") + item(2, ICON.gear, "Setup");
+}
+
+// Setup has text fields, so it only re-renders when you open it; the other tabs refresh every tick.
+function render(force = false) {
+  const scr = $("screen");
+  if (tab !== 2 || force) {
+    const html = tab === 0 ? homeHTML() : tab === 1 ? alertsHTML() : setupHTML();
+    const top = scr.scrollTop;
+    scr.innerHTML = `<div class="pad">${html}</div>`;
+    scr.scrollTop = top;
+  } else {
+    const cl = $("connLine");
+    if (cl) { cl.textContent = S.conn ? "Connected to 192.168.1.50" : "Hub not found. Are you on the caravan's Wi-Fi?"; cl.style.color = S.conn ? "var(--battery)" : "var(--warn)"; }
+  }
+  $("nav").innerHTML = navHTML();
+  $("fabLayer").innerHTML = (tab === 1 && S.conn ? `<button class="fab" data-act="new">${ICON.plus}New rule</button>` : "") +
+    (menuOpen && tab === 1 ? `<div class="menu"><button data-act="reset">Restore default rules</button></div>` : "");
+  const hh = String(Math.floor((S.min % 1440) / 60)).padStart(2, "0"), mm = String(Math.floor(S.min % 60)).padStart(2, "0");
+  $("clock").textContent = $("sbTime").textContent = `${hh}:${mm}`;
+  if (document.activeElement !== $("tod")) $("tod").value = Math.floor(S.min % 1440);
+}
+
+// ---------------- rule editor + dialogs (rendered once, not on every tick)
+const DELAYS = [0, 10, 30, 60, 120, 300, 600, 900, 1800, 3600];
+const DEF_THR = { bat_v: 12, bat_soc: 30, bat_a: 30, load_a: 30, charge_a: 40, solar_w: 50, solar1_w: 50, solar2_w: 50, temp_in: 35, temp_out: 40, temp_fridge: 8, tank1: 20, tank2: 20, tank3: 20, wx_gust: 60, wx_rain: 70, gas: 20 };
+function openEditor(r) {
+  editing = { ...r, thr: fmtNum(r.thr), hys: fmtNum(r.hys) };
+  drawEditor();
+}
+function drawEditor() {
+  const e = editing, m = metric(e.m), isNew = !S.rules.some((r) => r.id === e.id);
+  const delays = [...new Set([...DELAYS, e.dly])].sort((a, b) => a - b);
+  const acts = ACTIONS.filter((a, i) => i < 2 || a[0] === e.act);
+  const thrOk = !isNaN(parseFloat(e.thr)), hysOk = !isNaN(parseFloat(e.hys)) && parseFloat(e.hys) >= 0;
+  $("overlay").innerHTML = `<div class="scrim" id="scrim"><div class="dialog" role="dialog" aria-label="Edit alert rule">
+    <h2>${isNew ? "New alert rule" : "Edit alert rule"}</h2>
+    <div class="tf"><label for="eName">Name (shown in the notification)</label><input id="eName" maxlength="27" value="${esc(e.name)}" placeholder="${esc(metricLabel(e.m))}"></div>
+    <div class="field"><span class="lab">Watch</span><select class="sel" id="eMetric">${METRICS.map((x) => `<option value="${x.key}" ${x.key === e.m ? "selected" : ""}>${esc(metricLabel(x.key))}</option>`).join("")}</select></div>
+    <div class="field"><span class="lab">Alert when it goes</span><div class="chips"><button class="chip ${e.cmp === "<" ? "on" : ""}" data-cmp="<">Below</button><button class="chip ${e.cmp === ">" ? "on" : ""}" data-cmp=">">Above</button></div></div>
+    <div class="numrow"><div class="tf ${thrOk ? "" : "err"}"><label for="eThr">Threshold (${m.unit})</label><input id="eThr" inputmode="decimal" value="${esc(e.thr)}"></div>
+      <button class="round" data-bump="thr" data-d="-1" aria-label="Lower">−</button><button class="round" data-bump="thr" data-d="1" aria-label="Raise">+</button></div>
+    <div><div class="numrow"><div class="tf ${hysOk ? "" : "err"}"><label for="eHys">Clear after recovering by (${m.unit})</label><input id="eHys" inputmode="decimal" value="${esc(e.hys)}"></div>
+      <button class="round" data-bump="hys" data-d="-1" aria-label="Lower">−</button><button class="round" data-bump="hys" data-d="1" aria-label="Raise">+</button></div>
+      <div class="hint" style="margin-top:4px">Stops the alert flapping on and off around the threshold.</div></div>
+    <div class="field"><span class="lab">Only if it lasts</span><select class="sel" id="eDly">${delays.map((d) => `<option value="${d}" ${d === e.dly ? "selected" : ""}>${fmtDelay(d)}</option>`).join("")}</select></div>
+    <div class="field"><span class="lab">Severity</span><div class="chips">${SEV.map((s, i) => `<button class="chip ${e.sev === i ? "on" : ""}" data-sev="${i}">${s}</button>`).join("")}</div></div>
+    <div class="swrow"><span>Send a phone notification</span><button class="switch ${e.ntf ? "on" : ""}" data-flag="ntf" aria-label="Notify"></button></div>
+    <div class="field"><span class="lab">Also do this automatically</span><select class="sel" id="eAct">${acts.map(([k, l]) => `<option value="${k}" ${k === e.act ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+    <div class="swrow"><span>Rule switched on</span><button class="switch ${e.en ? "on" : ""}" data-flag="en" aria-label="Rule on"></button></div>
+    <div style="display:flex;align-items:center;gap:8px">${isNew ? "" : '<button class="btn danger" data-ed="delete">Delete</button>'}<span style="flex:1"></span>
+      <button class="btn text" data-ed="cancel">Cancel</button><button class="btn" data-ed="save" ${thrOk && hysOk ? "" : "disabled"}>Save</button></div>
+  </div></div>` + (confirmDelete ? `<div class="scrim" style="z-index:45"><div class="alertdlg"><h3>Delete this rule?</h3>
+    <div class="btnrow" style="justify-content:flex-end"><button class="btn text" data-ed="nodel">Cancel</button><button class="btn text" data-ed="yesdel">Delete</button></div></div></div>` : "");
+}
+function readEditorFields() {
+  if (!editing) return;
+  const v = (id) => $(id) && $(id).value;
+  editing.name = v("eName") ?? editing.name; editing.thr = v("eThr") ?? editing.thr; editing.hys = v("eHys") ?? editing.hys;
+  editing.dly = +(v("eDly") ?? editing.dly); editing.act = v("eAct") ?? editing.act;
+}
+function drawConfirmReset() {
+  $("overlay").innerHTML = `<div class="scrim"><div class="alertdlg"><h3>Restore default rules?</h3>
+    <div style="color:var(--muted);margin-bottom:16px">This replaces all your alert rules with the hub's built-in defaults.</div>
+    <div class="btnrow" style="justify-content:flex-end"><button class="btn text" data-act="noreset">Cancel</button><button class="btn text" data-act="yesreset">Restore</button></div></div></div>`;
+}
+
+// ---------------- notifications (heads-up toast) and snackbar
+let toastTimer = 0, snackTimer = 0;
+function notify(r, a) {
+  toastFor = r.id;
+  $("toast").innerHTML = `<div class="app"><span class="dot" style="background:${sevColor(a.sev)}"></span>Caravan · now</div>
+    <b>${esc(r.name)}</b><div class="hint" style="color:#c9d1d9">${esc(a.msg)}</div>
+    <div class="acts"><button class="btn text" data-act="ack">Acknowledge</button><button class="btn text" data-act="openAlerts">Open</button></div>`;
+  $("toast").classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 8000);
+}
+function hideToast() { $("toast").classList.remove("show"); toastFor = null; }
+function snack(t) { const s = $("snack"); s.textContent = t; s.classList.add("show"); clearTimeout(snackTimer); snackTimer = setTimeout(() => s.classList.remove("show"), 2600); }
+function logLine(html) {
+  const hh = String(Math.floor((S.min % 1440) / 60)).padStart(2, "0"), mm = String(Math.floor(S.min % 60)).padStart(2, "0");
+  const d = document.createElement("div"); d.innerHTML = `${hh}:${mm} ${html}`; $("log").prepend(d);
+  while ($("log").children.length > 40) $("log").lastChild.remove();
+}
+
+// ---------------- events
+document.addEventListener("click", (ev) => {
+  if ($("panel").classList.contains("open") && !ev.target.closest("#panel")) { $("panel").classList.remove("open"); return; }
+  const t = ev.target.closest("button, [data-rule]");
+  if (!t) { if (menuOpen) { menuOpen = false; render(); } return; }
+  const d = t.dataset;
+  if (menuOpen && d.act !== "menu" && d.act !== "reset") { menuOpen = false; render(); }
+  if (d.go != null) { tab = +d.go; menuOpen = false; $("screen").scrollTop = 0; render(true); return; }
+  if (d.pump != null) { const i = +d.pump; S.pump[i] = !S.pump[i]; logLine(`${META.pump[i]} pump ${S.pump[i] ? "on" : "off"}`); render(); return; }
+  if (d.toggle != null) { ev.stopPropagation(); const r = S.rules.find((x) => x.id === +d.toggle); r.en = !r.en; logLine(`Rule "${esc(r.name)}" ${r.en ? "on" : "off"}`); render(); return; }
+  if (d.rule != null && S.conn) { openEditor(S.rules.find((x) => x.id === +d.rule)); return; }
+  // editor
+  if (editing) {
+    readEditorFields();
+    if (d.cmp) { editing.cmp = d.cmp; drawEditor(); return; }
+    if (d.sev != null) { editing.sev = +d.sev; drawEditor(); return; }
+    if (d.flag) { editing[d.flag] = !editing[d.flag]; drawEditor(); return; }
+    if (d.bump) { const stepv = metric(editing.m).step * +d.d, cur = parseFloat(editing[d.bump]) || 0;
+      editing[d.bump] = fmtNum(Math.round((cur + stepv) * 100) / 100); drawEditor(); return; }
+    if (d.ed === "cancel") { editing = null; $("overlay").innerHTML = ""; return; }
+    if (d.ed === "delete") { confirmDelete = true; drawEditor(); return; }
+    if (d.ed === "nodel") { confirmDelete = false; drawEditor(); return; }
+    if (d.ed === "yesdel") { confirmDelete = false; S.rules = S.rules.filter((r) => r.id !== editing.id); S.alerts = S.alerts.filter((a) => a.id !== editing.id);
+      logLine(`Rule "${esc(editing.name)}" deleted`); editing = null; $("overlay").innerHTML = ""; render(); snack("Rule deleted"); return; }
+    if (d.ed === "save") {
+      const r = { ...editing, name: editing.name.trim() || metricLabel(editing.m), thr: parseFloat(editing.thr), hys: parseFloat(editing.hys) };
+      const i = S.rules.findIndex((x) => x.id === r.id);
+      if (i >= 0) S.rules[i] = r; else S.rules.push(r);
+      S.alerts.forEach((a) => { if (a.id === r.id) a.msg = alertMsg(r, a.val); });
+      logLine(`Rule "${esc(r.name)}" saved`); editing = null; $("overlay").innerHTML = ""; render(); snack("Saved on the hub"); return;
+    }
+  }
+  switch (d.act) {
+    case "ack": ackAll(); break;
+    case "openAlerts": hideToast(); tab = 1; render(true); break;
+    case "menu": menuOpen = !menuOpen; render(); break;
+    case "reset": menuOpen = false; drawConfirmReset(); break;
+    case "noreset": $("overlay").innerHTML = ""; render(); break;
+    case "yesreset": S.rules = DEFAULT_RULES(); S.alerts = []; S.pend = {}; $("overlay").innerHTML = ""; logLine("Rules restored to defaults"); render(); snack("Default rules restored"); break;
+    case "new": openEditor({ id: Math.max(0, ...S.rules.map((r) => r.id)) + 1, en: true, name: "", m: "bat_soc", cmp: "<", thr: 30, hys: 5, dly: 60, sev: 1, ntf: true, act: "none" }); break;
+    case "saveConn": snack("Saved. Reconnecting…"); break;
+    case "saveNtfy": S.settings.ntfyTopic = $("ntfyTopic").value; S.settings.ntfyServer = $("ntfyServer").value; snack("Saved"); break;
+    case "bg": S.settings.bg = !S.settings.bg; t.classList.toggle("on", S.settings.bg); snack(S.settings.bg ? "Watching for alerts in the background" : "Background alerts off"); break;
+    case "battery": snack("Android would ask to let the app run in the background"); break;
+    case "rc": S.rc = !S.rc; t.classList.toggle("on", S.rc); logLine(`Remote control ${S.rc ? "allowed" : "off"}`); break;
+    case "web": snack("Would open http://192.168.1.50/ in the browser"); break;
+  }
+});
+document.addEventListener("change", (ev) => {
+  const id = ev.target.id;
+  if (id === "eMetric" && editing) { readEditorFields(); editing.m = ev.target.value; editing.thr = fmtNum(DEF_THR[editing.m] ?? 0); editing.hys = fmtNum(metric(editing.m).step); drawEditor(); }
+  if (id === "sleep") { S.sleep = +ev.target.value; logLine(`Touchscreen dims after ${ev.target.selectedOptions[0].text}`); snack("Saved on the hub"); }
+});
+document.addEventListener("input", (ev) => {
+  if (!editing || (ev.target.id !== "eThr" && ev.target.id !== "eHys")) return;
+  readEditorFields();
+  const ok = (s, min) => !isNaN(parseFloat(s)) && (min == null || parseFloat(s) >= min);
+  ev.target.closest(".tf").classList.toggle("err", !ok(ev.target.value, ev.target.id === "eHys" ? 0 : null));
+  document.querySelector('[data-ed="save"]').disabled = !(ok(editing.thr) && ok(editing.hys, 0));
+});
+
+// ---------------- simulator panel
+function setSwitch(id, on) { $(id).classList.toggle("on", on); }
+const SIM = { simMains: "mains", simFridge: "fridgeOpen", simLoad: "bigLoad", simConn: "conn" };
+Object.entries(SIM).forEach(([id, key]) => $(id).addEventListener("click", (e) => {
+  e.stopPropagation(); S[key] = !S[key]; setSwitch(id, S[key]);
+  if (key === "mains") logLine(S.mains ? "Mains plugged in" : "Mains unplugged");
+  if (key === "fridgeOpen") logLine(S.fridgeOpen ? "Fridge door opened" : "Fridge door closed");
+  if (key === "conn" && !S.conn) hideToast();
+  render(true);
+}));
+$("speed").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; e.stopPropagation(); S.speed = +b.dataset.s;
+  [...$("speed").children].forEach((c) => c.classList.toggle("on", c === b)); });
+$("pause").addEventListener("click", (e) => { e.stopPropagation(); S.paused = !S.paused; $("pause").textContent = S.paused ? "Resume" : "Pause"; });
+$("tod").addEventListener("input", (e) => { const day = Math.floor(S.min / 1440) * 1440; S.min = day + +e.target.value; step(0); render(); });
+$("swapGas").addEventListener("click", (e) => { e.stopPropagation(); S.gas = 100; logLine("Gas bottle swapped (full)"); render(); });
+document.querySelectorAll("[data-preset]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); preset(b.dataset.preset); }));
+function preset(p) {
+  if (p === "charging") Object.assign(S, { min: Math.floor(S.min / 1440) * 1440 + 12 * 60, mains: true, soc: 64, fridgeOpen: false, fridge: 3.4, bigLoad: false });
+  if (p === "evening") { Object.assign(S, { min: Math.floor(S.min / 1440) * 1440 + 19 * 60 + 30, mains: false, soc: 31, fridgeOpen: true, fridge: 5.8, bigLoad: false });
+    S.tank[1] = Math.min(S.tank[1], 12); S.speed = 60; }
+  if (p === "gas") S.gas = 22;
+  if (p === "dry") { S.tank[1] = 6; S.pump[1] = true; S.lock[1] = false; }
+  setSwitch("simMains", S.mains); setSwitch("simFridge", S.fridgeOpen); setSwitch("simLoad", S.bigLoad);
+  [...$("speed").children].forEach((c) => c.classList.toggle("on", +c.dataset.s === S.speed));
+  logLine(`Jumped to: ${{ charging: "mains charging", evening: "evening with the fridge door open", gas: "gas nearly empty", dry: "Fresh 2 running dry" }[p]}`);
+  step(0); render(true);
+}
+$("simChip").addEventListener("click", (e) => { e.stopPropagation(); $("panel").classList.add("open"); });
+$("sheetClose").addEventListener("click", (e) => { e.stopPropagation(); $("panel").classList.remove("open"); });
+
+// ---------------- main loop: one tick a second
+Object.entries(SIM).forEach(([id, key]) => setSwitch(id, S[key]));
+step(0);
+render(true);
+logLine("Simulator started");
+setInterval(() => {
+  if (!S.paused) { const dt = S.speed / 60; for (let i = 0; i < Math.max(1, Math.round(dt / 2)); i++) step(dt / Math.max(1, Math.round(dt / 2))); }
+  if (!editing && !$("overlay").innerHTML) render(); else { $("nav").innerHTML = navHTML(); }
+}, 1000);
+</script>

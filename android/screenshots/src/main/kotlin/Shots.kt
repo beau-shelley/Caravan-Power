@@ -82,9 +82,10 @@ val CONNECTED = ConnStatus(Conn.CONNECTED, "192.168.1.50", "Connected")
 /** Midday on mains power: both chargers in bulk, sun on the roof. */
 val CHARGING = HubState(
     ts = 1731700000,
-    bat = Battery(on = true, v = 13.62, a = 131.4, soc = 64.0, ttgMin = 25, solarA = 21.8, chargerA = 3.1, loadA = 12.6,
+    // Roof 3 x 230 W (690 W) and portable 880 W, both near 78 % of rated at midday.
+    bat = Battery(on = true, v = 13.84, a = 192.6, soc = 64.0, ttgMin = 34, solarA = 86.2, chargerA = 0.4, loadA = 12.6,
         acA = 119.0, acOn = true),
-    sol = listOf(Solar(true, 296.0, 1.42, 388.0, 0), Solar(true, 0.0, 0.0, 0.0, 0)),
+    sol = listOf(Solar(true, 531.0, 1.92, 538.0, 0), Solar(true, 674.0, 2.41, 686.0, 0)),
     tmp = listOf(Temp(true, 22.6, 17.2, 24.1, 80), Temp(true, 28.4, 14.9, 29.6, 75), Temp(true, 3.4, 2.8, 4.6, 90)),
     tank = listOf(Tank(true, 80.0), Tank(true, 45.0), Tank(true, 30.0)),
     pump = listOf(Pump(true, false, 42), Pump(false, false, 0)),
@@ -98,7 +99,7 @@ val CHARGING = HubState(
 val ALERTING = HubState(
     ts = 1731730000,
     bat = Battery(on = true, v = 12.31, a = -18.6, soc = 27.0, ttgMin = 248, solarA = 0.0, chargerA = 0.0, loadA = 18.6),
-    sol = listOf(Solar(true, 0.0, 2.81, 512.0, 0), Solar(true, 0.0, 0.64, 140.0, 0)),
+    sol = listOf(Solar(true, 0.0, 3.12, 541.0, 0), Solar(true, 0.0, 3.96, 690.0, 0)),
     tmp = listOf(Temp(true, 19.4, 17.2, 26.8, 80), Temp(true, 12.1, 11.5, 29.6, 75), Temp(true, 7.4, 2.8, 7.6, 90)),
     tank = listOf(Tank(true, 22.0), Tank(true, 8.0), Tank(true, 62.0)),
     pump = listOf(Pump(false, false, 0), Pump(false, true, 0)),
