@@ -12,8 +12,13 @@ android {
         applicationId = "com.caravan.monitor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // GitHub Actions run number = build number. Each CI build is published as
+        // GitHub release "app-build-<n>"; the in-app updater compares against it.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0
+        versionCode = 1000 + build
+        versionName = "0.2.$build"
+        buildConfigField("int", "BUILD_NUMBER", "$build")
+        buildConfigField("String", "UPDATE_REPO", "\"beau-shelley/Caravan-Power\"")
     }
 
     signingConfigs {

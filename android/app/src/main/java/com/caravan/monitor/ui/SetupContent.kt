@@ -30,6 +30,7 @@ import com.caravan.monitor.Conn
 import com.caravan.monitor.ConnStatus
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Settings
+import com.caravan.monitor.UpdateInfo
 
 private val SLEEP_OPTIONS = listOf(10, 20, 30, 60, 300, 900, 1800, 3600, 0)
 
@@ -45,6 +46,12 @@ fun SetupContent(
     onScreenSleep: (Int) -> Unit,
     onRemoteControl: (Boolean) -> Unit,
     onOpenWebPage: () -> Unit,
+    update: UpdateInfo = UpdateInfo(),
+    updateTokenSet: Boolean = false,
+    onSaveUpdateToken: (String) -> Unit = {},
+    onCheckUpdate: () -> Unit = {},
+    onUpdate: () -> Unit = {},
+    onOpenTokenPage: () -> Unit = {},
 ) {
     val connected = status.conn == Conn.CONNECTED
 
@@ -130,6 +137,8 @@ fun SetupContent(
                     style = MaterialTheme.typography.bodySmall, color = Accent.muted)
             }
         }
+
+        UpdateSection(update, updateTokenSet, onSaveUpdateToken, onCheckUpdate, onUpdate, onOpenTokenPage)
 
         SectionCard("More setup", Accent.muted) {
             Text("Victron keys, thermometers, tank calibration, BMPRO and weather location are coming to the app next. " +

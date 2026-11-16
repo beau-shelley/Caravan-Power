@@ -14,6 +14,15 @@ class Prefs(context: Context) {
         get() = sp.getString("lastHost", "") ?: ""
         set(v) { sp.edit().putString("lastHost", v).apply() }
 
+    /** GitHub token (read-only, this repo) for downloading app updates; the repo is private. */
+    var updateToken: String
+        get() = sp.getString("ghToken", "") ?: ""
+        set(v) { sp.edit().putString("ghToken", v.trim()).apply() }
+
+    var lastUpdateCheck: Long
+        get() = sp.getLong("lastUpdateCheck", 0)
+        set(v) { sp.edit().putLong("lastUpdateCheck", v).apply() }
+
     var ntfyLastId: String
         get() = sp.getString("ntfyLastId", "") ?: ""
         set(v) { sp.edit().putString("ntfyLastId", v).apply() }

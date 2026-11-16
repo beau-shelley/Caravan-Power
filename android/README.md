@@ -21,6 +21,18 @@ touchscreen for setup and sends alerts as phone notifications.
   - Rules with *Send a phone notification* off are skipped.
   - Critical alerts use their own "Critical alarms" channel with the alarm sound.
 
+## Updates
+
+Every push to `main` or the app branch builds the APK and publishes it as a GitHub
+release `app-build-<n>` (the build number is also the versionCode). All builds are
+signed with the committed key `app/debug.keystore`, so each one installs over the last.
+The app checks for a newer release when it opens and shows **Update** on Home. Tapping it
+downloads the APK and opens Android's install screen.
+
+The repository is private, so the app needs a GitHub token to read releases. In GitHub,
+create a fine-grained token for this repository only, with Contents set to Read-only,
+then paste it into Setup → App updates. The token stays on the phone.
+
 ## How it talks to the hub
 
 Exactly like the web page (see `docs/PROTOCOL.md`):

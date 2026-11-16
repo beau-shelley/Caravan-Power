@@ -38,6 +38,7 @@ import com.caravan.monitor.ConnStatus
 import com.caravan.monitor.HubState
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Rule
+import com.caravan.monitor.UpdateInfo
 
 // Home is laid out to fit on one phone screen without scrolling (it still
 // scrolls on very small screens): compact cards, two columns where it fits.
@@ -51,12 +52,15 @@ fun HomeContent(
     onPump: (index: Int, on: Boolean) -> Unit,
     onOpenAlerts: () -> Unit,
     onOpenSetup: () -> Unit,
+    update: UpdateInfo = UpdateInfo(),
+    onUpdate: () -> Unit = {},
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         ConnectionStrip(status, onOpenSetup)
+        UpdateBanner(update, onUpdate)
         val s = state
         if (s == null) {
             Text("Caravan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)

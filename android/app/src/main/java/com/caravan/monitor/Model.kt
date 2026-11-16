@@ -243,6 +243,20 @@ fun JSONArray?.objects(): List<JSONObject> =
 fun JSONArray?.strings(): List<String> =
     if (this == null) emptyList() else (0 until length()).map { optString(it) }
 
+/** In-app updater state (see Updater.kt). Builds are GitHub releases "app-build-<n>". */
+enum class UpdState { NO_TOKEN, IDLE, CHECKING, UP_TO_DATE, AVAILABLE, DOWNLOADING, READY, ERROR }
+data class UpdateInfo(
+    val state: UpdState = UpdState.IDLE,
+    val currentBuild: Int = 0,
+    val latestBuild: Int = 0,
+    val notes: String = "",
+    val progress: Float = 0f,
+    val message: String = "",
+) {
+    /** Worth showing on Home: there's something to download or install. */
+    val offer get() = state == UpdState.AVAILABLE || state == UpdState.DOWNLOADING || state == UpdState.READY
+}
+
 /** How the app is getting on with the hub (shown in the UI). */
 enum class Conn { IDLE, SEARCHING, CONNECTING, CONNECTED, AUTH_FAILED, OFFLINE }
 data class ConnStatus(val conn: Conn = Conn.IDLE, val host: String = "", val detail: String = "")

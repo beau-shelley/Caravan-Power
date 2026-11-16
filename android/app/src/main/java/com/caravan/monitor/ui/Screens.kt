@@ -29,6 +29,7 @@ import com.caravan.monitor.BuildConfig
 import com.caravan.monitor.CaravanApp
 import com.caravan.monitor.MonitorService
 import com.caravan.monitor.Rule
+import com.caravan.monitor.UpdState
 import org.json.JSONObject
 
 @Composable
@@ -38,12 +39,16 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
     val meta by hub.meta.collectAsStateWithLifecycle()
     val rules by hub.rules.collectAsStateWithLifecycle()
     val status by hub.status.collectAsStateWithLifecycle()
+    val updater = CaravanApp.instance.updater
+    val update by updater.info.collectAsStateWithLifecycle()
     HomeContent(
         state, meta, rules, status,
         onAck = { hub.send("ack") },
         onPump = { i, on -> hub.send("pump", "i" to i, "on" to on) },
         onOpenAlerts = onOpenAlerts,
         onOpenSetup = onOpenSetup,
+        update = update,
+        onUpdate = { updater.startOrInstall() },
     )
 }
 
@@ -96,6 +101,7 @@ fun SetupScreen() {
     val saved by app.prefs.settings.collectAsStateWithLifecycle()
     val status by app.hub.status.collectAsStateWithLifecycle()
     val meta by app.hub.meta.collectAsStateWithLifecycle()
+    val update by app.updater.info.collectAsStateWithLifecycle()
     SetupContent(
         saved = saved,
         status = status,
@@ -112,6 +118,16 @@ fun SetupScreen() {
         onScreenSleep = { app.hub.send("display_set", "sleep" to it); app.hub.send("hello") },
         onRemoteControl = { app.hub.send("remote_control", "on" to it); app.hub.send("hello") },
         onOpenWebPage = { app.hub.baseUrl()?.let { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) } },
+        update = update,
+        updateTokenSet = update.state != UpdState.NO_TOKEN,
+        onSaveUpdateToken = { app.updater.setToken(it) },
+        onCheckUpdate = { app.updater.check(force = true) },
+        onUpdate = { app.updater.startOrInstall() },
+        onOpenTokenPage = {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(
+                "https://github.com/settings/personal-access-tokens/new?name=Caravan%20app%20updates" +
+                    "&description=Lets%20the%20Caravan%20Android%20app%20download%20its%20updates&contents=read&target_name=beau-shelley&expires_in=none")))
+        },
     )
 }
 

@@ -9,6 +9,8 @@ class CaravanApp : Application() {
         private set
     lateinit var notifier: AlertNotifier
         private set
+    lateinit var updater: Updater
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -16,6 +18,7 @@ class CaravanApp : Application() {
         prefs = Prefs(this)
         notifier = AlertNotifier(this)
         hub = HubClient(this, prefs, notifier)
+        updater = Updater(this, prefs)
         MonitorService.sync(this)
     }
 
