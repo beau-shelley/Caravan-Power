@@ -389,8 +389,6 @@ static void buildShell() {
   lv_obj_t *rail = panel(scr, 0, 0, RAIL_W, SCR_H);
   lv_obj_set_style_bg_color(rail, c(col::RAIL), 0);
   lv_obj_set_style_bg_opa(rail, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_img_src(rail, &tex_tread, 0);  // black chequer plate, like the van's lower skirt
-  lv_obj_set_style_bg_img_tiled(rail, true, 0);
   // Thin lime pinstripe down the edge, like the line on the van's stripe.
   lv_obj_set_style_border_side(rail, LV_BORDER_SIDE_RIGHT, 0);
   lv_obj_set_style_border_color(rail, lv_color_mix(c(col::ACCENT), c(col::RAIL), 150), 0);

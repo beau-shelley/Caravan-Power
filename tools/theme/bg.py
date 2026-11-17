@@ -23,15 +23,17 @@ def camo_pattern(pid="camo", scale=1.0):
 WHITE = "#f2f3f1"
 
 
-def svg(w, h, x0, y0, s, camo_scale=1.0, lines=True, strip=0):
+def svg(w, h, x0, y0, s, camo_scale=1.0, lines=True, strip=0, x=True):
     """Plain dark background; the van's X filled with subtle camo, outlined in
-    white, with green pinstripes. strip > 0 also puts camo behind a header strip."""
+    white, with green pinstripes. strip > 0 also puts camo behind a header strip.
+    x=False leaves the X out (plain background, camo header strip only)."""
     g = f'<g transform="translate({x0} {y0}) scale({s})">'
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
             f'<defs>{camo_pattern(scale=camo_scale)}{camo_pattern("camoX", camo_scale / s)}</defs>'
             f'<rect width="{w}" height="{h}" fill="{PLAIN}"/>'
             + (f'<rect width="{w}" height="{strip}" fill="url(#camo)"/>' if strip else "")
-            + f'<path fill="url(#camoX)" transform="translate({x0} {y0}) scale({s})" d="{xglyph.pieces_d()}"/>'
+            + ("" if not x else
+               f'<path fill="url(#camoX)" transform="translate({x0} {y0}) scale({s})" d="{xglyph.pieces_d()}"/>'
             f'{g}<path fill="none" stroke="{WHITE}" stroke-opacity=".8" stroke-width="{4 / s:.1f}" d="{xglyph.pieces_d()}"/></g>'
-            + (f'{g}<path fill="none" stroke="{GREEN}" stroke-width="{xglyph.LINE_W}" stroke-linejoin="miter" d="{xglyph.lines_d()}"/></g>' if lines else "")
+            + (f'{g}<path fill="none" stroke="{GREEN}" stroke-width="{xglyph.LINE_W}" stroke-linejoin="miter" d="{xglyph.lines_d()}"/></g>' if lines else ""))
             + "</svg>")

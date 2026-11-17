@@ -2,96 +2,10 @@ package com.caravan.monitor.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathFillType
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.graphics.vector.PathParser
 
-// Caravan art, drawn rather than loaded so it is sharp at any size and works the
-// same in the app and the screenshot renderer. Shapes come from
-// tools/theme/make_theme.py (CamoPaths.kt): the same camo and X graphic as the
-// touchscreen and the web page, traced from the decals on the van.
+// Caravan theme background. Plain dark (the X graphic and chequer plate were
+// taken out at Beau's request); the camo shapes stay in CamoPaths.kt
+// (tools/theme/make_theme.py) for later use as a subtle highlight.
 
-private fun parse(d: String, evenOdd: Boolean = false): Path =
-    PathParser().parsePathString(d).toPath().apply { if (evenOdd) fillType = PathFillType.EvenOdd }
-
-private val camoPaths: List<Path> by lazy { CAMO_PATHS.map { parse(it, evenOdd = true) } }
-private val xPieces: Path by lazy { parse(X_PIECES) }
-private val xLines: Path by lazy { parse(X_LINES) }
-
-/**
- * Plain dark background with the van's X graphic: subtle camo fill, white
- * outline and green pinstripes. The X is [widthFraction] of the screen width
- * wide, its left edge at [left] and its middle at [centerY] (fractions of the screen).
- */
-fun Modifier.caravanBackground(
-    widthFraction: Float = 1.2f,
-    left: Float = -0.06f,
-    centerY: Float = 0.5f,
-    camoDp: Float = 100f,
-): Modifier = this
-    .background(Surfaces.background)
-    .drawWithCache {
-        val s = size.width * widthFraction / X_W
-        val x0 = size.width * left
-        val y0 = size.height * centerY - X_H * s / 2
-        val tile = camoDp * density
-        val k = tile / CAMO_TILE
-        onDrawBehind {
-            withTransform({ translate(x0, y0); scale(s, s, Offset.Zero) }) {
-                clipPath(xPieces) {
-                    drawRect(Surfaces.camo[0], Offset.Zero, androidx.compose.ui.geometry.Size(X_W, X_H))
-                    val t = tile / s
-                    var y = 0f
-                    while (y < X_H) {
-                        var x = 0f
-                        while (x < X_W) {
-                            withTransform({ translate(x, y); scale(k / s, k / s, Offset.Zero) }) {
-                                camoPaths.forEachIndexed { i, p -> drawPath(p, Surfaces.camo[i + 1]) }
-                            }
-                            x += t
-                        }
-                        y += t
-                    }
-                }
-                drawPath(xPieces, Accent.white.copy(alpha = 0.8f), style = Stroke(width = 1.6f * density / s))
-                drawPath(xLines, Accent.lime, style = Stroke(width = X_LINE_W, join = StrokeJoin.Miter, cap = StrokeCap.Butt))
-            }
-        }
-    }
-
-private val treadLayers: List<Pair<androidx.compose.ui.graphics.Color, Path>> by lazy {
-    TREAD_LAYERS.map { (c, d) -> androidx.compose.ui.graphics.Color(c) to parse(d) }
-}
-
-/** Black chequer (diamond) plate, like the van's skirt and the touchscreen's nav rail
- *  (tools/theme/tread.py: raised lozenges lit from the top left). */
-fun Modifier.treadPlate(cellDp: Float = 15f): Modifier = this
-    .background(androidx.compose.ui.graphics.Color(TREAD_BASE))
-    .drawWithCache {
-        val cell = cellDp * density
-        val k = cell / TREAD_CELL
-        onDrawBehind {
-            clipRect {
-                var y = 0f
-                while (y < size.height) {
-                    var x = 0f
-                    while (x < size.width) {
-                        withTransform({ translate(x, y); scale(k, k, Offset.Zero) }) {
-                            for ((c, p) in treadLayers) drawPath(p, c)
-                        }
-                        x += cell
-                    }
-                    y += cell
-                }
-            }
-        }
-    }
+/** Plain dark app background, the same colour as the touchscreen. */
+fun Modifier.caravanBackground(): Modifier = this.background(Surfaces.background)

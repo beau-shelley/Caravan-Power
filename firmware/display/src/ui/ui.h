@@ -16,8 +16,7 @@ LV_FONT_DECLARE(ui_icons_20);
 LV_FONT_DECLARE(ui_icons_24);
 LV_FONT_DECLARE(ui_icons_28);
 // Theme textures (tex_theme.c, made by tools/theme/make_theme.py).
-LV_IMG_DECLARE(tex_bg);     // full-screen background: the camo X graphic from the van
-LV_IMG_DECLARE(tex_tread);  // chequer (diamond) plate tile, nav rail
+LV_IMG_DECLARE(tex_bg);     // full-screen background: plain, with a subtle camo header strip
 
 namespace ui {
 

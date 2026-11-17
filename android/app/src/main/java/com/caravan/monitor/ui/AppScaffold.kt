@@ -56,7 +56,7 @@ fun AppScaffold(
             // plate stops above the phone's own home/back buttons, which sit on plain dark.
             Column(Modifier.background(Surfaces.plate)) {
                 Box(Modifier.fillMaxWidth().height(2.dp).background(Accent.lime.copy(alpha = 0.6f)))
-            NavigationBar(Modifier.treadPlate(), containerColor = Color.Transparent, windowInsets = WindowInsets(0, 0, 0, 0)) {
+            NavigationBar(containerColor = Color.Transparent, windowInsets = WindowInsets(0, 0, 0, 0)) {
                 NavigationBarItem(colors = itemColors, selected = tab == 0, onClick = { onTab(0) },
                     icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Home") })
                 NavigationBarItem(colors = itemColors, selected = tab == 3, onClick = { onTab(3) },

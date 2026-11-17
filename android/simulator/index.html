@@ -41,7 +41,7 @@ button { cursor: pointer; }
   display: flex; flex-direction: column; flex: none; }
 .statusbar { height: 28px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 22px;
   font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-.screen { background: var(--bg) var(--camo) repeat; background-size: 300px 300px; flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scrollbar-width: none; }
+.screen { background: var(--bg); flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; scrollbar-width: none; }
 .screen::-webkit-scrollbar { display: none; }
 .pad { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; padding-bottom: 96px; }
 
@@ -152,7 +152,7 @@ input[type=range] { width: 100%; accent-color: var(--primary); }
 .switch.on::after { width: 24px; height: 24px; left: 22px; top: 2px; background: var(--on-primary); }
 .switch:disabled { opacity: .4; }
 
-.nav { flex: none; height: 80px; background: var(--tread) repeat, var(--plate, #0B0C0D); background-size: 24px 24px; border-top: 2px solid rgba(163,230,53,.6); display: grid; grid-template-columns: repeat(3, 1fr);
+.nav { flex: none; height: 80px; background: var(--plate, #0B0C0D); border-top: 2px solid rgba(163,230,53,.6); display: grid; grid-template-columns: repeat(3, 1fr);
   padding-bottom: env(safe-area-inset-bottom, 0px); }
 .nav button { border: 0; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   font-size: 12px; font-weight: 500; color: var(--muted); }
