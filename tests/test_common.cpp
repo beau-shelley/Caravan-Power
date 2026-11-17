@@ -13,7 +13,9 @@
 #include "VeDirect.h"
 #include "VictronBle.h"
 #include "BleSensors.h"
+#include <vector>
 #include "BleTag.h"
+#include "BmproAdv.h"
 #include "Leveling.h"
 #include "TheftGuard.h"
 #include "Weather.h"
@@ -960,6 +962,54 @@ static void testBleTag() {
   CHECK(t.kind == BLE_UNKNOWN);
 }
 
+static std::vector<uint8_t> unhex(const char *h) {
+  std::vector<uint8_t> v;
+  for (; h[0] && h[1]; h += 2) {
+    unsigned b;
+    sscanf(h, "%2x", &b);
+    v.push_back((uint8_t)b);
+  }
+  return v;
+}
+
+static void testBmproAdv() {
+  // Real adverts from Beau's van, 2026-11-17 (guided survey log).
+  auto bat = unhex("02010603030efe15160efe01953505f4ffff6c3101001b182567060000");
+  BmproAdvert a;
+  CHECK(bmproParseAdvert(bat.data(), bat.size(), a));
+  CHECK(a.frame == 1 && a.hasBattery);
+  NEAR(a.batV, 13.717f, 0.001f);
+  NEAR(a.batA, -3.067f, 0.001f);
+  NEAR(a.remainAh, 78.188f, 0.001f);
+  CHECK(a.uptimeS == 0x00066725);
+  // Big load on: -26.07 A.
+  auto load = unhex("02010603030efe15160efe011f352c9affffc33001001b183e68060000");
+  CHECK(bmproParseAdvert(load.data(), load.size(), a) && a.hasBattery);
+  NEAR(a.batA, -26.068f, 0.001f);
+  NEAR(a.batV, 13.599f, 0.001f);
+  // Charging: +2.185 A.
+  auto chg = unhex("02010603030efe15160efe011f3589080000ed2f01001b18fd68060000");
+  CHECK(bmproParseAdvert(chg.data(), chg.size(), a));
+  NEAR(a.batA, 2.185f, 0.001f);
+  // Outputs frame: 23.729 A load.
+  auto out = unhex("02010603030efe15160efe04000000000000d8c80010000001b15ccb05");
+  CHECK(bmproParseAdvert(out.data(), out.size(), a) && a.frame == 4 && a.hasLoad && !a.hasBattery);
+  NEAR(a.loadA, 23.729f, 0.001f);
+  // Identity frame, and the tagger.
+  auto id = unhex("02010603030efe15160efe000107004120412440303600292a67060000");
+  CHECK(bmproParseAdvert(id.data(), id.size(), a) && a.frame == 0 && a.uptimeS == 0x0006672a);
+  BleTag t;
+  bleClassify(bat.data(), bat.size(), t);
+  CHECK(t.kind == BLE_BMPRO && !strcmp(t.label, "bmpro-battery"));
+  bleClassify(out.data(), out.size(), t);
+  CHECK(!strcmp(t.label, "bmpro-outputs"));
+  // Not BMPRO: the heater's advert.
+  auto htr = unhex("0201060502e0ffe7fe0bffe02e88a069961c040bf0");
+  CHECK(!bmproParseAdvert(htr.data(), htr.size(), a));
+  bleClassify(htr.data(), htr.size(), t);
+  CHECK(t.kind == BLE_HEATER);
+}
+
 int main() {
   testTheftGuard();
   testHeater();
@@ -969,6 +1019,7 @@ int main() {
   testBleSensors();
   testVictronBle();
   testBleTag();
+  testBmproAdv();
   testVeDirect();
   testAlerts();
   testAlertLevels();

@@ -3,6 +3,7 @@
 #include <NimBLEDevice.h>
 
 #include "Ble.h"
+#include "BmproAdv.h"
 
 namespace hub {
 
@@ -62,6 +63,40 @@ String hex(const uint8_t *d, size_t n) {
   return s;
 }
 
+void applyDecoded(const BmproData &in);
+
+// BMPRO broadcasts (service data 0xFE0E, see BmproAdv.h) carry the battery
+// shunt reading and the 12 V output current: read them just by listening.
+// The hub locks onto the first battery broadcaster heard closer than -80 dBm
+// (Beau's van: -55..-70; the neighbour's: -90s), so a neighbour is ignored.
+char gAdvAddr[18] = {};
+float gCapacityAh = 0;
+
+void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
+  cv::BmproAdvert b;
+  if (!cv::bmproParseAdvert(d->getPayload(), d->getPayloadLength(), b)) return;
+  if (!gAdvAddr[0]) {
+    if (d->getRSSI() >= -80 && b.hasBattery) strncpy(gAdvAddr, addr.c_str(), 17);
+    else return;
+    logLine(String("reading broadcasts from ") + gAdvAddr);
+  }
+  if (strcasecmp(gAdvAddr, addr.c_str()) != 0) return;
+  static BmproData out;  // NimBLE host task: small stack
+  out = BmproData();
+  if (b.hasBattery) {
+    out.batValid = true;
+    out.batV = b.batV;
+    out.batA = b.batA;
+    out.remainAh = b.remainAh;
+    out.batSoc = gCapacityAh > 0 ? min(100.0f, b.remainAh / gCapacityAh * 100.0f) : 0;
+  }
+  if (b.hasLoad) {
+    out.loadValid = true;
+    out.loadA = b.loadA;
+  }
+  if (out.batValid || out.loadValid) applyDecoded(out);
+}
+
 bool looksBmpro(const std::string &name) {
   String n = String(name.c_str());
   n.toUpperCase();
@@ -85,6 +120,7 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
       gSeen[slot].lastMs = millis();
     }
     xSemaphoreGive(gMux);
+    onBmproBroadcast(d, addr);
     // Wireless BMPRO sensors may broadcast their readings in adverts, so log
     // manufacturer + service data of anything BMPRO-looking in full.
     if (gVerbose && (looksBmpro(name) || addr == gTargetAddr)) {
@@ -110,6 +146,7 @@ void applyDecoded(const BmproData &in) {
     gData.batA = in.batA;
     gData.batSoc = in.batSoc;
     gData.batTtgMin = in.batTtgMin;
+    gData.remainAh = in.remainAh;
     gBatMs = now;
   }
   if (in.chargerValid) {
@@ -231,11 +268,13 @@ void Bmpro::begin(const char *addr, bool verbose) {
   strncpy(gTargetAddr, addr ? addr : "", 17);
   ble::begin();
   ble::addListener(onAdvert);
-  // Scan when exploring, or when we don't know the OdysseyLink's address yet.
-  if (gVerbose || !gTargetAddr[0]) ble::keepScanning();
+  // Always scan: the battery reading comes from the BMPRO's broadcasts.
+  ble::keepScanning();
   xTaskCreatePinnedToCore(bleTask, "bmpro", 6144, nullptr, 1, nullptr, 0);
   logLine(String("BLE started, target '") + gTargetAddr + "'");
 }
+
+void Bmpro::setCapacityAh(float ah) { gCapacityAh = ah; }
 
 void Bmpro::connect(const char *addr) {
   strncpy(gTargetAddr, addr, 17);

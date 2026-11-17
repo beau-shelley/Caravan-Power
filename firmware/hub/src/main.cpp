@@ -183,6 +183,7 @@ static void stateChanged() {
 
 static void configChanged() {
   gConfig.save();
+  gBmpro.setCapacityAh(gConfig.bat.capacityAh);
   gCloud.publishMetaSoon();
   gLink.pushConfigSoon();
 }
@@ -764,6 +765,7 @@ void setup() {
   if (survey::kOn) {
     survey::begin();  // listen-only Bluetooth logging; the BMPRO link stays off
   } else if (gConfig.usesBmpro()) {
+    gBmpro.setCapacityAh(gConfig.bat.capacityAh);
     gBmpro.begin(gConfig.bmproAddr, gConfig.bmproExplorer);
     gBmproOn = true;
     heapMark("bmpro");
