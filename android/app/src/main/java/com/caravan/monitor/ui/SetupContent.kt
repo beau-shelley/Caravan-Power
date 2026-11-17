@@ -12,6 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -30,11 +32,13 @@ import androidx.compose.ui.unit.dp
 import com.caravan.monitor.Conn
 import com.caravan.monitor.ConnStatus
 import com.caravan.monitor.Meta
+import com.caravan.monitor.Secure
 import com.caravan.monitor.Settings
 import com.caravan.monitor.UpdateInfo
 
 private val SLEEP_OPTIONS = listOf(10, 20, 30, 60, 300, 900, 1800, 3600, 0)
 
+@OptIn(ExperimentalMaterial3Api::class) // FilterChip is still experimental in older Material 3
 @Composable
 fun SetupContent(
     saved: Settings,
@@ -49,6 +53,9 @@ fun SetupContent(
     onOpenWebPage: () -> Unit,
     /** Disarm code for the touchscreen: 4-8 digits, "" removes it. */
     onSecureCode: (String) -> Unit = {},
+    /** Secure mode sensitivity (0 low, 1 medium, 2 high), used every time it is armed. */
+    secSens: Int = 1,
+    onSecureSens: (Int) -> Unit = {},
     update: UpdateInfo = UpdateInfo(),
     updateTokenSet: Boolean = false,
     onSaveUpdateToken: (String) -> Unit = {},
@@ -174,8 +181,18 @@ fun SetupContent(
                 "Disarming on the touchscreen needs this code; this phone doesn't (it has its own lock screen).",
                 style = MaterialTheme.typography.bodySmall, color = Accent.muted)
             Spacer(Modifier.height(8.dp))
-            if (!connected) Text("Connect to the hub to change the code.", color = Accent.muted)
+            if (!connected) Text("Connect to the hub to change these.", color = Accent.muted)
             else {
+                Text("Sensitivity", style = MaterialTheme.typography.labelLarge)
+                Text("Used every time it's armed. Low ignores more wind rocking.",
+                    style = MaterialTheme.typography.bodySmall, color = Accent.muted)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Secure.SENS.forEachIndexed { i, n ->
+                        FilterChip(selected = secSens == i, onClick = { onSecureSens(i) }, label = { Text(n) })
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
                 var code by remember { mutableStateOf("") }
                 Text(if (meta.secCodeSet) "A code is set." else "No code yet: anyone at the touchscreen can disarm.",
                     color = if (meta.secCodeSet) Accent.secure else Accent.warn, style = MaterialTheme.typography.bodyMedium)

@@ -77,7 +77,7 @@ fun HomeContent(
     onUpdate: () -> Unit = {},
     /** Arm (true) or disarm (false) secure mode; the Android wrapper asks first. */
     onSecure: (Boolean) -> Unit = {},
-    onArm: (sens: Int) -> Unit = {},
+    onArm: () -> Unit = {},
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
@@ -119,11 +119,11 @@ fun HomeContent(
     }
 }
 
-/** Secure mode (anti-theft): state row; while off, sensitivity chips and a slide-to-arm bar
- *  (the thumb has to be dragged the whole width, so it can't be armed by a stray tap). */
+/** Secure mode (anti-theft) in one slim row: lock / unlock icon on the left and, while off,
+ *  the slide-to-arm bar beside it (the thumb has to go the whole width, so a stray tap can't arm).
+ *  Sensitivity is set once in Setup and used every time. */
 @Composable
-private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit, onArm: (Int) -> Unit) {
-    var sens by remember(x.sens) { mutableStateOf(x.sens.coerceIn(0, 2)) }
+private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit, onArm: () -> Unit) {
     val color = when (x.mode) {
         Secure.ARMING, Secure.ENTRY -> Accent.warn; Secure.ARMED -> Accent.secure; Secure.ALARM -> Accent.critical; else -> Accent.muted
     }
@@ -137,7 +137,7 @@ private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit, onArm: (Int) -> U
         Secure.ARMED -> "Tilt ${fmt1(x.tilt)}° of ${fmtNum(x.tiltLim)}°, turned ${x.turn}° of ${x.turnLim}°"
         Secure.ALARM -> Secure.causeText(x.cause).replaceFirstChar { it.uppercase() }
         Secure.ENTRY -> "${Secure.causeText(x.cause).replaceFirstChar { it.uppercase() }} · disarm if it's you"
-        else -> if (x.sensorOk) "Wind rocking the van is ignored" else "Level sensor not answering"
+        else -> ""
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -145,19 +145,20 @@ private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit, onArm: (Int) -> U
         shape = RoundedCornerShape(16.dp),
         border = if (x.active) BorderStroke(1.5.dp, color) else null,
     ) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).background(color.copy(alpha = 0.18f), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp).background(color.copy(alpha = 0.18f), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                 Icon(when (x.mode) { Secure.ALARM, Secure.ENTRY -> CaravanIcons.Shield; Secure.OFF -> CaravanIcons.Unlock; else -> CaravanIcons.Lock },
                     null, Modifier.size(22.dp), tint = color)
             }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.Bold, color = if (x.active) color else Surfaces.text,
-                    style = MaterialTheme.typography.titleSmall)
-                Text(sub, style = MaterialTheme.typography.bodySmall, color = Accent.muted, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis)
-            }
-            if (x.active) {
+            Spacer(Modifier.width(8.dp))
+            if (!x.active) {
+                SlideToArm(enabled = true, onArm = onArm, modifier = Modifier.weight(1f))
+            } else {
+                Column(Modifier.weight(1f)) {
+                    Text(title, fontWeight = FontWeight.Bold, color = color, style = MaterialTheme.typography.titleSmall)
+                    Text(sub, style = MaterialTheme.typography.bodySmall, color = Accent.muted, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis)
+                }
                 Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = { onSecure(false) },
@@ -167,23 +168,6 @@ private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit, onArm: (Int) -> U
                 ) { Text("Disarm", fontWeight = FontWeight.SemiBold) }
             }
         }
-        if (!x.active) {
-            Row(Modifier.padding(start = 10.dp, end = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text("Sensitivity", style = MaterialTheme.typography.labelMedium, color = Accent.muted)
-                Secure.SENS.forEachIndexed { i, n ->
-                    val on = sens == i
-                    Text(n, Modifier
-                        .background(if (on) Accent.secure.copy(alpha = 0.22f) else Surfaces.track, RoundedCornerShape(50))
-                        .clickable { sens = i }
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (on) Accent.secure else Surfaces.text, fontWeight = if (on) FontWeight.SemiBold else null)
-                }
-            }
-            SlideToArm(enabled = x.sensorOk, onArm = { onArm(sens) },
-                modifier = Modifier.fillMaxWidth().padding(10.dp))
-        }
     }
 }
 
@@ -191,7 +175,7 @@ private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit, onArm: (Int) -> U
  *  letting go anywhere short of the end springs it back. */
 @Composable
 fun SlideToArm(enabled: Boolean, onArm: () -> Unit, modifier: Modifier = Modifier) {
-    val thumb = 48.dp
+    val thumb = 44.dp
     val density = LocalDensity.current
     val thumbPx = with(density) { thumb.toPx() }
     var widthPx by remember { mutableStateOf(0f) }
@@ -222,7 +206,7 @@ fun SlideToArm(enabled: Boolean, onArm: () -> Unit, modifier: Modifier = Modifie
         // Green fill that follows the thumb.
         Box(Modifier.width(with(density) { (shown + thumbPx).toDp() }).fillMaxHeight()
             .background(Accent.secure.copy(alpha = 0.25f + 0.35f * frac), RoundedCornerShape(50)))
-        Text(if (enabled) "Slide to arm  \u203A\u203A" else "Level sensor not answering",
+        Text("Slide to arm  \u203A\u203A",
             Modifier.fillMaxWidth().padding(start = thumb), textAlign = TextAlign.Center,
             color = Accent.muted.copy(alpha = 1f - frac), fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.labelLarge)
