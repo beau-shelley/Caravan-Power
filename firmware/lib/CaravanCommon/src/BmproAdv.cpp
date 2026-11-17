@@ -26,9 +26,9 @@ bool bmproParseServiceData(const uint8_t *d, size_t len, BmproAdvert &out) {
     out.hasBattery = out.batV > 8 && out.batV < 32 && out.batA > -1000 && out.batA < 1000;
   } else if (out.frame == 0x04 && len == 18) {  // other BMPRO models send longer frames
     out.outFlags = u16(d + 1);
-    out.loadA = u16(d + 14) / 1000.0f;
-    out.outExtra = u16(d + 16);
-    out.hasLoad = true;
+    out.b14A = u16(d + 14) / 1000.0f;
+    out.inputA = u16(d + 16) / 10.0f;
+    out.hasInput = true;
   } else if (out.frame == 0x00 && len == 18) {
     out.uptimeS = u32(d + 13);
   }

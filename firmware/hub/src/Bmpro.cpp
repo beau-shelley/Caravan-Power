@@ -96,11 +96,11 @@ void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
     out.remainAh = b.remainAh;  // logged only: doesn't match the 405 Ah bank, meaning unknown
     out.batSoc = -1;            // worked out in loop() from volts + amps
   }
-  if (b.hasLoad) {
-    out.loadValid = true;
-    out.loadA = b.loadA;
+  if (b.hasInput) {  // loop() works out loads = input - battery current
+    out.chargerValid = true;
+    out.chargerA = b.inputA;
   }
-  if (out.batValid || out.loadValid) applyDecoded(out);
+  if (out.batValid || out.chargerValid) applyDecoded(out);
 }
 
 bool looksBmpro(const std::string &name) {

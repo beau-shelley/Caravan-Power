@@ -991,10 +991,11 @@ static void testBmproAdv() {
   auto chg = unhex("02010603030efe15160efe011f3589080000ed2f01001b18fd68060000");
   CHECK(bmproParseAdvert(chg.data(), chg.size(), a));
   NEAR(a.batA, 2.185f, 0.001f);
-  // Outputs frame: 23.729 A load.
-  auto out = unhex("02010603030efe15160efe04000000000000d8c80010000001b15ccb05");
-  CHECK(bmproParseAdvert(out.data(), out.size(), a) && a.frame == 4 && a.hasLoad && !a.hasBattery);
-  NEAR(a.loadA, 23.729f, 0.001f);
+  // Charging frame: 9.5 A input (solar), b14 = 1.533 A.
+  auto out = unhex("02010603030efe15160efe04000000000000d8c80010000001fd055f00");
+  CHECK(bmproParseAdvert(out.data(), out.size(), a) && a.frame == 4 && a.hasInput && !a.hasBattery);
+  NEAR(a.inputA, 9.5f, 0.01f);
+  NEAR(a.b14A, 1.533f, 0.001f);
   // Identity frame, and the tagger.
   auto id = unhex("02010603030efe15160efe000107004120412440303600292a67060000");
   CHECK(bmproParseAdvert(id.data(), id.size(), a) && a.frame == 0 && a.uptimeS == 0x0006672a);
@@ -1002,10 +1003,10 @@ static void testBmproAdv() {
   bleClassify(bat.data(), bat.size(), t);
   CHECK(t.kind == BLE_BMPRO && !strcmp(t.label, "bmpro-battery"));
   bleClassify(out.data(), out.size(), t);
-  CHECK(!strcmp(t.label, "bmpro-outputs"));
+  CHECK(!strcmp(t.label, "bmpro-charging"));
   // A neighbour's different BMPRO model: longer 0x04 frame, not decoded.
   auto other = unhex("02010603030efe17160efe04050400412041252030360067cf279f02004b35");
-  CHECK(bmproParseAdvert(other.data(), other.size(), a) && a.frame == 4 && !a.hasLoad && !a.hasBattery);
+  CHECK(bmproParseAdvert(other.data(), other.size(), a) && a.frame == 4 && !a.hasInput && !a.hasBattery);
   // Not BMPRO: the heater's advert.
   auto htr = unhex("0201060502e0ffe7fe0bffe02e88a069961c040bf0");
   CHECK(!bmproParseAdvert(htr.data(), htr.size(), a));

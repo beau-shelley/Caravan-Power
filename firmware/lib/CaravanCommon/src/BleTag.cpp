@@ -143,7 +143,7 @@ void bleClassify(const uint8_t *raw, size_t len, BleTag &tag) {
       tag.kind = BLE_BMPRO;
       uint8_t f = svcData[k][0];
       snprintf(tag.label, sizeof(tag.label), "%s",
-               f == 0x01 ? "bmpro-battery" : f == 0x04 ? "bmpro-outputs" : f == 0x00 ? "bmpro-id" : "bmpro");
+               f == 0x01 ? "bmpro-battery" : f == 0x04 ? "bmpro-charging" : f == 0x00 ? "bmpro-id" : "bmpro");
       return;
     }
   // 2b. A thermometer the hub already understands.

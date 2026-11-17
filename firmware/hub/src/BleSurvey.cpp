@@ -144,10 +144,10 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
         lastBat = now;
         Serial.printf("[bmpro] %s battery %.2f V %+.2f A, counter %.3f Ah (b11=%u b12=%u), rssi %d\n",
                       d->getAddress().toString().c_str(), b.batV, b.batA, b.remainAh, b.b11, b.b12, rssi);
-      } else if (b.hasLoad && (!lastOut || now - lastOut >= 10000)) {
+      } else if (b.hasInput && (!lastOut || now - lastOut >= 10000)) {
         lastOut = now;
-        Serial.printf("[bmpro] %s outputs load %.2f A, extra %u, flags %04x\n", d->getAddress().toString().c_str(),
-                      b.loadA, b.outExtra, b.outFlags);
+        Serial.printf("[bmpro] %s input (solar/charger) %.1f A, b14 %.2f A, flags %04x\n",
+                      d->getAddress().toString().c_str(), b.inputA, b.b14A, b.outFlags);
       }
     }
   }
