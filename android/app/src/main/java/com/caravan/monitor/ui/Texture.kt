@@ -9,7 +9,6 @@ import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -28,9 +27,9 @@ private val xPieces: Path by lazy { parse(X_PIECES) }
 private val xLines: Path by lazy { parse(X_LINES) }
 
 /**
- * Gunmetal background with the van's X graphic (camo-filled, lime pinstripes).
- * The X is [widthFraction] of the screen width wide, its left edge at [left] and
- * its middle at [centerY] (fractions of the screen).
+ * Dark camo over the whole background, with the van's X graphic outlined in
+ * white and its green pinstripes. The X is [widthFraction] of the screen width
+ * wide, its left edge at [left] and its middle at [centerY] (fractions of the screen).
  */
 fun Modifier.caravanBackground(
     widthFraction: Float = 1.2f,
@@ -46,23 +45,21 @@ fun Modifier.caravanBackground(
         val tile = camoDp * density
         val k = tile / CAMO_TILE
         onDrawBehind {
-            withTransform({ translate(x0, y0); scale(s, s, Offset.Zero) }) {
-                clipPath(xPieces) {
-                    // camo, in screen-sized tiles (undo the X's scale)
-                    val t = tile / s
-                    drawRect(Surfaces.camo[0], Offset.Zero, androidx.compose.ui.geometry.Size(X_W, X_H))
-                    var y = 0f
-                    while (y < X_H) {
-                        var x = 0f
-                        while (x < X_W) {
-                            withTransform({ translate(x, y); scale(k / s, k / s, Offset.Zero) }) {
-                                camoPaths.forEachIndexed { i, p -> drawPath(p, Surfaces.camo[i + 1]) }
-                            }
-                            x += t
+            clipRect {
+                var y = 0f
+                while (y < size.height) {
+                    var x = 0f
+                    while (x < size.width) {
+                        withTransform({ translate(x, y); scale(k, k, Offset.Zero) }) {
+                            camoPaths.forEachIndexed { i, p -> drawPath(p, Surfaces.camo[i + 1]) }
                         }
-                        y += t
+                        x += tile
                     }
+                    y += tile
                 }
+            }
+            withTransform({ translate(x0, y0); scale(s, s, Offset.Zero) }) {
+                drawPath(xPieces, Accent.white.copy(alpha = 0.85f), style = Stroke(width = 2.4f * density / s))
                 drawPath(xLines, Accent.lime, style = Stroke(width = X_LINE_W, join = StrokeJoin.Miter, cap = StrokeCap.Butt))
             }
         }
