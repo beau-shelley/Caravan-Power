@@ -4,6 +4,7 @@
 
 #include "Ble.h"
 #include "BmproAdv.h"
+#include "BmproLink.h"
 #include "SocEstimator.h"
 
 namespace hub {
@@ -34,6 +35,7 @@ volatile bool gDecodedAny = false;
 
 // Decoded data handed from the BLE task to loop(), with arrival times.
 BmproData gData;
+uint32_t gSocMs = 0;  // last % straight from the BMPRO (connection)
 uint32_t gBatMs = 0, gChgMs = 0, gTankMs[cv::NUM_TANKS] = {}, gPumpMs[cv::NUM_PUMPS] = {}, gGasMs = 0, gLoadMs = 0;
 
 struct WriteReq {
@@ -78,7 +80,19 @@ cv::SocEstimator gSoc;
 bool gSocStarted = false;
 uint32_t gSocFedMs = 0;
 
+// No OdysseyLink address set up yet: pick it out by its advert (service
+// 0xFE0E listed, no service data - the broadcaster carries the data) when it
+// is close (> -80 dBm), so the van works without setting anything up.
+void autoTarget(NimBLEAdvertisedDevice *d, const std::string &addr) {
+  if (gTargetAddr[0] || d->getRSSI() < -80 || d->getServiceDataCount() > 0) return;
+  if (!d->isAdvertisingService(NimBLEUUID((uint16_t)cv::BMPRO_SVC_UUID))) return;
+  strncpy(gTargetAddr, addr.c_str(), 17);
+  gTargetAddr[17] = 0;
+  logLine(String("found the OdysseyLink at ") + gTargetAddr + " (rssi " + d->getRSSI() + ") - connecting");
+}
+
 void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
+  autoTarget(d, addr);
   cv::BmproAdvert b;
   if (!cv::bmproParseAdvert(d->getPayload(), d->getPayloadLength(), b)) return;
   if (!gAdvAddr[0]) {
@@ -150,8 +164,16 @@ void applyDecoded(const BmproData &in) {
     gData.batValid = true;
     gData.batV = in.batV;
     gData.batA = in.batA;
-    gData.batSoc = in.batSoc;
-    gData.batTtgMin = in.batTtgMin;
+    // The broadcast has no %, the connection does: keep the BMPRO's own %
+    // while it is fresh rather than letting broadcasts blank it.
+    if (in.batSoc >= 0) {
+      gData.batSoc = in.batSoc;
+      gData.batTtgMin = in.batTtgMin;
+      gSocMs = now;
+    } else if (!gSocMs || now - gSocMs > 60000) {
+      gData.batSoc = -1;
+      gData.batTtgMin = in.batTtgMin;
+    }
     gData.remainAh = in.remainAh;
     gBatMs = now;
   }
@@ -186,8 +208,49 @@ void applyDecoded(const BmproData &in) {
   gDecodedAny = true;
 }
 
+bool queueWrite(const char *uuid, const uint8_t *data, size_t len) {
+  return gBmpro.write(uuid, data, len, true);
+}
+
+// The app's start-up after logging in (from its HCI log): a list of writes to
+// the init characteristic, then requests that start the value stream.
+void sendStartup() {
+  using namespace cv::bmpro;
+  static const uint8_t init[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f, 0x12, 0x13};
+  for (uint8_t b : init) queueWrite(INIT_UUID, &b, 1);
+  static const uint8_t r1[] = {0x3c, 0x00, 0x40, 0x01, 0x01, 0x01};
+  static const uint8_t r2[] = {0x3c, 0x00, 0x40, 0x6e, 0x04, 0xf7, 0x91, 0xfd, 0x35};
+  static const uint8_t r3[] = {0x3c, 0x00, 0x40, 0x6f, 0x04, 0x00, 0xff, 0x00, 0x00};
+  static const uint8_t r4[] = {0x3d, 0xff, 0xfc, 0x00, 0x01, 0x01};
+  static const uint8_t r5[] = {0x3c, 0x00, 0x90, 0x0f, 0x01, 0x01};
+  queueWrite(CAN_UUID, r1, sizeof(r1));
+  queueWrite(CAN_UUID, r2, sizeof(r2));
+  queueWrite(CAN_UUID, r3, sizeof(r3));
+  queueWrite(CAN_UUID, r4, sizeof(r4));
+  queueWrite(CAN_UUID, r5, sizeof(r5));
+}
+
+// Login: the OdysseyLink notifies a challenge on "SETEC AUTH"; answer it the
+// way the app did, then it says "Authenticated".
+void onAuth(const uint8_t *data, size_t len) {
+  using namespace cv::bmpro;
+  if (len == sizeof(AUTH_CHALLENGE) && !memcmp(data, AUTH_CHALLENGE, len)) {
+    logLine("login challenge received - answering");
+    queueWrite(AUTH_UUID, AUTH_ANSWER, sizeof(AUTH_ANSWER));
+  } else if (len >= 13 && !memcmp(data, "Authenticated", 13)) {
+    logLine("logged in - starting the data stream");
+    sendStartup();
+  } else {
+    logLine(String("unknown login challenge ") + hex(data, len) + "- send this log line to Claude");
+  }
+}
+
 void onNotify(NimBLERemoteCharacteristic *c, uint8_t *data, size_t len, bool isNotify) {
   std::string uuid = c->getUUID().toString();
+  if (uuid == cv::bmpro::AUTH_UUID) {
+    onAuth(data, len);
+    return;
+  }
   if (gVerbose) logLine(String(isNotify ? "NTF " : "IND ") + uuid.c_str() + " [" + len + "] " + hex(data, len));
   static BmproData out;  // static: NimBLE host task has a small stack
   out = BmproData();
@@ -209,6 +272,7 @@ void dumpAndSubscribe() {
       String line = String("  CHR ") + c->getUUID().toString().c_str() + " [" + props + "]";
       if (c->canRead()) {
         std::string v = c->readValue();
+        if (c->getUUID().toString() == cv::bmpro::AUTH_UUID) onAuth((const uint8_t *)v.data(), v.size());
         line += " = " + hex((const uint8_t *)v.data(), v.size());
         BmproData out;
         if (Bmpro::decode(c->getUUID().toString().c_str(), (const uint8_t *)v.data(), v.size(), out))
@@ -269,7 +333,7 @@ void bleTask(void *) {
 
 void Bmpro::begin(const char *addr, bool verbose) {
   gMux = xSemaphoreCreateMutex();
-  gWriteQ = xQueueCreate(8, sizeof(WriteReq));
+  gWriteQ = xQueueCreate(24, sizeof(WriteReq));  // login start-up queues 17 writes
   gVerbose = verbose;
   strncpy(gTargetAddr, addr ? addr : "", 17);
   ble::begin();
@@ -416,21 +480,43 @@ String Bmpro::devices() const {
 //   buf[0] = 0x10; buf[1] = pump; buf[2] = on; len = 3;
 //   return true;
 // ===========================================================================
+// Decoded 2026-11-17 from the BMPRO app's HCI log: see docs/BMPRO_PROTOCOL.md.
+// Values arrive one per message, so they are gathered here and handed on as
+// a set (battery once both volts and amps are known).
 bool Bmpro::decode(const char *charUuid, const uint8_t *data, size_t len, BmproData &out) {
-  (void)charUuid;
-  (void)data;
-  (void)len;
-  (void)out;
-  return false;
+  if (strcasecmp(charUuid, cv::bmpro::CAN_UUID) != 0) return false;
+  static cv::bmpro::Values v;  // NimBLE host task only
+  cv::bmpro::Msg m;
+  if (!cv::bmpro::parse(data, len, m) || !cv::bmpro::apply(m, v)) return false;
+  if (v.hasBatV && v.hasBatA) {
+    out.batValid = true;
+    out.batV = v.batV;
+    out.batA = v.batA;
+    out.batSoc = v.hasSoc ? v.soc : -1;
+    out.batTtgMin = v.hasMinLeft ? v.minLeft : -1;
+  }
+  if (v.hasSolarA) {
+    out.chargerValid = true;
+    out.chargerA = v.solarA;
+  }
+  if (v.hasTanks)
+    for (int i = 0; i < cv::NUM_TANKS && i < 4; i++) {
+      out.tankValid[i] = true;
+      out.tankPct[i] = v.tankPct[i];
+    }
+  for (int i = 0; i < cv::NUM_PUMPS && i < 2; i++)
+    if (v.hasPump[i]) {
+      out.pumpValid[i] = true;
+      out.pumpOn[i] = v.pumpOn[i];
+    }
+  return true;
 }
 
 bool Bmpro::encodePump(int pump, bool on, String &charUuid, uint8_t *buf, size_t &len) {
-  (void)pump;
-  (void)on;
-  (void)charUuid;
-  (void)buf;
-  len = 0;
-  return false;
+  if (pump < 0 || pump > 1 || len < 6) return false;
+  charUuid = cv::bmpro::CAN_UUID;
+  len = cv::bmpro::encodePump(pump, on, buf);
+  return true;
 }
 
 }  // namespace hub

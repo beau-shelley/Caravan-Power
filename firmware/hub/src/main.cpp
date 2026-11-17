@@ -779,8 +779,37 @@ void setup() {
   enableLoopWDT();
 }
 
+// Commands typed on the USB serial port (same JSON as the phone/display), e.g.
+// {"c":"pump","i":0,"on":true}. USB means someone is at the hub, so it counts
+// as local, like the touchscreen. The reply is printed back.
+static void serialCommands() {
+  static String line;
+  while (Serial.available()) {
+    char ch = (char)Serial.read();
+    if (ch == '\r') continue;
+    if (ch != '\n') {
+      if (line.length() < 512) line += ch;
+      continue;
+    }
+    line.trim();
+    if (line.startsWith("{")) {
+      JsonDocument in, reply;
+      if (deserializeJson(in, line)) {
+        Serial.println("[usb] not valid JSON");
+      } else {
+        hub::handleCommand(in.as<JsonObjectConst>(), hub::SRC_DISPLAY, reply);
+        String out;
+        serializeJson(reply, out);
+        Serial.println("[usb] " + (out == "null" ? String("ok") : out));
+      }
+    }
+    line = "";
+  }
+}
+
 void loop() {
   uint32_t now = millis();
+  serialCommands();
   {
     StateLock l;
     if (!demo::kOn) {

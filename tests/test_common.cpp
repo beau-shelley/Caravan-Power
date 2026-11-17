@@ -16,6 +16,7 @@
 #include <vector>
 #include "BleTag.h"
 #include "BmproAdv.h"
+#include "BmproLink.h"
 #include "Leveling.h"
 #include "TheftGuard.h"
 #include "Weather.h"
@@ -1014,6 +1015,40 @@ static void testBmproAdv() {
   CHECK(t.kind == BLE_HEATER);
 }
 
+static void testBmproLink() {
+  // Notifications from the app's HCI log, 2026-11-17 5:25 PM.
+  using namespace cv::bmpro;
+  Values v;
+  Msg m;
+  auto f = [&](const char *h) {
+    auto b = unhex(h);
+    static std::vector<uint8_t> keep;
+    keep = b;
+    return parse(keep.data(), keep.size(), m) && apply(m, v);
+  };
+  CHECK(f("1800406104fffff49f"));
+  NEAR(v.batA, -2.913f, 0.001f);
+  CHECK(f("1800406204000035a9"));
+  NEAR(v.batV, 13.737f, 0.001f);
+  CHECK(f("180040640400002f7a"));
+  NEAR(v.solarA, 12.154f, 0.001f);
+  CHECK(f("180040660400000063") && v.hasSoc && v.soc == 99);
+  CHECK(f("180040670400001aaf") && v.minLeft == 6831);
+  CHECK(f("180090800400020404") && v.hasTanks);
+  CHECK(v.tankPct[0] == 100 && v.tankPct[1] == 100 && v.tankPct[2] == 50 && v.tankPct[3] == 0);
+  // Pump 1 write reply after "on", pump 2 status "off".
+  CHECK(f("1600404c05010000002a") && v.hasPump[0] && v.pumpOn[0]);
+  CHECK(f("1800404d050000000000") && v.hasPump[1] && !v.pumpOn[1]);
+  // Unknown params are ignored, short frames rejected.
+  CHECK(!f("1800406b040000011c"));
+  CHECK(!f("18004062"));
+  uint8_t buf[8];
+  CHECK(encodePump(0, true, buf) == 6);
+  CHECK(!memcmp(buf, unhex("3e00404c0101").data(), 6));
+  encodePump(1, false, buf);
+  CHECK(!memcmp(buf, unhex("3e00404d0100").data(), 6));
+}
+
 int main() {
   testTheftGuard();
   testHeater();
@@ -1024,6 +1059,7 @@ int main() {
   testVictronBle();
   testBleTag();
   testBmproAdv();
+  testBmproLink();
   testVeDirect();
   testAlerts();
   testAlertLevels();
