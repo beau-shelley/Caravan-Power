@@ -25,7 +25,7 @@ lv_obj_t *card(lv_obj_t *parent, int x, int y, int w, int h, const char *title, 
   lv_obj_set_pos(o, x, y);
   lv_obj_set_size(o, w, h);
   lv_obj_set_style_bg_color(o, c(col::CARD), 0);
-  lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_opa(o, col::CARD_OPA, 0);
   lv_obj_set_style_border_color(o, c(col::BORDER), 0);
   lv_obj_set_style_border_width(o, 1, 0);
   lv_obj_set_style_radius(o, 16, 0);
@@ -381,9 +381,8 @@ static void bannerCb(lv_event_t *) { showPage(PAGE_ALERTS); }
 static void buildShell() {
   lv_obj_t *scr = lv_scr_act();
   lv_obj_set_style_bg_color(scr, c(col::BG), 0);
-  // Subtle dark camo behind the cards (like the camo in the van's side stripe).
-  lv_obj_set_style_bg_img_src(scr, &tex_camo, 0);
-  lv_obj_set_style_bg_img_tiled(scr, true, 0);
+  // The camo X graphic from the side of the van, behind the cards.
+  lv_obj_set_style_bg_img_src(scr, &tex_bg, 0);
   lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
   // Nav rail

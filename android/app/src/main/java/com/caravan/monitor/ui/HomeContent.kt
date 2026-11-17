@@ -141,7 +141,7 @@ private fun SecureCard(x: Secure, onSecure: (Boolean) -> Unit, onArm: (Int) -> U
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Surfaces.card),
+        colors = CardDefaults.cardColors(containerColor = Surfaces.glass),
         shape = RoundedCornerShape(16.dp),
         border = if (x.active) BorderStroke(1.5.dp, color) else null,
     ) {

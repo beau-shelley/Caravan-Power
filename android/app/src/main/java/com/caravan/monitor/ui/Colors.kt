@@ -5,11 +5,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import com.caravan.monitor.Severity
 
-// Caravan theme: gunmetal cards on dark camo, black chequer plate, lime accents
-// (like the van). Same colours as the touchscreen (ui.h col::) and the web page.
+// Caravan theme, matched to the decals on the van: gunmetal body with the camo
+// X graphic behind translucent dark cards, black chequer plate, and the decals'
+// lime and green as highlights. Same colours as the touchscreen (ui.h col::) and web page.
 object Accent {
-    val lime = Color(0xFFA3E635)  // theme accent: selected tab, primary buttons, info
-    val battery = Color(0xFF8FDB3A)
+    val lime = Color(0xFFDCEB4B)  // the lime on the decals: selected tab, primary buttons, info
+    val battery = Color(0xFF90D130)  // the green dot in the logo
     val solar = Color(0xFFFACC15)
     val water = Color(0xFF38BDF8)
     val mains = Color(0xFF60A5FA)
@@ -18,24 +19,25 @@ object Accent {
     val climate = Color(0xFFA78BFA)
     val warn = Color(0xFFF59E0B)
     val alarm = Color(0xFFEF4444)
-    val secure = Color(0xFF84CC16)  // secure mode armed, same green as the touchscreen and web page
+    val secure = Color(0xFF90D130)  // secure mode armed, same green as the touchscreen and web page
     val critical = Color(0xFFD946EF)  // fuchsia, same as the touchscreen and web page
-    val muted = Color(0xFF9EA4A6)
+    val muted = Color(0xFFA3A8AC)
 }
 
 /** Background and card colours (dark theme). */
 object Surfaces {
-    val background = Color(0xFF0E0F10)  // camo base
-    val camo = listOf(Color(0xFF141617), Color(0xFF191C1C), Color(0xFF1F2321))  // camo layers
+    val background = Color(0xFF2B2E32)  // van body (gunmetal), darkened
+    val camo = listOf(Color(0xFF121316), Color(0xFF26282C), Color(0xFF3D4045), Color(0xFF6E7277))  // base, dark, mid, light
     val plate = Color(0xFF0B0C0D)       // chequer plate base (bottom bar)
     val ridge = Color(0xFF1B1D1F)       // chequer plate ridges
     val ridgeLight = Color(0xFF2A2D30)
-    val card = Color(0xFF1E2124)        // gunmetal
-    val raised = Color(0xFF2A2E32)
-    val track = Color(0xFF34383C)
-    val text = Color(0xFFECEEEA)
-    val onLime = Color(0xFF16210A)
-    val limeContainer = Color(0xFF34451A)  // tonal lime (selected chips, tab indicator)
+    val card = Color(0xFF15171A)
+    val glass = Color(0xB815171A)       // cards: lets the camo X show through a little (~72 %)
+    val raised = Color(0xFF272A2E)
+    val track = Color(0xFF34383D)
+    val text = Color(0xFFEEF0EC)
+    val onLime = Color(0xFF1A1E05)
+    val limeContainer = Color(0xFF3F4518)  // tonal lime (selected chips)
 }
 
 /** Material colour scheme for the app (also used by the screenshot renderer). */

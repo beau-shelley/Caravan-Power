@@ -41,7 +41,7 @@ import com.caravan.monitor.Temp
 import com.caravan.monitor.Weather
 import com.caravan.monitor.ui.AlertsContent
 import com.caravan.monitor.ui.CaravanColors
-import com.caravan.monitor.ui.camoBackground
+import com.caravan.monitor.ui.caravanBackground
 import com.caravan.monitor.ui.ClimateContent
 import com.caravan.monitor.ui.AppScaffold
 import com.caravan.monitor.ui.HomeContent
@@ -163,7 +163,7 @@ const val SCALE = 2.5f
 
 fun shot(name: String, heightDp: Int, content: @Composable () -> Unit) {
     val scene = ImageComposeScene((WIDTH_DP * SCALE).toInt(), (heightDp * SCALE).toInt(), Density(SCALE)) {
-        Theme { Box(Modifier.fillMaxSize().camoBackground()) { content() } }
+        Theme { Box(Modifier.fillMaxSize().caravanBackground()) { content() } }
     }
     // Two frames so layout-dependent things (lazy lists) settle.
     scene.render(0)

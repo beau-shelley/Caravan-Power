@@ -47,7 +47,7 @@ fun AppScaffold(
         selectedTextColor = Accent.lime, unselectedIconColor = Accent.muted, unselectedTextColor = Accent.muted,
     )
     Scaffold(
-        modifier = Modifier.camoBackground(),
+        modifier = Modifier.caravanBackground(),
         containerColor = Color.Transparent,
         contentColor = Surfaces.text,  // not derived from a transparent container
         snackbarHost = snackbarHost,

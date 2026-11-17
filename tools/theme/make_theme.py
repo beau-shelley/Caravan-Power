@@ -1,120 +1,39 @@
 #!/usr/bin/env python3
-"""Make the caravan theme textures from one source, so the touchscreen, the web
-page and the Android app share the same camo and chequer plate.
+"""Make the caravan theme art from one source, so the touchscreen, the web
+page and the Android app share the same camo and X graphic (traced from the
+decals on Beau's van).
 
-  python3 tools/theme/make_theme.py
+  python3 tools/theme/make_theme.py      (needs numpy, scipy, scikit-image,
+                                           Pillow, and Node + Playwright)
 
 Writes:
-  firmware/display/src/ui/tex_theme.c   camo + tread tiles for LVGL (RGB565)
-  web/theme-camo.svg                    the camo tile (reference; inlined in web/index.html)
+  firmware/display/src/ui/tex_theme.c   1024x600 background + tread tile (RGB565)
+  web/theme-bg.svg                      the same background for the web page
   android/app/src/main/java/com/caravan/monitor/ui/CamoPaths.kt
   tools/theme/out/*.png                 previews
-
-The camo is a few layers of soft blobs (woodland style, stretched sideways like
-the stripe on the van) on a seamless tile. Colours are close together on
-purpose: it should read as texture, not as a pattern fighting the numbers.
-Needs numpy + Pillow.
 """
 import math
 import os
-import random
+import subprocess
 
 import numpy as np
 from PIL import Image, ImageDraw
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-OUT = os.path.join(os.path.dirname(__file__), "out")
-TILE = 240  # camo tile size in px (display) and SVG units
+import bg
+import camo
+import xglyph
 
-# Theme colours. Keep in sync with ui.h (col::), web/index.html (:root) and Colors.kt.
-CAMO_BASE = 0x0E0F10
-CAMO_LAYERS = [0x141617, 0x191C1C, 0x1F2321]  # last one leans olive, very slightly
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
+OUT = os.path.join(HERE, "out")
+
+# Where the X sits on the 1024x600 touchscreen (glyph units -> px).
+DISP_W, DISP_H = 1024, 600
+DISP_X0, DISP_Y0, DISP_S, DISP_CAMO = 70, -10, 0.47, 0.75
 
 
 def rgb(h):
     return ((h >> 16) & 255, (h >> 8) & 255, h & 255)
-
-
-# ---------------------------------------------------------------- camo shapes
-def blob(rng, cx, cy, rx, ry, rot, n=16):
-    """Closed blob: an ellipse with a wobbly radius; returns control points."""
-    k = [rng.uniform(0, 2 * math.pi) for _ in range(4)]
-    a = [rng.uniform(0.18, 0.32), rng.uniform(0.10, 0.20), rng.uniform(0.06, 0.12), rng.uniform(0.04, 0.08)]
-    pts = []
-    for i in range(n):
-        t = 2 * math.pi * i / n
-        r = (1 + a[0] * math.sin(2 * t + k[0]) + a[1] * math.sin(3 * t + k[1])
-             + a[2] * math.sin(5 * t + k[2]) + a[3] * math.sin(7 * t + k[3]))
-        x, y = rx * r * math.cos(t), ry * r * math.sin(t)
-        pts.append((cx + x * math.cos(rot) - y * math.sin(rot), cy + x * math.sin(rot) + y * math.cos(rot)))
-    return pts
-
-
-def catmull_to_bezier(pts):
-    """Closed Catmull-Rom spline through pts -> list of cubic segments."""
-    segs = []
-    n = len(pts)
-    for i in range(n):
-        p0, p1, p2, p3 = pts[i - 1], pts[i], pts[(i + 1) % n], pts[(i + 2) % n]
-        c1 = (p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6)
-        c2 = (p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6)
-        segs.append((p1, c1, c2, p2))
-    return segs
-
-
-def make_layers(seed=7):
-    rng = random.Random(seed)
-    layers = []
-    spec = [(12, 30, 58), (11, 22, 46), (10, 12, 30)]  # count, min, max half-width
-    for count, lo, hi in spec:
-        blobs = []
-        for _ in range(count):
-            rx = rng.uniform(lo, hi)
-            ry = rx * rng.uniform(0.3, 0.55)
-            rot = rng.uniform(-0.45, 0.25)  # mostly sideways, a little slant like the van stripe
-            cx, cy = rng.uniform(0, TILE), rng.uniform(0, TILE)
-            pts = blob(rng, cx, cy, rx, ry, rot)
-            # Copies across the tile edges so the tile repeats seamlessly.
-            for dx in (-TILE, 0, TILE):
-                for dy in (-TILE, 0, TILE):
-                    moved = [(x + dx, y + dy) for x, y in pts]
-                    xs, ys = [p[0] for p in moved], [p[1] for p in moved]
-                    if max(xs) < 0 or min(xs) > TILE or max(ys) < 0 or min(ys) > TILE:
-                        continue
-                    blobs.append(moved)
-        layers.append(blobs)
-    return layers
-
-
-def svg_path(blobs):
-    out = []
-    for pts in blobs:
-        segs = catmull_to_bezier(pts)
-        d = "M%.0f %.0f" % segs[0][0]
-        for _, c1, c2, p2 in segs:
-            d += "C%.0f %.0f %.0f %.0f %.0f %.0f" % (c1 + c2 + p2)
-        out.append(d + "Z")
-    return "".join(out).replace(" -", "-")
-
-
-def sample(segs, steps=10):
-    pts = []
-    for p1, c1, c2, p2 in segs:
-        for s in range(steps):
-            t = s / steps
-            mt = 1 - t
-            pts.append((mt**3 * p1[0] + 3 * mt * mt * t * c1[0] + 3 * mt * t * t * c2[0] + t**3 * p2[0],
-                        mt**3 * p1[1] + 3 * mt * mt * t * c1[1] + 3 * mt * t * t * c2[1] + t**3 * p2[1]))
-    return pts
-
-
-def raster_camo(layers, size=TILE, ss=4):
-    img = Image.new("RGB", (size * ss, size * ss), rgb(CAMO_BASE))
-    d = ImageDraw.Draw(img)
-    for col, blobs in zip(CAMO_LAYERS, layers):
-        for pts in blobs:
-            d.polygon([(x * ss * size / TILE, y * ss * size / TILE) for x, y in sample(catmull_to_bezier(pts))], fill=rgb(col))
-    return img.resize((size, size), Image.LANCZOS)
 
 
 # ---------------------------------------------------------------- chequer plate
@@ -175,50 +94,45 @@ const lv_img_dsc_t {name} = {{
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    layers = make_layers()
-    camo = raster_camo(layers)
+    # Display background, rasterised by Chromium so it matches the web page exactly.
+    svg_path = os.path.join(OUT, "bg-display.svg")
+    png_path = os.path.join(OUT, "bg-display.png")
+    with open(svg_path, "w") as f:
+        f.write(bg.svg(DISP_W, DISP_H, DISP_X0, DISP_Y0, DISP_S, DISP_CAMO))
+    subprocess.run(["node", os.path.join(HERE, "render.js"), svg_path, png_path, str(DISP_W), str(DISP_H)], check=True)
+    bgimg = Image.open(png_path).convert("RGB")
     tread = raster_tread()
-    camo.save(os.path.join(OUT, "camo.png"))
     tread.save(os.path.join(OUT, "tread.png"))
-    # Previews at a visible contrast too.
-    big = Image.new("RGB", (TILE * 3, TILE * 2))
-    for x in range(3):
-        for y in range(2):
-            big.paste(camo, (x * TILE, y * TILE))
-    big.save(os.path.join(OUT, "camo-3x2.png"))
-    tbig = Image.new("RGB", (TREAD * 8, TREAD * 4))
-    for x in range(8):
-        for y in range(4):
-            tbig.paste(tread, (x * TREAD, y * TREAD))
-    tbig.resize((TREAD * 16, TREAD * 8), Image.NEAREST).save(os.path.join(OUT, "tread-preview.png"))
-
-    paths = [svg_path(b) for b in layers]
 
     with open(os.path.join(ROOT, "firmware/display/src/ui/tex_theme.c"), "w") as f:
         f.write("// Generated by tools/theme/make_theme.py - do not edit.\n")
-        f.write("// Caravan theme textures: dark camo (screen background) and chequer plate (nav rail).\n")
+        f.write("// Caravan theme: full-screen background (camo X graphic) and chequer plate (nav rail).\n")
         f.write('#include "lvgl.h"\n')
-        f.write(lv_c_array("tex_camo", camo))
+        f.write(lv_c_array("tex_bg", bgimg))
         f.write(lv_c_array("tex_tread", tread))
 
-    svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{TILE}" height="{TILE}" viewBox="0 0 {TILE} {TILE}">',
-           f'<rect width="{TILE}" height="{TILE}" fill="#{CAMO_BASE:06x}"/>']
-    for colr, p in zip(CAMO_LAYERS, paths):
-        svg.append(f'<path fill="#{colr:06x}" d="{p}"/>')
-    svg.append("</svg>")
-    with open(os.path.join(ROOT, "web/theme-camo.svg"), "w") as f:
-        f.write("\n".join(svg) + "\n")
+    # Web page: landscape background (the page scales it to cover).
+    with open(os.path.join(ROOT, "web/theme-bg.svg"), "w") as f:
+        f.write(bg.svg(1600, 1000, 120, 60, 0.7, 0.75) + "\n")
 
+    # App: camo layers (tile) + X pieces + lime lines as path data.
+    L = camo.layers()
     kt = ["// Generated by tools/theme/make_theme.py - do not edit.",
           "package com.caravan.monitor.ui", "",
-          "/** Camo tile (size [CAMO_TILE]) as SVG path data, one string per layer, darkest first. */",
-          f"const val CAMO_TILE = {TILE}f", "val CAMO_PATHS = listOf("]
-    for p in paths:
-        kt.append(f'    "{p}",')
-    kt.append(")")
+          "/** Camo tile (size [CAMO_TILE]) as SVG path data, one string per layer (dark, mid, light; even-odd fill). */",
+          f"const val CAMO_TILE = {camo.T}f",
+          "val CAMO_PATHS = listOf("]
+    for f_, t in L:
+        kt.append(f'    "{camo.svg_d(camo.trace(f_, t), 1, 0)}",')
+    kt += [")", "",
+           f"/** The X graphic from the van, in a {xglyph.W} x {xglyph.H} box: camo-filled pieces and lime lines. */",
+           f"const val X_W = {xglyph.W}f", f"const val X_H = {xglyph.H}f",
+           f"const val X_LINE_W = {xglyph.LINE_W}f",
+           f'const val X_PIECES = "{xglyph.pieces_d()}"',
+           f'const val X_LINES = "{xglyph.lines_d()}"']
     with open(os.path.join(ROOT, "android/app/src/main/java/com/caravan/monitor/ui/CamoPaths.kt"), "w") as f:
         f.write("\n".join(kt) + "\n")
-    print("paths:", [len(p) for p in paths])
+    print("done; kotlin bytes", sum(len(x) for x in kt))
 
 
 if __name__ == "__main__":

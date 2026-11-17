@@ -16,7 +16,7 @@ LV_FONT_DECLARE(ui_icons_20);
 LV_FONT_DECLARE(ui_icons_24);
 LV_FONT_DECLARE(ui_icons_28);
 // Theme textures (tex_theme.c, made by tools/theme/make_theme.py).
-LV_IMG_DECLARE(tex_camo);   // seamless dark camo tile, screen background
+LV_IMG_DECLARE(tex_bg);     // full-screen background: the camo X graphic from the van
 LV_IMG_DECLARE(tex_tread);  // chequer (diamond) plate tile, nav rail
 
 namespace ui {
@@ -78,16 +78,18 @@ int sleepSeconds();
 bool isExtraIcon(const char *sym);
 
 namespace col {
-// Caravan theme: gunmetal panels on a dark camo background, black chequer-plate
-// rail, lime accents (like the stripe on the van). Status colours keep their
-// meanings: amber warning, red alarm, fuchsia critical, blue cold/water.
+// Caravan theme, matched to the decals on the van: gunmetal body with the
+// camo X graphic behind translucent dark cards, black chequer-plate rail, and
+// the decals' lime (ACCENT) and green (CHARGE/OK) as highlights. Status colours
+// keep their meanings: amber warning, red alarm, fuchsia critical, blue cold/water.
 // Same values in web/index.html (:root) and the app's Colors.kt.
-constexpr uint32_t BG = 0x0E0F10, RAIL = 0x0B0C0D, CARD = 0x1E2124, BORDER = 0x34383C;
-constexpr uint32_t TEXT = 0xECEEEA, MUTED = 0x9EA4A6, DIM = 0x5A6064;
-constexpr uint32_t SOLAR = 0xFACC15, CHARGE = 0x8FDB3A, LOAD = 0xF87171, WATER = 0x38BDF8;
-constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0xA3E635, WARN = 0xF59E0B, ALARM = 0xEF4444;
-constexpr uint32_t OK = 0x84CC16, TILE = 0x2A2E32, GAS = 0xFB923C, MAINS = 0x60A5FA;
-constexpr uint32_t SECURE = 0x84CC16;  // secure mode armed (green, same as the phone page)
+constexpr uint32_t BG = 0x2B2E32, RAIL = 0x0B0C0D, CARD = 0x15171A, BORDER = 0x34383D;
+constexpr uint32_t TEXT = 0xEEF0EC, MUTED = 0xA3A8AC, DIM = 0x5E6368;
+constexpr uint32_t SOLAR = 0xFACC15, CHARGE = 0x90D130, LOAD = 0xF87171, WATER = 0x38BDF8;
+constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0xDCEB4B, WARN = 0xF59E0B, ALARM = 0xEF4444;
+constexpr uint32_t OK = 0x90D130, TILE = 0x272A2E, GAS = 0xFB923C, MAINS = 0x60A5FA;
+constexpr lv_opa_t CARD_OPA = 175;  // cards let the camo X show through a little
+constexpr uint32_t SECURE = 0x90D130;  // secure mode armed (green, same as the phone page)
 constexpr uint32_t CRIT = 0xD946EF;  // critical alerts (same colour as the phone page)
 constexpr uint32_t HEAT = 0xFB923C;  // diesel heater (warm orange, same as the phone page)
 }  // namespace col

@@ -58,7 +58,7 @@ fun SectionCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Surfaces.card),
+        colors = CardDefaults.cardColors(containerColor = Surfaces.glass),
         shape = RoundedCornerShape(16.dp),
     ) {
         Column(Modifier.padding(if (compact) 12.dp else 16.dp)) {
