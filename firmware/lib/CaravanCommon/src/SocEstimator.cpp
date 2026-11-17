@@ -14,6 +14,13 @@ void SocEstimator::setSoc(float pct) {
   ah_ = cfg_.capacityAh * pct / 100.0;
 }
 
+void SocEstimator::setCapacityAh(float ah) {
+  if (ah <= 0 || ah == cfg_.capacityAh) return;
+  float pct = soc();
+  cfg_.capacityAh = ah;
+  setSoc(pct);
+}
+
 float SocEstimator::soc() const {
   if (cfg_.capacityAh <= 0) return 0;
   return (float)(ah_ / cfg_.capacityAh * 100.0);
@@ -44,6 +51,18 @@ void SocEstimator::update(float v, float a, uint32_t nowMs) {
     }
   } else {
     fullPending_ = false;
+  }
+  bool floatCond = v >= cfg_.floatV && a > -cfg_.floatTailA && a < cfg_.floatTailA;
+  if (floatCond) {
+    if (!floatPending_) {
+      floatPending_ = true;
+      floatSinceMs_ = nowMs;
+    } else if (nowMs - floatSinceMs_ >= cfg_.floatHoldMs) {
+      ah_ = cfg_.capacityAh;
+      synced_ = true;
+    }
+  } else {
+    floatPending_ = false;
   }
 }
 

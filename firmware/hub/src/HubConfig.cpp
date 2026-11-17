@@ -27,6 +27,7 @@ void HubConfig::toJson(JsonObject o) const {
   JsonObject b = o["bat"].to<JsonObject>();
   b["src"] = bat.source;
   b["cap"] = bat.capacityAh;
+  b["capSet"] = true;  // see fromJson: tells a chosen 300 Ah from the old default
   b["eff"] = bat.chargeEff;
   b["fullV"] = bat.fullV;
   b["tailA"] = bat.tailA;
@@ -119,6 +120,10 @@ void HubConfig::fromJson(JsonObjectConst o) {
   if (!b.isNull()) {
     bat.source = b["src"] | bat.source;
     bat.capacityAh = b["cap"] | bat.capacityAh;
+    // 300 Ah was the built-in default before it could be set from the phone,
+    // so a saved 300 means "never set": use Beau's 405 Ah bank instead.
+    if (bat.capacityAh == 300 && !(b["capSet"] | false)) bat.capacityAh = cv::BAT_CAP_DEFAULT_AH;
+    if (bat.capacityAh < cv::BAT_CAP_MIN_AH || bat.capacityAh > cv::BAT_CAP_MAX_AH) bat.capacityAh = cv::BAT_CAP_DEFAULT_AH;
     bat.chargeEff = b["eff"] | bat.chargeEff;
     bat.fullV = b["fullV"] | bat.fullV;
     bat.tailA = b["tailA"] | bat.tailA;

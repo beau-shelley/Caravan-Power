@@ -347,8 +347,12 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
       </div>
       <div class="card span6">
         <div class="cap">Battery</div>
-        <p class="muted small">Sync the shunt state of charge when you know the battery is full.</p>
-        <button class="btn" id="soc100">Set state of charge to 100%</button>
+        <p class="muted small">The hub works out the battery % and time left itself, by counting the amps in and out against this size. (The BMPRO's own % stops at 600 Ah.) It resets to 100% each time the charger shows the bank is full.</p>
+        <div class="row"><label for="batCap" style="margin:0">Battery size</label>
+          <input id="batCap" type="number" inputmode="numeric" min="20" max="2000" step="1" style="max-width:110px"> <span>Ah</span>
+          <button class="btn primary" id="batCapSave">Save</button></div>
+        <p class="muted small" id="batCapInfo"></p>
+        <button class="btn" id="soc100">Battery is full: set to 100%</button>
       </div>
       <div class="card span12" style="--dot:var(--heat)">
         <div class="cap">Diesel heater</div>
@@ -424,7 +428,7 @@ const MAX_EXTRA_LEVELS = 2;
 const FEATURES = { inverter:false, aircon:false };
 
 let S = null, META = { sol:["Roof","Portable"], tmp:["Inside","Outside","Fridge"], tank:["Tank 1","Tank 2","Grey"],
-  pump:["Internal","External"], acp:[], rc:true }, RULES = [];
+  pump:["Internal","External"], acp:[], rc:true, cap:405 }, RULES = [];
 let transport = null, lastMsg = 0;
 
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200); }
@@ -631,6 +635,8 @@ function renderMeta() {
     if (![...sel.options].some((o) => +o.value === META.ss)) sel.add(new Option(META.ss < 60 ? `${META.ss} seconds` : `${Math.round(META.ss / 60)} min`, META.ss));
     sel.value = META.ss;
   }
+  if (document.activeElement !== $("#batCap")) $("#batCap").value = Math.round(META.cap);
+  $("#batCapInfo").textContent = META.cap > 600 ? "Bigger than the BMPRO can handle (600 Ah), so the hub's own count is the one to trust." : "";
   $("#secCodeInfo").textContent = META.sc ? "A code is set." : "No code yet: anyone at the display can disarm.";
   $("#secCodeInfo").style.color = META.sc ? "var(--secure)" : "var(--warn)";
   $("#secCodeDel").classList.toggle("hidden", !META.sc);
@@ -833,6 +839,8 @@ function demoTransport() {
     } else if (c.c === "rule_del") onMessage({ t:"rules", rules: RULES.filter((x) => x.id !== c.id) });
     else if (c.c === "rules_reset") onMessage({ t:"rules", rules: defaults });
     else if (c.c === "display_set") onMessage({ t:"meta", ss: c.sleep });
+    else if (c.c === "battery_set") { onMessage({ t:"meta", cap: c.cap }); toast("Saved"); }
+    else if (c.c === "soc_set") { st.bat.soc = c.soc; onMessage(st); toast("Battery set to 100%"); }
     else if (c.c === "remote_control") onMessage({ t:"meta", rc: c.on });
     else if (c.c === "heater") {
       const h = st.htr;
@@ -933,7 +941,12 @@ $("#secCodeSave").onclick = () => {
 $("#secCodeDel").onclick = () => { if (confirm("Remove the display disarm code?")) send({ c:"secure_code", code:"" }); };
 $("#secSens").onchange = (e) => send({ c:"secure", sens:+e.target.value });
 $("#ackAll").onclick = () => send({ c:"ack" });
-$("#soc100").onclick = () => { if (confirm("Set battery state of charge to 100%?")) send({ c:"soc_set", soc:100 }); };
+$("#soc100").onclick = () => { if (confirm("Only do this when the battery really is full. Set it to 100%?")) send({ c:"soc_set", soc:100 }); };
+$("#batCapSave").onclick = () => {
+  const v = Math.round(+$("#batCap").value);
+  if (!(v >= 20 && v <= 2000)) { toast("Battery size must be 20 to 2000 Ah"); return; }
+  send({ c:"battery_set", cap:v }); $("#batCap").blur();
+};
 $("#calRows").addEventListener("click", (e) => { const b = e.target.closest("button[data-cal]"); if (!b) return;
   if (confirm(`Store current reading as ${b.dataset.pt.toUpperCase()} for ${META.tank[b.dataset.cal]}?`)) send({ c:"tank_cal", i:+b.dataset.cal, point:b.dataset.pt }); });
 $("#scanSensors").onclick = () => send({ c:"sensors" });

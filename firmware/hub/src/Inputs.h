@@ -58,20 +58,34 @@ class TankInputs {
   uint8_t next_ = 0;
 };
 
+// The hub's battery % and time left: counts amps in and out (coulomb
+// counting) against the capacity set on the phone, and syncs to 100 % when
+// the charger shows the bank is full. Readings come from the wired INA226
+// shunt (poll) or the BMPRO's Bluetooth (feed). The % is kept in flash so a
+// restart carries on where it left off.
 class BatteryShunt {
  public:
   bool begin();
   void poll(cv::State &s, uint32_t nowMs);
-  void setSoc(float pct) { soc_.setSoc(pct); }
+  // A battery reading from the BMPRO. bmproSoc: its own %, or -1.
+  void feed(cv::State &s, float v, float a, uint32_t sampleMs, float bmproSoc);
+  void setSoc(float pct) {
+    soc_.setSoc(pct);
+    seeded_ = true;
+  }
+  void setCapacityAh(float ah) { soc_.setCapacityAh(ah); }
   float soc() const { return soc_.soc(); }
+  bool synced() const { return soc_.synced(); }
   void persist(bool force = false);
 
  private:
   bool ok_ = false, chgOk_ = false;
+  bool seeded_ = false;  // has a starting % (saved, set, or estimated)
   cv::SocEstimator soc_;
-  uint32_t lastMs_ = 0, lastSaveMs_ = 0;
+  uint32_t lastMs_ = 0, lastSaveMs_ = 0, lastFeedMs_ = 0;
   float lastSavedSoc_ = -1;
   float avgA_ = 0;
+  bool avgPrimed_ = false;
 };
 
 }  // namespace hub

@@ -67,6 +67,8 @@ class ModelTest {
         assertEquals(listOf("A", "B", "C"), m.tankNames)
         assertFalse(m.remoteControl)
         assertEquals(30, m.screenSleepSec)
+        assertEquals(0, m.batteryAh)
+        assertEquals(405, Meta.parse(JSONObject("{\"cap\":405}")).batteryAh)
         assertEquals(-1, Meta.parse(JSONObject("{}")).screenSleepSec)
     }
 

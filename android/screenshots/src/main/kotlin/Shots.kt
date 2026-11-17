@@ -62,6 +62,7 @@ val META = Meta(
     remoteControl = true,
     fw = "1.4.0",
     screenSleepSec = 300,
+    batteryAh = 405,
 )
 
 // The hub's built-in default rules (CaravanModel.cpp loadDefaultRules).
@@ -201,7 +202,7 @@ fun main() {
             }
         }
     }
-    shot("5-setup", 1500) {
+    shot("5-setup", 1900) {
         AppScaffold(2, {}, 0) {
             SetupContent(SETTINGS, CONNECTED, META, "0.2.0", batteryExempt = false,
                 onSaveSettings = { _, _ -> }, onBatteryExempt = nop, onScreenSleep = {}, onRemoteControl = {}, onOpenWebPage = nop)

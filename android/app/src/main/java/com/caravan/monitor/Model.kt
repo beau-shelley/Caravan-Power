@@ -156,6 +156,8 @@ data class Meta(
     val screenSleepSec: Int = -1,
     /** A disarm code is set for the touchscreen (the phone never needs it). */
     val secCodeSet: Boolean = false,
+    /** Battery bank size in Ah; the hub works out % and time left from it. 0 = not known yet. */
+    val batteryAh: Int = 0,
 ) {
     companion object {
         fun parse(o: JSONObject): Meta {
@@ -169,6 +171,7 @@ data class Meta(
                 fw = o.optString("fw"),
                 screenSleepSec = o.optInt("ss", -1),
                 secCodeSet = o.optBoolean("sc"),
+                batteryAh = Math.round(o.optDouble("cap", 0.0)).toInt(),
             )
         }
     }

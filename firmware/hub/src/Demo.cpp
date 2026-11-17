@@ -1,4 +1,5 @@
 #include "Demo.h"
+#include "HubConfig.h"
 
 #include <Arduino.h>
 #include <math.h>
@@ -99,9 +100,11 @@ void tick(cv::State &s, uint32_t nowMs) {
   float charge = a1 + a2 + bmpro + ac;
   if (soc >= 100 && charge > load) charge = load;  // full: chargers back off
   float net = charge - load;
-  // 300 Ah battery, time sped up 20x (mains only 2x, or it fills in seconds)
+  // Battery size from the phone setting (405 Ah), time sped up 20x (mains
+  // only 2x, or it fills in seconds)
+  const float capAh = gConfig.bat.capacityAh;
   float socNet = net > ac ? net - ac * 0.9f : net;
-  soc += socNet * dt / 3600 / 300 * 100 * 20;
+  soc += socNet * dt / 3600 / capAh * 100 * 20;
   soc = soc < 5 ? 5 : soc > 100 ? 100 : soc;
   batV += net * 0.01f;
 
@@ -130,8 +133,8 @@ void tick(cv::State &s, uint32_t nowMs) {
   b.loadA = load;
   lastLoad = load;
   b.a = net;
-  b.ttgMin = net < -0.2f ? (int32_t)(soc / 100 * 300 / -net * 60)
-             : net > 0.2f ? (int32_t)((100 - soc) / 100 * 300 / net * 60) : -1;
+  b.ttgMin = net < -0.2f ? (int32_t)(soc / 100 * capAh / -net * 60)
+             : net > 0.2f ? (int32_t)((100 - soc) / 100 * capAh / net * 60) : -1;
 
   // ---- temperatures follow the sun; the fridge cycles its compressor
   s.temp[cv::TEMP_OUTSIDE].c = 18 + 13 * sun;

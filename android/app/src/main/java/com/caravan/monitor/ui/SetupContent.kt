@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -46,6 +47,10 @@ fun SetupContent(
     onBatteryExempt: () -> Unit,
     onScreenSleep: (Int) -> Unit,
     onRemoteControl: (Boolean) -> Unit,
+    /** Battery bank size in Ah (20-2000). */
+    onBatteryAh: (Int) -> Unit = {},
+    /** Tell the hub the battery is full now (sets its % to 100). */
+    onBatteryFull: () -> Unit = {},
     onOpenWebPage: () -> Unit,
     /** Disarm code for the touchscreen: 4-8 digits, "" removes it. */
     onSecureCode: (String) -> Unit = {},
@@ -148,6 +153,44 @@ fun SetupContent(
             Button(onClick = {
                 onSaveSettings(saved.copy(ntfyServer = ntfyServer.ifBlank { "https://ntfy.sh" }, ntfyTopic = ntfyTopic, ntfyToken = ntfyToken), false)
             }) { Text("Save") }
+        }
+
+        SectionCard("Battery", Accent.battery) {
+            Text("The hub works out the battery % and time left itself, by counting the amps in and out " +
+                "against this size. (The BMPRO's own % stops at 600 Ah.) It resets to 100% each time the " +
+                "charger shows the bank is full.",
+                style = MaterialTheme.typography.bodySmall, color = Accent.muted)
+            Spacer(Modifier.height(8.dp))
+            if (!connected) {
+                Text("Connect to the hub to change these.", color = Accent.muted)
+            } else {
+                var ah by remember(meta.batteryAh) { mutableStateOf(if (meta.batteryAh > 0) meta.batteryAh.toString() else "") }
+                var confirmFull by remember { mutableStateOf(false) }
+                val ahNum = ah.toIntOrNull()
+                val ahOk = ahNum != null && ahNum in 20..2000
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(ah, { v -> ah = v.filter { it.isDigit() }.take(4) }, label = { Text("Battery size") },
+                        suffix = { Text("Ah") }, singleLine = true, isError = ah.isNotEmpty() && !ahOk,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f))
+                    Button(onClick = { ahNum?.let(onBatteryAh) }, enabled = ahOk && ahNum != meta.batteryAh) { Text("Save") }
+                }
+                Text(when {
+                    ah.isNotEmpty() && !ahOk -> "20 to 2000 Ah"
+                    (ahNum ?: 0) > 600 -> "Bigger than the BMPRO can handle (600 Ah), so the hub's own count is the one to trust."
+                    else -> "3 x 135 Ah lithium = 405 Ah"
+                }, style = MaterialTheme.typography.bodySmall, color = if (ah.isNotEmpty() && !ahOk) Accent.warn else Accent.muted)
+                Spacer(Modifier.height(8.dp))
+                if (!confirmFull) {
+                    OutlinedButton(onClick = { confirmFull = true }) { Text("Battery is full: set to 100%") }
+                } else {
+                    Text("Only do this when the battery really is full.", color = Accent.warn, style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onBatteryFull(); confirmFull = false }) { Text("Set to 100%") }
+                        OutlinedButton(onClick = { confirmFull = false }) { Text("Cancel") }
+                    }
+                }
+            }
         }
 
         SectionCard("Touchscreen", Accent.climate) {
