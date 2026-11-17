@@ -68,29 +68,25 @@ fun Modifier.caravanBackground(
         }
     }
 
-/** Black chequer (diamond) plate, like the van's lower skirt and the touchscreen's nav rail. */
-fun Modifier.treadPlate(cellDp: Float = 18f): Modifier = this
-    .background(Surfaces.plate)
+private val treadLayers: List<Pair<androidx.compose.ui.graphics.Color, Path>> by lazy {
+    TREAD_LAYERS.map { (c, d) -> androidx.compose.ui.graphics.Color(c) to parse(d) }
+}
+
+/** Black chequer (diamond) plate, like the van's skirt and the touchscreen's nav rail
+ *  (tools/theme/tread.py: raised lozenges lit from the top left). */
+fun Modifier.treadPlate(cellDp: Float = 15f): Modifier = this
+    .background(androidx.compose.ui.graphics.Color(TREAD_BASE))
     .drawWithCache {
         val cell = cellDp * density
-        val u = cell / 24f
-        val w = 3f * u
-        val lozenges = listOf(
-            Offset(3f, 9f) to Offset(9f, 3f), Offset(15f, 21f) to Offset(21f, 15f),
-            Offset(15f, 3f) to Offset(21f, 9f), Offset(3f, 15f) to Offset(9f, 21f),
-        )
+        val k = cell / TREAD_CELL
         onDrawBehind {
             clipRect {
                 var y = 0f
                 while (y < size.height) {
                     var x = 0f
                     while (x < size.width) {
-                        translate(x, y) {
-                            for ((a, b) in lozenges) {
-                                val o = -0.6f * u
-                                drawLine(Surfaces.ridgeLight, Offset(a.x * u + o, a.y * u + o), Offset(b.x * u + o, b.y * u + o), w, StrokeCap.Round)
-                                drawLine(Surfaces.ridge, Offset(a.x * u, a.y * u), Offset(b.x * u, b.y * u), w, StrokeCap.Round)
-                            }
+                        withTransform({ translate(x, y); scale(k, k, Offset.Zero) }) {
+                            for ((c, p) in treadLayers) drawPath(p, c)
                         }
                         x += cell
                     }
