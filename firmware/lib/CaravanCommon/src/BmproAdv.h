@@ -4,7 +4,8 @@
 // Service data after the UUID, 18 bytes, first byte = frame type:
 //   0x00  identity  : 01 07 00 41 20 41 24 40 30 36 00 29 | uptime s (u32 LE)
 //   0x01  battery   : volts mV (u16 LE) | current mA (i32 LE, - = discharging)
-//                     | remaining mAh (u32 LE) | b11 b12 (unknown: 1b 18) | uptime s (u32 LE)
+//                     | a mAh counter (u32 LE; moves with charge, but read 78 Ah on a full
+//                       405 Ah bank, so not "Ah left") | b11 b12 (unknown: 1b 18) | uptime s
 //   0x04  outputs   : b1-2 (0000/ffff, unknown) | ... | b14-15 load current mA (u16 LE)
 //                     | b16-17 unknown (u16 LE)
 // Confirmed against deliberate load switching (-26 A / 23.7 A, Ah falling by

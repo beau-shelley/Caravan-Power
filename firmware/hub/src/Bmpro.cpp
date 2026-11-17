@@ -4,6 +4,7 @@
 
 #include "Ble.h"
 #include "BmproAdv.h"
+#include "SocEstimator.h"
 
 namespace hub {
 
@@ -71,6 +72,11 @@ void applyDecoded(const BmproData &in);
 // (Beau's van: -55..-70; the neighbour's: -90s), so a neighbour is ignored.
 char gAdvAddr[18] = {};
 float gCapacityAh = 0;
+// % from the broadcast volts + amps (coulomb counting, synced to 100 % when
+// the charger tapers off at full voltage), like the wired shunt.
+cv::SocEstimator gSoc;
+bool gSocStarted = false;
+uint32_t gSocFedMs = 0;
 
 void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
   cv::BmproAdvert b;
@@ -87,8 +93,8 @@ void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
     out.batValid = true;
     out.batV = b.batV;
     out.batA = b.batA;
-    out.remainAh = b.remainAh;
-    out.batSoc = gCapacityAh > 0 ? min(100.0f, b.remainAh / gCapacityAh * 100.0f) : 0;
+    out.remainAh = b.remainAh;  // logged only: doesn't match the 405 Ah bank, meaning unknown
+    out.batSoc = -1;            // worked out in loop() from volts + amps
   }
   if (b.hasLoad) {
     out.loadValid = true;
@@ -299,12 +305,23 @@ void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
   if (useBattery) {
     bool fresh = gData.batValid && now - gBatMs < STALE_MS;
     s.bat.online = fresh;
+    if (fresh && gData.batSoc < 0 && gBatMs != gSocFedMs) {
+      if (!gSocStarted || gSoc.config().capacityAh != gCapacityAh) {
+        cv::SocEstimator::Config c;
+        c.capacityAh = gCapacityAh > 0 ? gCapacityAh : 300;
+        gSoc.begin(c, gSocStarted ? gSoc.soc()
+                                  : cv::SocEstimator::socFromRestVoltageLfp(gData.batV));
+        gSocStarted = true;
+      }
+      gSoc.update(gData.batV, gData.batA, gBatMs);
+      gSocFedMs = gBatMs;
+    }
     if (fresh) {
       s.bat.source = cv::BAT_SRC_BMPRO;
       s.bat.v = gData.batV;
       s.bat.a = gData.batA;
-      s.bat.soc = gData.batSoc;
-      s.bat.ttgMin = gData.batTtgMin;
+      s.bat.soc = gData.batSoc >= 0 ? gData.batSoc : gSoc.soc();
+      s.bat.ttgMin = gData.batSoc >= 0 ? gData.batTtgMin : gSoc.timeToGoMin(gData.batA);
       if (gData.chargerValid && now - gChgMs < STALE_MS) s.bat.chargerA = gData.chargerA;
       s.bat.chargeA = s.bat.solarA + s.bat.chargerA;
       s.bat.loadA = max(0.0f, s.bat.chargeA - s.bat.a);

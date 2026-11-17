@@ -142,7 +142,7 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
     if (cv::bmproParseAdvert(raw, rawLen, b)) {
       if (b.hasBattery && (!lastBat || now - lastBat >= 10000)) {
         lastBat = now;
-        Serial.printf("[bmpro] %s battery %.2f V %+.2f A, %.1f Ah left (b11=%u b12=%u), rssi %d\n",
+        Serial.printf("[bmpro] %s battery %.2f V %+.2f A, counter %.3f Ah (b11=%u b12=%u), rssi %d\n",
                       d->getAddress().toString().c_str(), b.batV, b.batA, b.remainAh, b.b11, b.b12, rssi);
       } else if (b.hasLoad && (!lastOut || now - lastOut >= 10000)) {
         lastOut = now;
