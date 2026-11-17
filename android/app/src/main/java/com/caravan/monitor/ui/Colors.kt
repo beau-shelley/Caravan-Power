@@ -5,8 +5,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import com.caravan.monitor.Severity
 
-// Caravan theme, matched to the decals on the van: dark camo background with the
-// van's X outlined in white, solid gunmetal-grey cards (the van body) with white
+// Caravan theme, matched to the decals on the van: plain dark background with the
+// van's X (subtle camo fill, white outline, green pinstripes), solid gunmetal-grey cards (the van body) with white
 // text, and the decals' white and green as highlights. Same colours as the
 // touchscreen (ui.h col::) and the web page.
 object Accent {
@@ -28,8 +28,8 @@ object Accent {
 
 /** Background and card colours. */
 object Surfaces {
-    val background = Color(0xFF121316)  // camo base
-    val camo = listOf(Color(0xFF121316), Color(0xFF24262A), Color(0xFF36393D), Color(0xFF5B5F64))  // base, dark, mid, light
+    val background = Color(0xFF111214)
+    val camo = listOf(Color(0xFF16181B), Color(0xFF1C1F22), Color(0xFF24272A), Color(0xFF2E3135))  // subtle: base, dark, mid, light
     val plate = Color(0xFF0B0C0D)       // chequer plate base (bottom bar)
     val ridge = Color(0xFF1B1D1F)       // chequer plate ridges
     val ridgeLight = Color(0xFF2A2D30)

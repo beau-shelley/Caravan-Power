@@ -3,9 +3,10 @@ import camo, xglyph
 
 # Colours sampled from Beau's close-ups, darkened where the screen needs it.
 BODY = "#2b2e32"          # van body (gunmetal), darkened for a dark screen
-CAMO = ["#121316", "#24262a", "#36393d", "#5b5f64"]  # base, dark, mid, light
+CAMO = ["#16181b", "#1c1f22", "#24272a", "#2e3135"]  # base, dark, mid, light: kept subtle
+PLAIN = "#111214"         # plain background around the X
 LIME = "#dceb4b"          # the lime on the decals ("RV", pinstripes)
-GREEN = "#90d130"         # the green dot in the logo
+GREEN = "#9be03a"         # highlight green (the decals), as on the screens
 
 
 def camo_pattern(pid="camo", scale=1.0):
@@ -22,13 +23,15 @@ def camo_pattern(pid="camo", scale=1.0):
 WHITE = "#f2f3f1"
 
 
-def svg(w, h, x0, y0, s, camo_scale=1.0, lines=True):
-    """Whole background: camo everywhere, the van's X outlined in white with
-    green pinstripes on top, glyph placed at (x0, y0) with scale s."""
+def svg(w, h, x0, y0, s, camo_scale=1.0, lines=True, strip=0):
+    """Plain dark background; the van's X filled with subtle camo, outlined in
+    white, with green pinstripes. strip > 0 also puts camo behind a header strip."""
     g = f'<g transform="translate({x0} {y0}) scale({s})">'
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
-            f'<defs>{camo_pattern(scale=camo_scale)}</defs>'
-            f'<rect width="{w}" height="{h}" fill="url(#camo)"/>'
-            f'{g}<path fill="none" stroke="{WHITE}" stroke-opacity=".85" stroke-width="{6 / s:.1f}" d="{xglyph.pieces_d()}"/></g>'
+            f'<defs>{camo_pattern(scale=camo_scale)}{camo_pattern("camoX", camo_scale / s)}</defs>'
+            f'<rect width="{w}" height="{h}" fill="{PLAIN}"/>'
+            + (f'<rect width="{w}" height="{strip}" fill="url(#camo)"/>' if strip else "")
+            + f'<path fill="url(#camoX)" transform="translate({x0} {y0}) scale({s})" d="{xglyph.pieces_d()}"/>'
+            f'{g}<path fill="none" stroke="{WHITE}" stroke-opacity=".8" stroke-width="{4 / s:.1f}" d="{xglyph.pieces_d()}"/></g>'
             + (f'{g}<path fill="none" stroke="{GREEN}" stroke-width="{xglyph.LINE_W}" stroke-linejoin="miter" d="{xglyph.lines_d()}"/></g>' if lines else "")
             + "</svg>")

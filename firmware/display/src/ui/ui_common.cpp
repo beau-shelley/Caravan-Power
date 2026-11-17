@@ -442,9 +442,7 @@ static void buildShell() {
 
   // Status bar
   lv_obj_t *bar = panel(scr, RAIL_W, 0, PAGE_W, BAR_H);
-  // Dark strip so the title and icons stay readable over the camo.
-  lv_obj_set_style_bg_color(bar, c(col::RAIL), 0);
-  lv_obj_set_style_bg_opa(bar, LV_OPA_80, 0);
+  // Header strip: subtle camo (baked into tex_bg) with a green line under it.
   lv_obj_set_style_border_side(bar, LV_BORDER_SIDE_BOTTOM, 0);
   lv_obj_set_style_border_color(bar, lv_color_mix(c(col::ACCENT), c(col::RAIL), 150), 0);
   lv_obj_set_style_border_width(bar, 2, 0);

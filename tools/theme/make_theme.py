@@ -29,7 +29,7 @@ OUT = os.path.join(HERE, "out")
 
 # Where the X sits on the 1024x600 touchscreen (glyph units -> px).
 DISP_W, DISP_H = 1024, 600
-DISP_X0, DISP_Y0, DISP_S, DISP_CAMO = 70, -10, 0.47, 0.75
+DISP_X0, DISP_Y0, DISP_S, DISP_CAMO = 110, 54, 0.42, 0.75
 
 
 def rgb(h):
@@ -98,7 +98,7 @@ def main():
     svg_path = os.path.join(OUT, "bg-display.svg")
     png_path = os.path.join(OUT, "bg-display.png")
     with open(svg_path, "w") as f:
-        f.write(bg.svg(DISP_W, DISP_H, DISP_X0, DISP_Y0, DISP_S, DISP_CAMO))
+        f.write(bg.svg(DISP_W, DISP_H, DISP_X0, DISP_Y0, DISP_S, DISP_CAMO, strip=52))
     subprocess.run(["node", os.path.join(HERE, "render.js"), svg_path, png_path, str(DISP_W), str(DISP_H)], check=True)
     bgimg = Image.open(png_path).convert("RGB")
     tread = raster_tread()

@@ -78,12 +78,13 @@ int sleepSeconds();
 bool isExtraIcon(const char *sym);
 
 namespace col {
-// Caravan theme, matched to the decals on the van: dark camo background with
-// the van's X outlined in white, solid gunmetal-grey tiles (the van body) with
-// white text, and the decals' white and green as highlights. Status colours keep
+// Caravan theme, matched to the decals on the van: plain dark background with
+// the van's X (subtle camo fill, white outline, green pinstripes), a subtle camo
+// header strip, solid gunmetal-grey tiles (the van body) with white text, and
+// the decals' white and green as highlights. Status colours keep
 // their meanings: amber warning, red alarm, fuchsia critical, blue cold/water.
 // Same values in web/index.html (:root) and the app's Colors.kt.
-constexpr uint32_t BG = 0x121316, RAIL = 0x0B0C0D, CARD = 0x4E5257, BORDER = 0x6A6F75;
+constexpr uint32_t BG = 0x111214, RAIL = 0x0B0C0D, CARD = 0x4E5257, BORDER = 0x6A6F75;
 constexpr uint32_t TEXT = 0xFFFFFF, MUTED = 0xD3D6D9, DIM = 0x9A9FA4;
 constexpr uint32_t SOLAR = 0xFFD93B, CHARGE = 0x9BE03A, LOAD = 0xFF8A8A, WATER = 0x5CCBFF;
 constexpr uint32_t CLIMATE = 0xC4B0FF, ACCENT = 0x9BE03A, WARN = 0xFFB020, ALARM = 0xFF6B6B;
