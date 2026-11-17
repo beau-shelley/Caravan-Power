@@ -1003,6 +1003,9 @@ static void testBmproAdv() {
   CHECK(t.kind == BLE_BMPRO && !strcmp(t.label, "bmpro-battery"));
   bleClassify(out.data(), out.size(), t);
   CHECK(!strcmp(t.label, "bmpro-outputs"));
+  // A neighbour's different BMPRO model: longer 0x04 frame, not decoded.
+  auto other = unhex("02010603030efe17160efe04050400412041252030360067cf279f02004b35");
+  CHECK(bmproParseAdvert(other.data(), other.size(), a) && a.frame == 4 && !a.hasLoad && !a.hasBattery);
   // Not BMPRO: the heater's advert.
   auto htr = unhex("0201060502e0ffe7fe0bffe02e88a069961c040bf0");
   CHECK(!bmproParseAdvert(htr.data(), htr.size(), a));

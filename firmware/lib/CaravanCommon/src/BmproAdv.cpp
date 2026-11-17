@@ -15,7 +15,7 @@ bool bmproParseServiceData(const uint8_t *d, size_t len, BmproAdvert &out) {
   out.data = d;
   out.len = len;
   out.frame = d[0];
-  if (out.frame == 0x01 && len >= 17) {
+  if (out.frame == 0x01 && len == 18) {
     out.batV = u16(d + 1) / 1000.0f;
     out.batA = (int32_t)u32(d + 3) / 1000.0f;
     out.remainAh = u32(d + 7) / 1000.0f;
@@ -24,12 +24,12 @@ bool bmproParseServiceData(const uint8_t *d, size_t len, BmproAdvert &out) {
     out.uptimeS = u32(d + 13);
     // Plausibility: a 12/24 V house battery and a sane shunt reading.
     out.hasBattery = out.batV > 8 && out.batV < 32 && out.batA > -1000 && out.batA < 1000;
-  } else if (out.frame == 0x04 && len >= 18) {
+  } else if (out.frame == 0x04 && len == 18) {  // other BMPRO models send longer frames
     out.outFlags = u16(d + 1);
     out.loadA = u16(d + 14) / 1000.0f;
     out.outExtra = u16(d + 16);
     out.hasLoad = true;
-  } else if (out.frame == 0x00 && len >= 17) {
+  } else if (out.frame == 0x00 && len == 18) {
     out.uptimeS = u32(d + 13);
   }
   return true;
