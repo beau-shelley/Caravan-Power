@@ -46,14 +46,13 @@ fun AppScaffold(
         selectedIconColor = Surfaces.onLime, indicatorColor = Accent.lime,
         selectedTextColor = Accent.lime, unselectedIconColor = Accent.muted, unselectedTextColor = Accent.muted,
     )
-    Scaffold(
+    ScaleToScreen { Scaffold(
         modifier = Modifier.caravanBackground(),
         containerColor = Color.Transparent,
         contentColor = Surfaces.text,  // not derived from a transparent container
         snackbarHost = snackbarHost,
         bottomBar = {
-            // Black chequer plate with a thin lime pinstripe on top, like the van. The
-            // plate stops above the phone's own home/back buttons, which sit on plain dark.
+            // Plain dark bar with a thin lime pinstripe on top, like the van.
             Column(Modifier.background(Surfaces.plate)) {
                 Box(Modifier.fillMaxWidth().height(2.dp).background(Accent.lime.copy(alpha = 0.6f)))
             NavigationBar(containerColor = Color.Transparent, windowInsets = WindowInsets(0, 0, 0, 0)) {
@@ -75,5 +74,5 @@ fun AppScaffold(
         },
     ) { pad ->
         Box(Modifier.padding(pad)) { content() }
-    }
+    } }
 }

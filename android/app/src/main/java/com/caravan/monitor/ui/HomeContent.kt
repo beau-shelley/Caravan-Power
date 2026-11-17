@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -79,9 +80,12 @@ fun HomeContent(
     onSecure: (Boolean) -> Unit = {},
     onArm: () -> Unit = {},
 ) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    // Fills the screen on any phone: the main cards grow to use spare height, and it scrolls if it doesn't fit.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val fill = maxHeight - 20.dp
+    FillColumn(
+        fill,
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         ConnectionStrip(status, onOpenSetup)
         UpdateBanner(update, onUpdate)
@@ -89,7 +93,7 @@ fun HomeContent(
         if (s == null) {
             Text("Caravan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("Waiting for the hub…", color = Accent.muted)
-            return@Column
+            return@FillColumn
         }
 
         // Only shown while something needs attention; acknowledged alerts stay on the Alerts tab.
@@ -109,13 +113,14 @@ fun HomeContent(
         }
 
         SecureCard(s.sec, onSecure, onArm)
-        BatteryCard(s)
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        BatteryCard(s, Modifier.grow())
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).grow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SolarCard(s, meta, Modifier.weight(1f).fillMaxHeight())
             TanksCard(s, meta, Modifier.weight(1f).fillMaxHeight())
         }
-        TempsCard(s, meta)
-        GasAndPumpsCard(s, meta, onPump)
+        TempsCard(s, meta, Modifier.grow())
+        GasAndPumpsCard(s, meta, onPump, Modifier.grow())
+    }
     }
 }
 
@@ -219,9 +224,9 @@ fun SlideToArm(enabled: Boolean, onArm: () -> Unit, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun BatteryCard(s: HubState) {
+private fun BatteryCard(s: HubState, modifier: Modifier = Modifier) {
     val b = s.bat
-    SectionCard("Battery", Accent.battery, compact = true) {
+    SectionCard("Battery", Accent.battery, modifier, compact = true) {
         if (!b.on) { Text("Offline", color = Accent.muted); return@SectionCard }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("${b.soc.toInt()}%", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = socColor(b.soc))
@@ -278,9 +283,9 @@ private fun TanksCard(s: HubState, meta: Meta, modifier: Modifier) {
 }
 
 @Composable
-private fun TempsCard(s: HubState, meta: Meta) {
+private fun TempsCard(s: HubState, meta: Meta, modifier: Modifier = Modifier) {
     // Called Weather: the temperatures plus today's wind, with the forecast's place by the heading.
-    SectionCard("Weather", Accent.climate, compact = true, trailing = if (s.wx.ok && s.wx.place.isNotBlank()) ({
+    SectionCard("Weather", Accent.climate, modifier, compact = true, trailing = if (s.wx.ok && s.wx.place.isNotBlank()) ({
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(CaravanIcons.LocationArrow, null, Modifier.size(12.dp), tint = Accent.muted)
             Spacer(Modifier.width(4.dp))
@@ -317,8 +322,8 @@ private fun MiniStat(label: String, value: String, modifier: Modifier, color: an
 
 /** Gas bottle gauge on the left, the two pumps stacked on the right (like the touchscreen). */
 @Composable
-private fun GasAndPumpsCard(s: HubState, meta: Meta, onPump: (Int, Boolean) -> Unit) {
-    SectionCard("Gas & pumps", Accent.gas, compact = true) {
+private fun GasAndPumpsCard(s: HubState, meta: Meta, onPump: (Int, Boolean) -> Unit, modifier: Modifier = Modifier) {
+    SectionCard("Gas & pumps", Accent.gas, modifier, compact = true) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.width(118.dp), verticalAlignment = Alignment.CenterVertically) {
                 GasBottle(if (s.gas.on) s.gas.pct else null, Modifier.size(width = 40.dp, height = 62.dp))

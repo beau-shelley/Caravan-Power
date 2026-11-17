@@ -161,8 +161,8 @@ fun Theme(content: @Composable () -> Unit) {
 const val WIDTH_DP = 412   // a typical Android phone (e.g. Pixel / Galaxy S) in dp
 const val SCALE = 2.5f
 
-fun shot(name: String, heightDp: Int, content: @Composable () -> Unit) {
-    val scene = ImageComposeScene((WIDTH_DP * SCALE).toInt(), (heightDp * SCALE).toInt(), Density(SCALE)) {
+fun shot(name: String, heightDp: Int, widthDp: Int = WIDTH_DP, content: @Composable () -> Unit) {
+    val scene = ImageComposeScene((widthDp * SCALE).toInt(), (heightDp * SCALE).toInt(), Density(SCALE)) {
         Theme { Box(Modifier.fillMaxSize().caravanBackground()) { content() } }
     }
     // Two frames so layout-dependent things (lazy lists) settle.
@@ -180,6 +180,16 @@ fun main() {
         AppScaffold(0, {}, 0) {
             HomeContent(CHARGING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop)
         }
+    }
+    // Same Home on a small phone and a big one: the layout scales and fills the screen.
+    shot("14-home-small-phone", 640, 360) {
+        AppScaffold(0, {}, 0) { HomeContent(CHARGING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
+    }
+    shot("15-home-tall-phone", 1000, 412) {
+        AppScaffold(0, {}, 0) { HomeContent(CHARGING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
+    }
+    shot("16-home-big-phone", 1000, 480) {
+        AppScaffold(0, {}, 0) { HomeContent(CHARGING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
     }
     shot("2-home-alerts", 840) {
         AppScaffold(0, {}, 2) {
