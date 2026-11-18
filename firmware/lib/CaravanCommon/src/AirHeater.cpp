@@ -46,7 +46,9 @@ bool decode(const uint8_t *d, size_t len, Heater &h) {
     case 2: h.phase = HTR_STARTING; break;
     case 3: h.phase = HTR_RUNNING; break;
     case 4: h.phase = HTR_COOLING; break;
-    default: h.phase = running ? HTR_STARTING : HTR_OFF; break;
+    // Beau's heater always sends step 0; byte 6 (0x64 while burning) tells
+    // lighting from running, and cooling down (fan on) from fully off.
+    default: h.phase = running ? (d[6] ? HTR_RUNNING : HTR_STARTING) : (d[6] ? HTR_COOLING : HTR_OFF); break;
   }
   if (mode == WIRE_LEVEL) {
     h.mode = HTR_MODE_LEVEL;
