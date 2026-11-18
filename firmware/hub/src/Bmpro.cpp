@@ -30,6 +30,10 @@ int gSeenCount = 0;
 
 NimBLEClient *gClient = nullptr;
 char gTargetAddr[18] = {};
+// The OdysseyLink uses a random (static) Bluetooth address: connecting to it
+// as a public address times out (status 13). Take the type from its adverts;
+// random is the right guess for BMPRO gear until one is heard.
+volatile uint8_t gTargetType = BLE_ADDR_RANDOM;
 volatile bool gRetargeted = false;
 volatile bool gDecodedAny = false;
 
@@ -88,6 +92,7 @@ void autoTarget(NimBLEAdvertisedDevice *d, const std::string &addr) {
   if (!d->isAdvertisingService(NimBLEUUID((uint16_t)cv::BMPRO_SVC_UUID))) return;
   strncpy(gTargetAddr, addr.c_str(), 17);
   gTargetAddr[17] = 0;
+  gTargetType = d->getAddress().getType();
   logLine(String("found the OdysseyLink at ") + gTargetAddr + " (rssi " + d->getRSSI() + ") - connecting");
 }
 
@@ -139,6 +144,7 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
       gSeen[slot].lastMs = millis();
     }
     xSemaphoreGive(gMux);
+    if (addr == gTargetAddr) gTargetType = d->getAddress().getType();
     onBmproBroadcast(d, addr);
     // Wireless BMPRO sensors may broadcast their readings in adverts, so log
     // manufacturer + service data of anything BMPRO-looking in full.
@@ -295,6 +301,7 @@ NimBLERemoteCharacteristic *findChar(const char *uuid) {
 
 void bleTask(void *) {
   uint32_t nextTry = 0;
+  uint32_t failures = 0;
   for (;;) {
     if (gRetargeted && gClient && gClient->isConnected()) gClient->disconnect();
     gRetargeted = false;
@@ -303,18 +310,22 @@ void bleTask(void *) {
     // centrals at once, so the phone app keeps working alongside us).
     bool up = gClient && gClient->isConnected();
     if (!up && gTargetAddr[0] && (int32_t)(millis() - nextTry) >= 0) {
-      nextTry = millis() + 10000;
+      // 10 s between tries, backing off to 60 s if it keeps failing.
+      nextTry = millis() + (failures < 3 ? 10000 : 60000);
       if (!gClient) {
         gClient = NimBLEDevice::createClient();
         gClient->setConnectTimeout(8);
       }
-      logLine(String("connecting to ") + gTargetAddr);
+      uint8_t type = gTargetType;
+      logLine(String("connecting to ") + gTargetAddr + (type == BLE_ADDR_PUBLIC ? " (public)" : " (random)"));
       ble::pauseScan();
-      if (gClient->connect(NimBLEAddress(std::string(gTargetAddr)))) {
+      if (gClient->connect(NimBLEAddress(std::string(gTargetAddr), type))) {
+        failures = 0;
         logLine("connected");
         dumpAndSubscribe();
       } else {
-        logLine("connect failed - retrying in 10 s");
+        failures++;
+        logLine(String("connect failed - retrying in ") + (failures < 3 ? 10 : 60) + " s");
       }
       ble::resumeScan();
     }
