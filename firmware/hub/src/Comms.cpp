@@ -50,13 +50,29 @@ Net gNet;
 SemaphoreHandle_t gStateMux = nullptr;  // created in setup()
 
 // ================================================================ Net
+// Up to two Wi-Fi networks (e.g. home + phone hotspot). Define WIFI_SSID2 /
+// WIFI_PASS2 in secrets.h for the second; the hub switches between them
+// every 30 s until one connects.
+#ifdef WIFI_SSID2
+static const char *const kSsid[] = {WIFI_SSID, WIFI_SSID2};
+static const char *const kPass[] = {WIFI_PASS, WIFI_PASS2};
+#else
+static const char *const kSsid[] = {WIFI_SSID};
+static const char *const kPass[] = {WIFI_PASS};
+#endif
+static int gNetIdx = 0;
+static void joinNet(int idx) {
+  gNetIdx = idx % (int)(sizeof(kSsid) / sizeof(kSsid[0]));
+  WiFi.begin(kSsid[gNetIdx], kPass[gNetIdx]);
+  Serial.printf("[net] connecting to '%s'\n", kSsid[gNetIdx]);
+}
+
 void Net::begin() {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(HOSTNAME);
   WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  joinNet(0);
   configTzTime(TZ_INFO, "pool.ntp.org", "time.google.com");
-  Serial.printf("[net] connecting to '%s'\n", WIFI_SSID);
 }
 
 bool Net::timeValid() const { return time(nullptr) > 1700000000; }
@@ -86,7 +102,7 @@ void Net::watchdog() {
       lastPingOkMs_ = now;
       WiFi.disconnect(false);
       delay(200);
-      WiFi.begin(WIFI_SSID, WIFI_PASS);
+      joinNet(gNetIdx);
     } else {
       Serial.println("[net] network still jammed after rejoining - restarting");
       delay(100);
@@ -154,7 +170,12 @@ void Net::loop(cv::State &s) {
   }
   if (!up && millis() - lastTry > 30000) {  // belt and braces
     lastTry = millis();
-    WiFi.reconnect();
+    if (sizeof(kSsid) / sizeof(kSsid[0]) > 1) {
+      WiFi.disconnect(false);
+      joinNet(gNetIdx + 1);  // try the other network
+    } else {
+      WiFi.reconnect();
+    }
   }
   was = up;
   s.wifi = up;
