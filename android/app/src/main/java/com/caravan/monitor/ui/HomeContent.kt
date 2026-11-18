@@ -306,6 +306,18 @@ private fun TempsCard(s: HubState, meta: Meta, modifier: Modifier = Modifier) {
                 }
             }
         }
+        // Heater set point, only while the heater runs (like the touchscreen).
+        val h = s.htr
+        if (h != null && h.hasStatus && h.running) {
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).background(Accent.heat, RoundedCornerShape(50)))
+                Spacer(Modifier.width(8.dp))
+                Text(if (h.mode == 1) "Heater level" else "Heater set", Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium, color = Accent.muted)
+                Text(if (h.mode == 1) "${h.level}" else "${h.setC}°", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold, color = if (h.mode == 1) Surfaces.text else tempColor(0, h.setC.toDouble()))
+            }
+        }
         // Today's forecast, folded in to save a card.
         if (s.wx.ok) Hint("Wind ${s.wx.windKmh.toInt()} km/h, gusts ${s.wx.gustKmh.toInt()} km/h")
     }

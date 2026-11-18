@@ -221,6 +221,9 @@ fun main() {
     val cold = ALERTING.copy(alerts = emptyList(),
         tmp = listOf(Temp(true, 18.6, 12.4, 21.0, 80), Temp(true, 7.8, 6.1, 19.5, 75), Temp(true, 3.4, 2.8, 4.6, 90)),
         htr = Heater(link = 1, online = true, phase = 2, mode = 0, setC = 22, level = 6, cabinC = 18.6, bodyC = 142.0, supplyV = 12.9))
+    shot("17-home-heater-running", 915) {
+        AppScaffold(0, {}, 0) { HomeContent(cold, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
+    }
     shot("7-climate-heater", 840) {
         AppScaffold(3, {}, 0) { ClimateContent(cold, META, CONNECTED, { _, _ -> }, nop) }
     }
