@@ -110,11 +110,10 @@ void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
     out.remainAh = b.remainAh;  // logged only: doesn't match the 405 Ah bank, meaning unknown
     out.batSoc = -1;            // worked out in loop() from volts + amps
   }
-  if (b.hasInput) {  // loop() works out loads = input - battery current
-    out.chargerValid = true;
-    out.chargerA = b.inputA;
-  }
-  if (out.batValid || out.chargerValid) applyDecoded(out);
+  // Not used: frame 0x04 bytes 16-17 matched the solar figure once, but read
+  // 61 A at night with no charging (2026-11-18), so its meaning is unknown.
+  // Solar comes from the connection (param 40.64) instead.
+  if (out.batValid) applyDecoded(out);
 }
 
 bool looksBmpro(const std::string &name) {

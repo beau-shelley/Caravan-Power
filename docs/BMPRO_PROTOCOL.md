@@ -11,7 +11,7 @@ Device `f8:f0:05:fe:4b:35`, service data UUID `0xFE0E`, 18 bytes:
 | Frame | Contents |
 |---|---|
 | `0x01` battery | mV (u16 LE @1), mA (i32 LE @3, negative = discharging), a mAh counter (u32 LE @7; not "Ah left"), `1b 18`, uptime s (@13) |
-| `0x04` charging | bytes 16-17 = solar/charger input, 0.1 A (matched the app's Solar 12.2 A); bytes 14-15 followed the battery current's size |
+| `0x04` | bytes 16-17 matched the app's Solar 12.2 A once, but read 61.1 at night with no charging, so the meaning is unknown and it is not used; bytes 14-15 followed the battery current's size |
 | `0x00` identity | constant bytes + uptime |
 
 A neighbour's BMPRO (different model) sends 20-byte frames, which are ignored.

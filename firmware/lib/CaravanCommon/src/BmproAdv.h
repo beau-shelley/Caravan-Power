@@ -8,8 +8,8 @@
 //                       405 Ah bank, so not "Ah left") | b11 b12 (unknown: 1b 18) | uptime s
 //   0x04  charging  : b1-2 (0000/ffff, unknown) | ... | b14-15 mA (u16 LE): tracked
 //                     the battery current's size, not the app's "Loads"
-//                     | b16-17 input (solar/charger) current, 0.1 A (u16 LE):
-//                     10.5-13.5 A while the app showed Solar 12.2 A
+//                     | b16-17 (u16 LE): 10.5-13.5 while the app showed Solar
+//                     12.2 A, but 61.1 at night with no charging - NOT solar.
 // Battery confirmed against deliberate load switching (-26 A) and the Trek 3 /
 // app (13.7 V). App "Loads" = input + battery discharge (12.2 + 2.9 = 15.0).
 // Portable (no Arduino deps) so it is unit tested on the host.
