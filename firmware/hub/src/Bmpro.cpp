@@ -5,7 +5,6 @@
 #include "Ble.h"
 #include "BmproAdv.h"
 #include "BmproLink.h"
-#include "SocEstimator.h"
 
 namespace hub {
 
@@ -84,12 +83,8 @@ void applyDecoded(const BmproData &in);
 // The hub locks onto the first battery broadcaster heard closer than -80 dBm
 // (Beau's van: -55..-70; the neighbour's: -90s), so a neighbour is ignored.
 char gAdvAddr[18] = {};
-float gCapacityAh = 0;
-// % from the broadcast volts + amps (coulomb counting, synced to 100 % when
-// the charger tapers off at full voltage), like the wired shunt.
-cv::SocEstimator gSoc;
-bool gSocStarted = false;
-uint32_t gSocFedMs = 0;
+// Last battery sample handed to the hub's own % counter (takeBattery()).
+uint32_t gBatTakenMs = 0;
 
 // No OdysseyLink address set up yet: pick it out by its advert (service
 // 0xFE0E listed, no service data - the broadcaster carries the data) when it
@@ -365,7 +360,19 @@ void Bmpro::begin(const char *addr, bool verbose) {
   logLine(String("BLE started, target '") + gTargetAddr + "'");
 }
 
-void Bmpro::setCapacityAh(float ah) { gCapacityAh = ah; }
+bool Bmpro::takeBattery(float &v, float &a, uint32_t &ms, float &bmproSoc) {
+  xSemaphoreTake(gMux, portMAX_DELAY);
+  bool fresh = gData.batValid && gBatMs != gBatTakenMs && millis() - gBatMs < 30000;
+  if (fresh) {
+    v = gData.batV;
+    a = gData.batA;
+    ms = gBatMs;
+    bmproSoc = gData.batSoc;
+    gBatTakenMs = gBatMs;
+  }
+  xSemaphoreGive(gMux);
+  return fresh;
+}
 
 void Bmpro::connect(const char *addr) {
   strncpy(gTargetAddr, addr, 17);
@@ -390,23 +397,12 @@ void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
   if (useBattery) {
     bool fresh = gData.batValid && now - gBatMs < STALE_MS;
     s.bat.online = fresh;
-    if (fresh && gData.batSoc < 0 && gBatMs != gSocFedMs) {
-      if (!gSocStarted || gSoc.config().capacityAh != gCapacityAh) {
-        cv::SocEstimator::Config c;
-        c.capacityAh = gCapacityAh > 0 ? gCapacityAh : 300;
-        gSoc.begin(c, gSocStarted ? gSoc.soc()
-                                  : cv::SocEstimator::socFromRestVoltageLfp(gData.batV));
-        gSocStarted = true;
-      }
-      gSoc.update(gData.batV, gData.batA, gBatMs);
-      gSocFedMs = gBatMs;
-    }
+    // % and time left come from the hub's own counter (BatteryShunt::feed,
+    // fed by takeBattery()), not the BMPRO: its % tops out at a 600 Ah bank.
     if (fresh) {
       s.bat.source = cv::BAT_SRC_BMPRO;
       s.bat.v = gData.batV;
       s.bat.a = gData.batA;
-      s.bat.soc = gData.batSoc >= 0 ? gData.batSoc : gSoc.soc();
-      s.bat.ttgMin = gData.batSoc >= 0 ? gData.batTtgMin : gSoc.timeToGoMin(gData.batA);
       if (gData.chargerValid && now - gChgMs < STALE_MS) s.bat.chargerA = gData.chargerA;
       s.bat.chargeA = s.bat.solarA + s.bat.chargerA;
       s.bat.loadA = max(0.0f, s.bat.chargeA - s.bat.a);

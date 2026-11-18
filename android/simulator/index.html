@@ -313,7 +313,6 @@ const f1 = (v) => v.toFixed(1), f2 = (v) => v.toFixed(2), deg = (v) => String(Ma
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // ======================================================== simulated caravan
-const CAP = 300; // Ah
 const S = {
   min: 12 * 60, speed: 60, paused: false,
   mains: true, fridgeOpen: false, bigLoad: false, conn: true,
@@ -322,7 +321,7 @@ const S = {
   tank: [80, 45, 30], pump: [true, false], lock: [false, false], pumpRun: [42, 0],
   gas: 63, yieldKwh: [1.9, 2.4], peak: [538, 686],
   acA: 0, acOn: false, acSince: -1, bat: {}, sol: [0, 0],
-  rules: DEFAULT_RULES(), alerts: [], pend: {}, esc: {}, rc: true, sleep: 300,
+  rules: DEFAULT_RULES(), alerts: [], pend: {}, esc: {}, rc: true, sleep: 300, cap: 405,
   settings: { host: "", user: "admin", pass: "secret", bg: true, ntfyServer: "https://ntfy.sh", ntfyTopic: "caravan-alerts-8f3k2", ntfyToken: "" },
 };
 
@@ -350,11 +349,11 @@ function step(dtMin) {
   S.acA = bulk ? 117 + Math.random() * 3 : taper;
   S.acOn = bulk;
   const net = solarA + S.acA - load;
-  S.soc = Math.max(0, Math.min(100, S.soc + net * dtMin / 60 / CAP * 100));
+  S.soc = Math.max(0, Math.min(100, S.soc + net * dtMin / 60 / S.cap * 100));
   // LiFePO4-ish: flat in the middle, falling away below 20 %
   const v = 13.0 + (S.soc - 50) * 0.006 - (S.soc < 20 ? (20 - S.soc) * 0.04 : 0) + net * 0.002 + (bulk ? 0.5 : 0);
   S.bat = { v, a: net, soc: S.soc, solarA, chargerA: 0.4 + (S.mains ? 0 : 0), loadA: load,
-    ttg: Math.abs(net) < 0.3 ? -1 : net > 0 ? Math.round((100 - S.soc) / 100 * CAP / net * 60) : Math.round(S.soc / 100 * CAP / -net * 60) };
+    ttg: Math.abs(net) < 0.3 ? -1 : net > 0 ? Math.round((100 - S.soc) / 100 * S.cap / net * 60) : Math.round(S.soc / 100 * S.cap / -net * 60) };
   // tanks and pumps (a pump draws its own tank; dry-run lockout below 3 %)
   S.pump.forEach((on, i) => {
     if (!on) return;
@@ -550,6 +549,10 @@ function setupHTML() {
       <div class="hint">When the van has internet, the hub also sends alerts to an ntfy topic. Enter the same topic as NTFY_TOPIC in secrets.h and this app will pick them up anywhere. You don't need the ntfy app.</div>
       <div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">${tf("ntfyTopic", "ntfy topic", s.ntfyTopic)}${tf("ntfyServer", "ntfy server", s.ntfyServer)}${tf("ntfyToken", "Access token (optional)", s.ntfyToken, "password")}</div>
       <div class="btnrow"><button class="btn" data-act="saveNtfy">Save</button></div>`) +
+    card("Battery", "var(--battery)", `<div class="hint">The hub works out the battery % and time left itself, by counting the amps in and out against this size. (The BMPRO's own % stops at 600 Ah.) It resets to 100% each time the charger shows the bank is full.</div>` + (S.conn ? `
+      <div class="numrow" style="margin-top:14px">${tf("batCap", "Battery size (Ah)", String(S.cap), "number")}<button class="btn" data-act="saveCap">Save</button></div>
+      <div class="hint" style="margin-top:6px">${S.cap > 600 ? "Bigger than the BMPRO can handle (600 Ah), so the hub's own count is the one to trust." : "3 × 135 Ah lithium = 405 Ah"}</div>
+      <div class="btnrow" style="margin-top:10px"><button class="btn tonal" data-act="socFull">Battery is full: set to 100%</button></div>` : '<div style="color:var(--muted);margin-top:8px">Connect to the hub to change these.</div>')) +
     card("Touchscreen", "var(--climate)", S.conn ? `<div class="field"><span class="lab">Screen dims after</span>
       <select class="sel" id="sleep">${sleepOpts.map((v) => `<option value="${v}" ${v === S.sleep ? "selected" : ""}>${sl(v)}</option>`).join("")}</select></div>
       <div class="swrow" style="margin-top:14px"><span>Allow control from the internet</span><button class="switch ${S.rc ? "on" : ""}" data-act="rc" aria-label="Remote control"></button></div>
@@ -733,6 +736,12 @@ document.addEventListener("click", (ev) => {
     case "yesreset": S.rules = DEFAULT_RULES(); S.alerts = []; S.pend = {}; S.esc = {}; $("overlay").innerHTML = ""; logLine("Rules restored to defaults"); render(); snack("Default rules restored"); break;
     case "new": openEditor({ id: Math.max(0, ...S.rules.map((r) => r.id)) + 1, en: true, name: "", m: "bat_soc", cmp: "<", thr: 30, hys: 5, dly: 60, sev: 1, ntf: true, act: "none", lv: [] }); break;
     case "saveConn": snack("Saved. Reconnecting…"); break;
+    case "saveCap": {
+      const v = Math.round(+$("batCap").value);
+      if (!(v >= 20 && v <= 2000)) { snack("Battery size must be 20 to 2000 Ah"); break; }
+      S.cap = v; logLine(`Battery size ${v} Ah`); snack("Saved on the hub"); render(true); break;
+    }
+    case "socFull": if (confirm("Only do this when the battery really is full. Set it to 100%?")) { S.soc = 100; snack("Battery set to 100%"); } break;
     case "saveNtfy": S.settings.ntfyTopic = $("ntfyTopic").value; S.settings.ntfyServer = $("ntfyServer").value; snack("Saved"); break;
     case "bg": S.settings.bg = !S.settings.bg; t.classList.toggle("on", S.settings.bg); snack(S.settings.bg ? "Watching for alerts in the background" : "Background alerts off"); break;
     case "battery": snack("Android would ask to let the app run in the background"); break;

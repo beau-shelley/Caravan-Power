@@ -98,3 +98,14 @@ The Trek connects to the BatteryPlus35 by cable and is one of two ways to see an
 | Pumps via relays | pump `"mode": 0` | relay + Schottky diode-OR + opto sense |
 
 Reboot the hub after changing sources.
+
+## Battery % and time left
+
+The hub works out the battery % itself instead of showing the BMPRO's. The Trek3 / BC300 only lets you set a bank up to 600 Ah, and its % is relative to whatever size was entered there. The hub instead counts the amps going in and out (from the BMPRO's Bluetooth broadcast, or the wired INA226 shunt) against the size you set on the phone: app **Setup → Battery**, or the web page's **Setup → Battery** card (default 405 Ah = 3 x 135 Ah lithium, anything from 20 to 2000 Ah).
+
+Counting drifts a little over days, so the hub resets to 100 % whenever the bank is clearly full:
+
+- **Absorption:** at least 13.9 V with under 4 A still going in, for 2 minutes, or
+- **Float:** at least 13.55 V with under 3 A in or out, for 10 minutes (the charger holding a full lithium bank).
+
+The % is saved on the hub every few minutes, so a restart carries on where it left off. After a fresh flash the hub starts from the BMPRO's % if the bank is 600 Ah or less, otherwise from the battery voltage, and is exact after the next full charge. **Set to 100 %** in Setup does the same reset by hand.

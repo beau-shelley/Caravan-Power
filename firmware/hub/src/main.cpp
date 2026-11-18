@@ -190,7 +190,7 @@ static void stateChanged() {
 
 static void configChanged() {
   gConfig.save();
-  gBmpro.setCapacityAh(gConfig.bat.capacityAh);
+  gShunt.setCapacityAh(gConfig.bat.capacityAh);
   gCloud.publishMetaSoon();
   gLink.pushConfigSoon();
 }
@@ -406,6 +406,17 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   } else if (!strcmp(c, "soc_set")) {
     gShunt.setSoc(cmd["soc"] | 100.0f);
     gShunt.persist(true);
+    gState.bat.soc = gShunt.soc();
+    reply["t"] = "ok";
+  } else if (!strcmp(c, "battery_set")) {
+    // Battery bank size in Ah, set from the phone. The hub works out % and
+    // time left itself from it (the BMPRO's own % stops at 600 Ah).
+    float cap = cmd["cap"] | 0.0f;
+    if (cap < cv::BAT_CAP_MIN_AH || cap > cv::BAT_CAP_MAX_AH) return replyErr(reply, "capacity must be 20-2000 Ah");
+    gConfig.bat.capacityAh = cap;
+    gConfig.meta.batCapacityAh = cap;
+    configChanged();
+    cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
   } else if (!strcmp(c, "sensors")) {
     FoundSensor f[8];
     int n = gTemps.found(f, 8);
@@ -773,7 +784,6 @@ void setup() {
   if (survey::kOn) {
     survey::begin();  // listen-only Bluetooth logging; the BMPRO link stays off
   } else if (gConfig.usesBmpro()) {
-    gBmpro.setCapacityAh(gConfig.bat.capacityAh);
     gBmpro.begin(gConfig.bmproAddr, gConfig.bmproExplorer);
     gBmproOn = true;
     heapMark("bmpro");
@@ -843,7 +853,11 @@ void loop() {
     gShunt.poll(gState, now);
     if (gBmproOn) {
       bool pumps = gConfig.pumpViaBmpro(0) || gConfig.pumpViaBmpro(1);
-      gBmpro.loop(gState, gConfig.bat.source == cv::BAT_SRC_BMPRO, gConfig.tankSource == TANK_BMPRO, pumps);
+      bool bat = gConfig.bat.source == cv::BAT_SRC_BMPRO;
+      gBmpro.loop(gState, bat, gConfig.tankSource == TANK_BMPRO, pumps);
+      float v, a, bmproSoc;
+      uint32_t ms;
+      if (bat && gBmpro.takeBattery(v, a, ms, bmproSoc)) gShunt.feed(gState, v, a, ms, bmproSoc);
     }
     }  // !demo::kOn
     // Level sensor: always read (secure mode needs it); in the fake-data build

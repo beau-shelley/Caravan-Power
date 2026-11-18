@@ -142,6 +142,8 @@ fun SetupScreen() {
         onBatteryExempt = { askBatteryExemption(ctx) },
         onScreenSleep = { app.hub.send("display_set", "sleep" to it); app.hub.send("hello") },
         onRemoteControl = { app.hub.send("remote_control", "on" to it); app.hub.send("hello") },
+        onBatteryAh = { app.hub.send("battery_set", "cap" to it); app.hub.send("hello") },
+        onBatteryFull = { app.hub.send("soc_set", "soc" to 100) },
         onSecureCode = { app.hub.send("secure_code", "code" to it); app.hub.send("hello") },
         secSens = state?.sec?.sens ?: 1,
         onSecureSens = { app.hub.send("secure", "sens" to it) },
