@@ -24,8 +24,9 @@ everywhere.
 This follows the vevor-ble-bridge project and was confirmed on Beau's heater
 (69:96:1c:04:0b:f0) from an Android HCI snoop of the AirHeaterBLE app on
 2026-11-18: status poll, on/off, mode, set temperature, supply voltage and the
-cabin (room) temperature all decode as below. The hub uses the heater's cabin
-temperature as the van's inside temperature when no inside thermometer is set up. It all
+cabin (room) temperature all decode as below. Its "room" temperature read a steady 26 C on
+a cool night, so it is shown on the heater card only, not used as the van's
+inside temperature. It all
 lives in `firmware/lib/CaravanCommon/src/AirHeater.{h,cpp}`, so corrections
 touch nothing else.
 

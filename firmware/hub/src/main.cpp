@@ -838,19 +838,6 @@ void loop() {
       bool pumps = gConfig.pumpViaBmpro(0) || gConfig.pumpViaBmpro(1);
       gBmpro.loop(gState, gConfig.bat.source == cv::BAT_SRC_BMPRO, gConfig.tankSource == TANK_BMPRO, pumps);
     }
-    // No inside thermometer of our own: use the diesel heater's room sensor
-    // (the "inside temperature" in its app; it reads even with the heater off).
-    {
-      cv::Temp &in = gState.temp[cv::TEMP_INSIDE];
-      if (!in.online && gState.htr.hasStatus()) {
-        float c = gState.htr.cabinC;
-        if (in.minC == 0 && in.maxC == 0) in.minC = in.maxC = c;
-        in.online = true;
-        in.c = c;
-        if (c < in.minC) in.minC = c;
-        if (c > in.maxC) in.maxC = c;
-      }
-    }
     }  // !demo::kOn
     // Level sensor: always read (secure mode needs it); in the fake-data build
     // its level isn't shown, and with no sensor plugged in a simulated one
