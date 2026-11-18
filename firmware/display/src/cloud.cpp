@@ -1,0 +1,293 @@
+#include "cloud.h"
+
+#include <HTTPClient.h>
+#include <PubSubClient.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+
+#include "CaravanModel.h"
+#include "../../hub/src/root_ca.h"
+
+// One secrets file for both boards: the hub's.
+#if __has_include("../../hub/src/secrets.h")
+#include "../../hub/src/secrets.h"
+#else
+#warning "firmware/hub/src/secrets.h missing - the display runs without the cloud"
+#include "../../hub/src/secrets.example.h"
+#endif
+#ifndef CLOUD_ON_DISPLAY
+#define CLOUD_ON_DISPLAY 1
+#endif
+
+namespace cloud {
+
+static const String kBase = String("caravan/") + DEVICE_ID + "/";
+
+static bool mqttConfigured() { return CLOUD_ON_DISPLAY && strlen(MQTT_HOST) && !strstr(MQTT_HOST, "xxxxxxxx"); }
+static bool ntfyConfigured() { return CLOUD_ON_DISPLAY && strlen(NTFY_TOPIC) && !strstr(NTFY_TOPIC, "CHANGE-ME"); }
+static bool gOn = false;  // begin() set everything up
+static bool wifiConfigured() { return strlen(WIFI_SSID) && strcmp(WIFI_PASS, "changeme") != 0; }
+
+// ---- shared between the UI task (producer) and the net task
+static SemaphoreHandle_t gMux;
+struct Lock {
+  Lock() { xSemaphoreTake(gMux, portMAX_DELAY); }
+  ~Lock() { xSemaphoreGive(gMux); }
+};
+static String gState, gMeta, gRules;  // latest JSON, published retained
+static bool gStateNew = false, gMetaNew = false, gRulesNew = false;
+static volatile bool gHubUp = false, gHubUpNew = true;
+static uint32_t gLastStatePubMs = 0;
+
+struct Out {  // non-retained publishes (resp, event)
+  const char *sub;
+  String *json;
+};
+static QueueHandle_t gOutQ, gCmdQ, gPushQ;  // Out, String*, Push
+struct Push {
+  char title[48];
+  char msg[120];
+  uint8_t sev;
+  bool cleared;
+};
+
+static WiFiClientSecure gTls;
+static PubSubClient gMqtt(gTls);
+static volatile bool gWifiUp = false, gMqttUp = false;
+
+bool wifiUp() { return gWifiUp; }
+bool connected() { return gMqttUp; }
+
+// ---------------------------------------------------------------- from the link
+void onHubState(JsonDocument &state) {
+  if (!gOn || !mqttConfigured()) return;
+  // The state says whether the *hub* is on the cloud; now that's us.
+  state["net"]["cloud"] = (bool)gMqttUp;
+  String s;
+  serializeJson(state, s);
+  Lock l;
+  gState = s;
+  gStateNew = true;
+}
+
+void onHubMeta(JsonVariantConst meta) {
+  if (!gOn || !mqttConfigured() || meta.isNull()) return;
+  String s;
+  serializeJson(meta, s);
+  Lock l;
+  if (s != gMeta) gMetaNew = true;
+  gMeta = s;
+}
+
+void onHubRules(JsonVariantConst rules) {
+  if (!gOn || !mqttConfigured() || rules.isNull()) return;
+  JsonDocument d;  // same shape the hub published: {"t":"rules","rules":[...]}
+  d["t"] = "rules";
+  d["rules"] = rules;
+  String s;
+  serializeJson(d, s);
+  Lock l;
+  if (s != gRules) gRulesNew = true;
+  gRules = s;
+}
+
+static void queueOut(const char *sub, const char *json, size_t len) {
+  if (!gOn || !mqttConfigured()) return;
+  Out o{sub, new String()};
+  o.json->concat(json, len);
+  if (xQueueSend(gOutQ, &o, 0) != pdTRUE) delete o.json;
+}
+void onHubReply(const char *json, size_t len) { queueOut("resp", json, len); }
+void onHubEvent(const char *json, size_t len) {
+  queueOut("event", json, len);
+  if (!gOn) return;
+  Lock l;
+  gLastStatePubMs = 0;  // alerts changed: publish the next state straight away
+}
+
+void onHubPush(JsonObjectConst p) {
+  if (!gOn || !ntfyConfigured()) return;
+  Push m = {};
+  strlcpy(m.title, p["title"] | "Caravan", sizeof(m.title));
+  strlcpy(m.msg, p["msg"] | "", sizeof(m.msg));
+  m.sev = p["sev"] | 1;
+  m.cleared = p["clr"] | false;
+  xQueueSend(gPushQ, &m, 0);
+}
+
+void onHubLink(bool up) {
+  if (up != gHubUp) {
+    gHubUp = up;
+    gHubUpNew = true;
+  }
+}
+
+bool takeCommand(JsonDocument &cmd) {
+  String *s = nullptr;
+  if (!gOn || xQueueReceive(gCmdQ, &s, 0) != pdTRUE) return false;
+  bool ok = !deserializeJson(cmd, *s);
+  delete s;
+  if (!ok || !cmd["c"].is<const char *>()) return false;
+  cmd["via"] = "cloud";  // the hub applies the remote-control setting to it
+  return true;
+}
+
+// ---------------------------------------------------------------- MQTT
+static void onMqtt(char *topic, byte *payload, unsigned int len) {
+  if (String(topic) != kBase + "cmd") return;
+  String *s = new String();
+  s->concat((const char *)payload, len);
+  if (xQueueSend(gCmdQ, &s, 0) != pdTRUE) delete s;
+}
+
+static uint32_t gNextTryMs = 0, gBackoffMs = 2000;
+
+static void mqttLoop() {
+  if (!mqttConfigured() || !gWifiUp) {
+    gMqttUp = false;
+    return;
+  }
+  if (!gMqtt.connected()) {
+    gMqttUp = false;
+    if ((int32_t)(millis() - gNextTryMs) < 0) return;
+    String will = kBase + "online";
+    String cid = String(DEVICE_ID) + "-display-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    Serial.printf("[cloud] connecting to %s:%d\n", MQTT_HOST, MQTT_PORT);
+    if (gMqtt.connect(cid.c_str(), MQTT_USER, MQTT_PASS, will.c_str(), 1, true, "0")) {
+      Serial.println("[cloud] connected");
+      gBackoffMs = 2000;
+      gMqtt.subscribe((kBase + "cmd").c_str(), 1);
+      gHubUpNew = true;
+      Lock l;
+      gMetaNew = gMeta.length() > 0;
+      gRulesNew = gRules.length() > 0;
+      gLastStatePubMs = 0;
+    } else {
+      // rc 4 = bad username/password, 5 = not authorised, -2 = network / TLS
+      Serial.printf("[cloud] failed rc=%d, retry in %us\n", gMqtt.state(), gBackoffMs / 1000);
+      gNextTryMs = millis() + gBackoffMs;
+      gBackoffMs = min<uint32_t>(gBackoffMs * 2, 120000);
+      return;
+    }
+  }
+  gMqttUp = true;
+  gMqtt.loop();
+
+  if (gHubUpNew) {  // "online" = the hub's data is flowing, as before
+    gHubUpNew = false;
+    gMqtt.publish((kBase + "online").c_str(), gHubUp ? "1" : "0", true);
+  }
+  Out o;
+  while (xQueueReceive(gOutQ, &o, 0) == pdTRUE) {
+    gMqtt.publish((kBase + o.sub).c_str(), (const uint8_t *)o.json->c_str(), o.json->length(), false);
+    delete o.json;
+  }
+  String meta, rules, state;
+  {
+    Lock l;
+    if (gMetaNew) meta = gMeta;
+    if (gRulesNew) rules = gRules;
+    gMetaNew = gRulesNew = false;
+    // Every 15 s (the hub's default cloudIntervalSec): ~5 MB a day.
+    if (gStateNew && (!gLastStatePubMs || millis() - gLastStatePubMs >= 15000)) {
+      state = gState;
+      gStateNew = false;
+      gLastStatePubMs = millis() | 1;
+    }
+  }
+  auto pub = [](const char *sub, const String &s) {
+    if (s.length()) gMqtt.publish((kBase + sub).c_str(), (const uint8_t *)s.c_str(), s.length(), true);
+  };
+  pub("meta", meta);
+  pub("rules", rules);
+  pub("state", state);
+}
+
+// ---------------------------------------------------------------- ntfy
+static void sendPush(const Push &m) {
+  char title[64];
+  snprintf(title, sizeof(title), "%s%s", m.cleared ? "Cleared: " : "", m.title);
+  int prio;
+  const char *tags;
+  if (m.cleared) prio = 2, tags = "white_check_mark";
+  else if (m.sev >= cv::SEV_CRIT) prio = 5, tags = "sos,rotating_light";
+  else if (m.sev == cv::SEV_ALARM) prio = 5, tags = "rotating_light";  // breaks through Do Not Disturb
+  else if (m.sev == cv::SEV_WARN) prio = 4, tags = "warning";
+  else prio = 3, tags = "information_source";
+
+  for (int attempt = 0; attempt < 5; attempt++) {
+    while (!gWifiUp) vTaskDelay(pdMS_TO_TICKS(2000));
+    WiFiClientSecure tls;
+    tls.setCACert(ROOT_CA_PEM);
+    HTTPClient http;
+    http.setTimeout(10000);
+    if (!http.begin(tls, String(NTFY_SERVER) + "/" + NTFY_TOPIC)) return;
+    http.addHeader("Title", title);
+    http.addHeader("Priority", String(prio));
+    http.addHeader("Tags", tags);
+    if (strlen(NTFY_TOKEN)) http.addHeader("Authorization", String("Bearer ") + NTFY_TOKEN);
+    int code = http.POST((uint8_t *)m.msg, strlen(m.msg));
+    http.end();
+    Serial.printf("[push] '%s' -> HTTP %d\n", title, code);
+    if (code >= 200 && code < 300) return;
+    vTaskDelay(pdMS_TO_TICKS(5000 << attempt));
+  }
+}
+
+static void pushTask(void *) {
+  Push m;
+  for (;;)
+    if (xQueueReceive(gPushQ, &m, portMAX_DELAY) == pdTRUE) sendPush(m);
+}
+
+// ---------------------------------------------------------------- Wi-Fi + task
+static void netTask(void *) {
+  uint32_t lastJoinMs = 0;
+  for (;;) {
+    bool up = WiFi.status() == WL_CONNECTED;
+    if (up != gWifiUp) {
+      gWifiUp = up;
+      if (up) Serial.printf("[wifi] connected, IP %s\n", WiFi.localIP().toString().c_str());
+      else Serial.println("[wifi] disconnected");
+    }
+    if (!up && millis() - lastJoinMs > 30000) {  // auto-reconnect is on; this is the backstop
+      lastJoinMs = millis();
+      WiFi.disconnect();
+      WiFi.begin(WIFI_SSID, WIFI_PASS);
+    }
+    mqttLoop();
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
+}
+
+void begin() {
+  if (!CLOUD_ON_DISPLAY || !wifiConfigured() || (!mqttConfigured() && !ntfyConfigured())) {
+    Serial.println("[cloud] off (nothing set in secrets.h)");
+    return;
+  }
+  gMux = xSemaphoreCreateMutex();
+  gOutQ = xQueueCreate(16, sizeof(Out));
+  gCmdQ = xQueueCreate(8, sizeof(String *));
+  gPushQ = xQueueCreate(16, sizeof(Push));
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(HOSTNAME "-display");
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.printf("[wifi] joining %s\n", WIFI_SSID);
+
+  gTls.setCACert(ROOT_CA_PEM);
+  gMqtt.setServer(MQTT_HOST, MQTT_PORT);
+  gMqtt.setBufferSize(8192);  // a full state is ~1.5 KB, rules a few KB
+  gMqtt.setKeepAlive(60);     // Starlink handovers can stall a few seconds
+  gMqtt.setSocketTimeout(10);
+  gMqtt.setCallback(onMqtt);
+
+  gOn = true;
+  xTaskCreatePinnedToCore(netTask, "cloud", 8192, nullptr, 1, nullptr, 0);
+  if (ntfyConfigured()) xTaskCreatePinnedToCore(pushTask, "push", 8192, nullptr, 1, nullptr, 0);
+  Serial.printf("[cloud] on: MQTT %s, push alerts %s\n", mqttConfigured() ? MQTT_HOST : "off",
+                ntfyConfigured() ? "on" : "off");
+}
+
+}  // namespace cloud

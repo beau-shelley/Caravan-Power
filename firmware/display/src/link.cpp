@@ -3,6 +3,7 @@
 #include "LinkCodec.h"
 #include "app.h"
 #include "board.h"
+#include "cloud.h"
 #ifdef DISPLAY_DEMO_MODE
 #include "demo.h"
 #endif
@@ -123,6 +124,12 @@ static void transmitOne() {
 static void handleFrame(const char *line, size_t len) {
   static JsonDocument doc;  // static: state frames are ~1 KB
   if (deserializeJson(doc, line, len)) return;
+  // A reply to a command relayed from the cloud: send it back to the app
+  // (it may also be a hello / rules reply, handled below as usual).
+  if (doc["rid"].is<const char *>()) {
+    cloud::onHubReply(line, len);
+    if (doc["t"].isNull()) return;  // only the cloud asked for it
+  }
   const char *t = doc["t"] | "";
   if (!strcmp(t, "p")) {
     // poll - nothing to parse
@@ -130,19 +137,28 @@ static void handleFrame(const char *line, size_t len) {
     cv::levelFromJson(state.lvl, doc.as<JsonObjectConst>());
     stateDirty = true;
   } else if (!strcmp(t, "state")) {
+    cloud::onHubState(doc);  // also marks net.cloud with our own broker link
     cv::stateFromJson(state, doc.as<JsonObjectConst>());
     stateDirty = true;
+  } else if (!strcmp(t, "event")) {  // alert raised / cleared, for the cloud
+    cloud::onHubEvent(line, len);
+  } else if (!strcmp(t, "push")) {  // push alert for ntfy
+    cloud::onHubPush(doc.as<JsonObjectConst>());
   } else if (!strcmp(t, "hello")) {
+    cloud::onHubMeta(doc["meta"]);
+    cloud::onHubRules(doc["rules"]);
     cv::metaFromJson(meta, doc["meta"]);
     cv::rulesFromJson(rules, doc["rules"]);
     metaVer++;
     rulesVer++;
     stateDirty = true;
   } else if (!strcmp(t, "rules")) {
+    cloud::onHubRules(doc["rules"]);
     cv::rulesFromJson(rules, doc["rules"]);
     rulesVer++;
     stateDirty = true;
   } else if (!strcmp(t, "meta")) {
+    cloud::onHubMeta(doc);
     cv::metaFromJson(meta, doc.as<JsonObjectConst>());
     metaVer++;
     stateDirty = true;
@@ -161,6 +177,14 @@ void linkLoop() {
     }
   }
   linkErrors = gReader.errors();
+  // Commands from the app / web page through the cloud broker.
+  {
+    JsonDocument c;
+    while (gQCount < QLEN && cloud::takeCommand(c)) {
+      send(c);
+      c.clear();
+    }
+  }
   // Our turn to talk: the hub just finished a frame and is now listening.
   if (gotFrame && !gSer.available()) transmitOne();
 
@@ -170,6 +194,7 @@ void linkLoop() {
     // Meta from the hub changes rarely; re-ask every reconnect.
   }
   if (up != linkUp) stateDirty = true;
+  cloud::onHubLink(up);
   linkUp = up;
 }
 

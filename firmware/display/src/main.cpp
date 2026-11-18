@@ -7,6 +7,7 @@
 #include "app.h"
 #include "board.h"
 #include "canbus.h"
+#include "cloud.h"
 #include "ui/ui.h"
 #ifdef DISPLAY_DEMO_MODE
 #include "demo.h"
@@ -23,6 +24,7 @@ void setup() {
   Serial.println("Demo mode enabled (no hub link)");
 #else
   app::linkBegin();
+  cloud::begin();  // Wi-Fi, cloud MQTT and push alerts (settings from the hub's secrets.h)
 #endif
   ui::begin();
   Serial.println("[ui] Initialization complete");

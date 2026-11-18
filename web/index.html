@@ -10,7 +10,7 @@
   Caravan Power dashboard - one file, two transports:
    * LOCAL : served by the hub at http://caravan.local -> WebSocket to the hub
    * CLOUD : open this file from anywhere (GitHub Pages, phone home screen...)
-             -> MQTT over secure WebSocket to your broker (HiveMQ Cloud etc.)
+             -> MQTT over secure WebSocket to your broker (EMQX Cloud Serverless etc.)
   Add ?demo to the URL to preview with fake data.
 -->
 <style>
@@ -299,7 +299,7 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
       <div class="card span6">
         <div class="cap">Cloud connection (this browser)</div>
         <div class="form">
-          <div><label>Broker WebSocket URL</label><input id="cfUrl" placeholder="wss://xxxx.s1.eu.hivemq.cloud:8884/mqtt"></div>
+          <div><label>Broker address</label><input id="cfUrl" placeholder="xxxx.ala.asia-southeast1.emqxsl.com" autocapitalize="off" spellcheck="false"></div>
           <div><label>Device id</label><input id="cfDev" placeholder="caravan"></div>
           <div><label>Username</label><input id="cfUser" autocomplete="username"></div>
           <div><label>Password</label><input id="cfPass" type="password" autocomplete="current-password"></div>
@@ -723,18 +723,31 @@ function localTransport() {
 
 function loadScript(src) { return new Promise((ok, fail) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = fail; document.head.appendChild(s); }); }
 
+// "abc.emqxsl.com" -> "wss://abc.emqxsl.com:8084/mqtt"; a full wss:// URL is used as is.
+// Same rule as the Android app: EMQX Serverless uses 8084, HiveMQ Cloud 8884.
+function brokerUrl(h) {
+  h = (h || "").trim();
+  if (/^wss?:\/\//.test(h)) return h;
+  h = h.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  return h.includes(":") ? `wss://${h}/mqtt` : `wss://${h}:${/emqx/.test(h) ? 8084 : 8884}/mqtt`;
+}
+
 async function cloudTransport(cfg) {
   setConn("Connecting to cloud…", "warnc");
   if (!window.mqtt) await loadScript("https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js");
   const base = `caravan/${cfg.dev || "caravan"}/`;
-  const client = mqtt.connect(cfg.url, { username: cfg.user, password: cfg.pass, reconnectPeriod: 4000, connectTimeout: 15000,
+  const client = mqtt.connect(brokerUrl(cfg.url), { username: cfg.user, password: cfg.pass, reconnectPeriod: 4000, connectTimeout: 15000,
     clientId: "dash-" + Math.random().toString(16).slice(2, 10) });
   let hubOnline = null;
   const t = { kind: "cloud", ready: () => client.connected,
     send: (c) => client.publish(base + "cmd", JSON.stringify({ ...c, rid: Math.random().toString(16).slice(2, 8) }), { qos: 1 }) };
   client.on("connect", () => { client.subscribe(base + "#"); setConn("Cloud · connected", "ok"); });
   client.on("reconnect", () => setConn("Reconnecting…", "warnc"));
-  client.on("error", (e) => setConn("Cloud error: " + e.message, "bad"));
+  client.on("error", (e) => {
+    // 4 / 5 = the broker refused the username or password: retrying won't help.
+    if (e.code === 4 || e.code === 5) { setConn("Cloud: wrong username or password", "bad"); client.end(true); }
+    else setConn("Cloud error: " + e.message, "bad");
+  });
   client.on("message", (topic, payload) => {
     const sub = topic.slice(base.length), txt = payload.toString();
     if (sub === "online") { hubOnline = txt === "1"; setConn(hubOnline ? "Cloud · caravan online" : "Caravan offline", hubOnline ? "ok" : "bad"); return; }

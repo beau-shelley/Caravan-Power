@@ -96,7 +96,7 @@ docs/                  wiring, cloud setup, BMPRO notes, protocol reference
 ## Quick start
 
 1. **Wire it up.** Follow [docs/WIRING.md](docs/WIRING.md): the RS485 link to the display, the inverter relay and the IR LED. The BMPRO, the Victrons and the temperature sensors are all wireless.
-2. **Set up the cloud side** (optional; the system runs fully offline without it) using [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md): a free HiveMQ Cloud broker plus the ntfy app.
+2. **Set up the cloud side** (optional; the system runs fully offline without it) using [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md): a free EMQX Cloud Serverless broker plus the ntfy app.
 3. **Flash the hub.**
    ```sh
    cd firmware/hub

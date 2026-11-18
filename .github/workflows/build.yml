@@ -59,4 +59,5 @@ jobs:
           # 6.2.0-post.1, which fails the platform's own ">=6.2.0" check
           # (IncompatiblePlatform). Its installer uses uv, so pin it here.
           UV_CONSTRAINT: ${{ github.workspace }}/.github/pio-constraints.txt
-        run: pio run
+        # hub: the van board, the listen-only survey build and the S3 hub
+        run: pio run ${{ matrix.project == 'hub' && '-e hub-esp32 -e hub-esp32-survey -e hub' || '' }}

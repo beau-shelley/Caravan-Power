@@ -692,11 +692,18 @@ static void midnightReset() {
   lastDay = lt.tm_mday;
 }
 
+// Where the RAM goes at start-up (the classic ESP32 runs tight with Wi-Fi + Bluetooth).
+static void heapMark(const char *what) {
+  Serial.printf("[mem] after %-10s heap %6u free, largest %6u\n", what, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+}
+
 // Network services run on core 0 so a slow TLS handshake over Starlink never
 // stalls sensor reading or the touchscreen link on core 1.
 static void netTask(void *) {
   gWeb.begin();
+  heapMark("web");
   gCloud.begin();
+  heapMark("cloud");
   for (;;) {
     gWeb.loop(gState);
     gCloud.loop(gState);
@@ -719,6 +726,7 @@ void setup() {
   gStateMux = xSemaphoreCreateRecursiveMutex();
 
   pinMode(PIN_BUZZER, OUTPUT);
+  heapMark("boot");
   if (!LittleFS.begin(true)) Serial.println("[fs] LittleFS mount failed");
   if (!gConfig.load()) {
     Serial.println("[cfg] no config, writing defaults");
@@ -729,6 +737,7 @@ void setup() {
   gTemps.begin(PIN_ONEWIRE);
   if (gConfig.tankSource == TANK_ADC) gTanks.begin();
   gLevel.begin();
+  heapMark("level");
   secure::begin(millis());
   gShunt.begin();
 
@@ -741,6 +750,7 @@ void setup() {
   gLink.begin(LINK_SERIAL, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE, PIN_LINK_RE);
   if (demo::kOn) demo::begin(gState);
   gNet.begin();
+  heapMark("wifi");
   gNotify.begin();
   for (int i = 0; i < cv::NUM_SOLAR; i++) startSolar(i);
   if (gConfig.victron[GPS_SHARES_SOLAR].src != SOLAR_VEDIRECT) {  // the shared UART is free for a GPS
@@ -750,13 +760,16 @@ void setup() {
   for (auto s : gConfig.tempSrc)
     if (s == TEMP_BLE) startBleTemps();
   startHeater();
+  heapMark("heater");
   if (survey::kOn) {
     survey::begin();  // listen-only Bluetooth logging; the BMPRO link stays off
   } else if (gConfig.usesBmpro()) {
     gBmpro.begin(gConfig.bmproAddr, gConfig.bmproExplorer);
     gBmproOn = true;
+    heapMark("bmpro");
   }
-  xTaskCreatePinnedToCore(netTask, "net", 12288, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(netTask, "net", 10240, nullptr, 1, nullptr, 0);  // ~4.3 KB seen under load; HTTPS weather/TLS needs headroom
+  heapMark("net task");
 
   // Watchdog: if loop() stops running for 30 s (a hang or a deadlock), the
   // hub restarts itself. The Arduino core feeds it after every loop().

@@ -11,7 +11,7 @@ import java.io.ByteArrayOutputStream
 
 /**
  * Just enough MQTT 3.1.1 over a secure WebSocket to talk to the hub through the
- * cloud broker (HiveMQ Cloud, port 8884): connect with a username/password,
+ * cloud broker (EMQX Cloud Serverless, wss port 8084): connect with a username/password,
  * subscribe, receive, publish at QoS 0, keep-alive pings. No library needed,
  * and it rides on the OkHttp the app already uses.
  */

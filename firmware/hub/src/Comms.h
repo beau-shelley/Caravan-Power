@@ -31,6 +31,8 @@ class DisplayLink {
   // Queue a message for the display from another task (hold StateLock).
   void queueReply(const String &json) { pending_ = json; }
   bool displayOnline() const { return lastRxMs_ && millis() - lastRxMs_ < 10000; }
+  // Queue an alert event / push alert for the display to send on (any task).
+  void queueOut(JsonDocument &doc);
 
  private:
   HardwareSerial *ser_ = nullptr;
@@ -40,6 +42,10 @@ class DisplayLink {
   uint32_t nextStateMs_ = 0, nextPollMs_ = 0, lastRxMs_ = 0;
   volatile bool configDirty_ = false;
   String pending_;
+  struct LinkOut {
+    char json[320];
+  };
+  QueueHandle_t outQ_ = nullptr;
   void write(const char *buf, size_t n);
 };
 
@@ -66,8 +72,14 @@ class Cloud {
   void publishStateSoon() { nextStateMs_ = 0; }
   void publishMetaSoon() { metaDirty_ = true; }
   bool connected();
+  // Push alerts come first: with the classic ESP32's RAM, an alert's HTTPS
+  // send and the cloud link's TLS session don't fit together. The push task
+  // asks the cloud link to step aside for a while; it reconnects afterwards.
+  void pauseFor(uint32_t ms) { pauseUntilMs_ = millis() + ms; pauseReq_ = true; }
 
  private:
+  volatile bool pauseReq_ = false;
+  volatile uint32_t pauseUntilMs_ = 0;
   uint32_t nextStateMs_ = 0, nextTryMs_ = 0;
   bool metaDirty_ = true;
   uint32_t backoffMs_ = 2000;

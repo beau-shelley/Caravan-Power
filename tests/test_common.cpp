@@ -13,6 +13,7 @@
 #include "VeDirect.h"
 #include "VictronBle.h"
 #include "BleSensors.h"
+#include "BleTag.h"
 #include "Leveling.h"
 #include "TheftGuard.h"
 #include "Weather.h"
@@ -923,6 +924,42 @@ static void testTheftGuard() {
   }
 }
 
+static void testBleTag() {
+  // Victron solar readout: flags + manufacturer data (the advert from testVictronBle).
+  const uint8_t vic[] = {0x02, 0x01, 0x06, 0x17, 0xFF, 0xE1, 0x02, 0x10, 0x60, 0xA0, 0xA0, 0x01, 0x2B,
+                         0x1A, 0x0D, 0xD2, 0xB7, 0x57, 0x2D, 0xA9, 0xA0, 0x05, 0x98, 0xAD, 0xFE, 0x5D, 0x96};
+  BleTag t;
+  bleClassify(vic, sizeof(vic), t);
+  CHECK(t.kind == BLE_VICTRON && !strcmp(t.label, "victron-solar") && t.mfrId == 0x02E1 && t.mfrLen == 22);
+
+  // iPhone: Apple manufacturer data -> noise.
+  const uint8_t apple[] = {0x02, 0x01, 0x1A, 0x07, 0xFF, 0x4C, 0x00, 0x10, 0x02, 0x0B, 0x00};
+  bleClassify(apple, sizeof(apple), t);
+  CHECK(t.kind == BLE_NOISE);
+
+  // Heater: FFE0 in the service list, name in the advert.
+  const uint8_t htr[] = {0x02, 0x01, 0x06, 0x03, 0x03, 0xE0, 0xFF, 0x05, 0x09, 'A', 'I', 'R', '1'};
+  bleClassify(htr, sizeof(htr), t);
+  CHECK(t.kind == BLE_HEATER && !strcmp(t.name, "AIR1"));
+
+  // BMPRO by name, case-insensitive.
+  const uint8_t bm[] = {0x0A, 0x09, 'O', 'd', 'y', 's', 's', 'e', 'y', 'L', 'k'};
+  bleClassify(bm, sizeof(bm), t);
+  CHECK(t.kind == BLE_BMPRO && !strcmp(t.name, "OdysseyLk"));
+
+  // BTHome thermometer (service data FCD2): 23.45 C.
+  const uint8_t bth[] = {0x0A, 0x16, 0xD2, 0xFC, 0x40, 0x02, 0x29, 0x09, 0x01, 0x64, 0x00};
+  bleClassify(bth, sizeof(bth), t);
+  CHECK(t.kind == BLE_THERMOMETER && t.hasTemp && t.tempC > 23.4f && t.tempC < 23.5f);
+
+  // Unknown and malformed adverts never crash or over-read.
+  const uint8_t junk[] = {0x05, 0xFF, 0x34, 0x12, 0x01};
+  bleClassify(junk, sizeof(junk), t);
+  CHECK(t.kind == BLE_UNKNOWN && !strcmp(t.label, "?"));
+  bleClassify(junk, 0, t);
+  CHECK(t.kind == BLE_UNKNOWN);
+}
+
 int main() {
   testTheftGuard();
   testHeater();
@@ -931,6 +968,7 @@ int main() {
   testLeveling();
   testBleSensors();
   testVictronBle();
+  testBleTag();
   testVeDirect();
   testAlerts();
   testAlertLevels();
