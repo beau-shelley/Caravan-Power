@@ -36,6 +36,7 @@ char gTargetAddr[18] = {};
 volatile uint8_t gTargetType = BLE_ADDR_RANDOM;
 volatile bool gRetargeted = false;
 volatile bool gDecodedAny = false;
+volatile uint32_t gFrames = 0;  // notifications from the OdysseyLink's data characteristic
 
 // Decoded data handed from the BLE task to loop(), with arrival times.
 BmproData gData;
@@ -257,6 +258,7 @@ void onNotify(NimBLERemoteCharacteristic *c, uint8_t *data, size_t len, bool isN
     return;
   }
   if (gVerbose) logLine(String(isNotify ? "NTF " : "IND ") + uuid.c_str() + " [" + len + "] " + hex(data, len));
+  if (uuid == cv::bmpro::CAN_UUID) gFrames++;
   static BmproData out;  // static: NimBLE host task has a small stack
   out = BmproData();
   if (Bmpro::decode(uuid.c_str(), data, len, out)) applyDecoded(out);
@@ -414,6 +416,24 @@ void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
       bool fresh = gData.pumpValid[i] && now - gPumpMs[i] < STALE_MS;
       s.pump[i].sensed = fresh && gData.pumpOn[i];
     }
+  // Once a minute: what the OdysseyLink link is delivering, so a plain serial
+  // log shows whether tanks, pumps and battery % are coming through.
+  static uint32_t lastSummary = 0;
+  if (now - lastSummary >= 60000) {
+    lastSummary = now;
+    auto age = [&](bool valid, uint32_t ms) { return valid ? String((now - ms) / 1000) + "s ago" : String("never"); };
+    String line = String("link ") + (connected() ? "up" : "down") + ", " + gFrames + " frames; tanks";
+    for (int i = 0; i < cv::NUM_TANKS; i++)
+      line += String(" ") + (gData.tankValid[i] ? String((int)gData.tankPct[i]) + "%" : String("-"));
+    line += String(" (") + age(gData.tankValid[0], gTankMs[0]) + "); pumps";
+    for (int i = 0; i < cv::NUM_PUMPS; i++)
+      line += String(" ") + (gData.pumpValid[i] ? (gData.pumpOn[i] ? "on" : "off") : "-");
+    line += String("; BMPRO % ") + (gSocMs ? String((int)gData.batSoc) + " (" + (now - gSocMs) / 1000 + "s ago)" : String("never"));
+    line += String("; minutes left ") + gData.batTtgMin;
+    xSemaphoreGive(gMux);
+    logLine(line);
+    return;
+  }
   xSemaphoreGive(gMux);
 }
 
