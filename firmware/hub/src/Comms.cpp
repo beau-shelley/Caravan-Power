@@ -174,8 +174,9 @@ void Net::loop(cv::State &s) {
 }
 
 // ================================================================ RS485 link
+static constexpr uint32_t kPollMs = 100;
 // Half duplex: the hub is bus master. It sends a state frame every second and
-// a tiny poll frame every 250 ms; the display only transmits right after it
+// a tiny poll frame every 100 ms (so a button press on the display is heard quickly); the display only transmits right after it
 // receives a frame, so the two never talk over each other.
 // DE (driver enable, active high) and /RE (receiver enable, active low) can
 // be bridged on one pin or wired to two; either way HIGH = transmit, LOW = listen.
@@ -237,10 +238,10 @@ void DisplayLink::loop(const cv::State &s) {
   if (pending_.length()) {  // e.g. town search results from the network task
     write(pending_.c_str(), pending_.length());
     pending_ = "";
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
   } else if (outQ_ && xQueueReceive(outQ_, &out, 0) == pdTRUE) {  // alert events / pushes for the cloud
     write(out.json, strlen(out.json));
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
   } else if (configDirty_) {
     configDirty_ = false;
     JsonDocument doc;
@@ -248,18 +249,18 @@ void DisplayLink::loop(const cv::State &s) {
     cmd["c"] = "hello";
     handleCommand(cmd.as<JsonObjectConst>(), SRC_DISPLAY, doc);
     send(doc);
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
   } else if ((int32_t)(now - nextStateMs_) >= 0) {
     nextStateMs_ = now + 1000;
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
     JsonDocument doc;
     cv::stateToJson(s, doc.to<JsonObject>());
     send(doc);
   } else if ((int32_t)(now - nextPollMs_) >= 0) {
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
     if (s.lvl.online) {
       // The poll slot carries the level reading, so the touchscreen's level
-      // page updates 4x a second instead of once.
+      // page updates 10x a second instead of once.
       JsonDocument doc;
       JsonObject o = doc.to<JsonObject>();
       o["t"] = "lvl";
