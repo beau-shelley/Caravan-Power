@@ -2,13 +2,14 @@
 // that ships with many Chinese 2-5 kW air heaters (Vevor, Hcalory, and very
 // likely the Power Science 2 kW in Beau's van).
 //
-// ASSUMED, NOT YET CONFIRMED ON BEAU'S HEATER. This follows what the open
-// source projects that talk to these heaters have worked out (for example
-// bderleta/vevor-ble-bridge). It must be checked against a capture from the
-// van: either the hub's own heater log (Setup > Diesel heater > Show log on
-// the phone page) or an Android Bluetooth HCI snoop log of the AirHeaterBLE
-// app. See docs/HEATER.md. Everything that could be wrong is in this file
-// and AirHeater.cpp, so fixing it later touches nothing else.
+// CONFIRMED on Beau's Power Science heater (69:96:1c:04:0b:f0, public
+// address) from an Android HCI snoop of the AirHeaterBLE app, 2026-11-18:
+// passkey 1234, status poll every 3 s, on/off, mode, set temperature and the
+// cabin temperature (26 C, matching the app) all match the layout below.
+// The app also sends cmd 10 at connect with the phone's clock as minutes
+// since midnight (0x04C0 = 20:16); the hub doesn't need it. Byte 5 (step)
+// stayed 0 during a short 25 s run, so the start-up phases are not yet seen.
+// The layout follows bderleta/vevor-ble-bridge. See docs/HEATER.md.
 //
 // Transport: one GATT service 0xFFE0 with one characteristic 0xFFE1 that is
 // written to (commands) and notifies (status).

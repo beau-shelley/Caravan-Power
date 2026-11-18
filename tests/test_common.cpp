@@ -1049,6 +1049,36 @@ static void testBmproLink() {
   CHECK(!memcmp(buf, unhex("3e00404d0100").data(), 6));
 }
 
+// Real frames from Beau's Power Science heater (Android HCI snoop of the
+// AirHeaterBLE app, 2026-11-18). Room temperature on the app was 26 C.
+static void testHeaterReal() {
+  uint8_t f[airheater::CMD_LEN];
+  airheater::encode(airheater::CMD_STATUS, 0, 1234, f);
+  CHECK(std::vector<uint8_t>(f, f + 8) == unhex("aa550c220100002f"));
+  airheater::encode(airheater::CMD_POWER, 0, 1234, f);
+  CHECK(std::vector<uint8_t>(f, f + 8) == unhex("aa550c2203000031"));
+  airheater::encode(airheater::CMD_MODE, airheater::WIRE_TEMP, 1234, f);
+  CHECK(std::vector<uint8_t>(f, f + 8) == unhex("aa550c2202020032"));
+  airheater::encode(airheater::CMD_SETPOINT, 28, 1234, f);
+  CHECK(std::vector<uint8_t>(f, f + 8) == unhex("aa550c22041c004e"));
+
+  Heater h;
+  auto idle = unhex("aa5501000000000000000600000000" "1a0020");
+  CHECK(airheater::decode(idle.data(), idle.size(), h));
+  CHECK(h.phase == HTR_OFF);
+  NEAR(h.cabinC, 26, 0.01f);
+  auto level = unhex("aa550101000000000107068200150" "01a00c0");
+  CHECK(airheater::decode(level.data(), level.size(), h));
+  CHECK(h.mode == HTR_MODE_LEVEL && h.level == 7 && h.phase != HTR_OFF);
+  NEAR(h.supplyV, 13.0f, 0.01f);
+  NEAR(h.bodyC, 21, 0.01f);
+  auto therm = unhex("aa550101000064" "00021c01780015001a002b");
+  CHECK(airheater::decode(therm.data(), therm.size(), h));
+  CHECK(h.mode == HTR_MODE_TEMP && h.setC == 28);
+  NEAR(h.supplyV, 12.0f, 0.01f);
+  NEAR(h.cabinC, 26, 0.01f);
+}
+
 int main() {
   testTheftGuard();
   testHeater();
@@ -1060,6 +1090,7 @@ int main() {
   testBleTag();
   testBmproAdv();
   testBmproLink();
+  testHeaterReal();
   testVeDirect();
   testAlerts();
   testAlertLevels();
