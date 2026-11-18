@@ -36,7 +36,9 @@ char gTargetAddr[18] = {};
 volatile uint8_t gTargetType = BLE_ADDR_RANDOM;
 volatile bool gRetargeted = false;
 volatile bool gDecodedAny = false;
-volatile uint32_t gFrames = 0;  // notifications from the OdysseyLink's data characteristic
+volatile uint32_t gFrames = 0;
+// Voltage readings side by side, for matching the Trek3's figure.
+volatile float gVBcast = 0, gVConn = 0, gV2 = 0;  // notifications from the OdysseyLink's data characteristic
 
 // Decoded data handed from the BLE task to loop(), with arrival times.
 BmproData gData;
@@ -112,6 +114,7 @@ void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
   if (b.hasBattery) {
     out.batValid = true;
     out.batV = b.batV;
+    gVBcast = b.batV;
     out.batA = b.batA;
     out.remainAh = b.remainAh;  // logged only: doesn't match the 405 Ah bank, meaning unknown
     out.batSoc = -1;            // worked out in loop() from volts + amps
@@ -431,6 +434,7 @@ void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
       line += String(" ") + (gData.pumpValid[i] ? (gData.pumpOn[i] ? "on" : "off") : "-");
     line += String("; BMPRO % ") + (gSocMs ? String((int)gData.batSoc) + " (" + (now - gSocMs) / 1000 + "s ago)" : String("never"));
     line += String("; minutes left ") + gData.batTtgMin;
+    line += String("; volts: broadcast ") + String(gVBcast, 2) + ", 40.62 " + String(gVConn, 2) + ", 40.65 " + String(gV2, 2);
     xSemaphoreGive(gMux);
     logLine(line);
     return;
@@ -519,6 +523,8 @@ bool Bmpro::decode(const char *charUuid, const uint8_t *data, size_t len, BmproD
   static cv::bmpro::Values v;  // NimBLE host task only
   cv::bmpro::Msg m;
   if (!cv::bmpro::parse(data, len, m) || !cv::bmpro::apply(m, v)) return false;
+  if (v.hasBatV) gVConn = v.batV;
+  if (v.hasV2) gV2 = v.v2;
   if (v.hasBatV && v.hasBatA) {
     out.batValid = true;
     out.batV = v.batV;

@@ -35,6 +35,7 @@ bool apply(const Msg &m, Values &v) {
     switch (m.param) {
       case P_BAT_MA: v.hasBatA = true; v.batA = x / 1000.0f; return true;
       case P_BAT_MV: v.hasBatV = true; v.batV = x / 1000.0f; return true;
+      case P_V2_MV: v.hasV2 = true; v.v2 = x / 1000.0f; return true;
       case P_SOLAR_MA: v.hasSolarA = true; v.solarA = x / 1000.0f; return true;
       case P_SOC:
         if (x < 0 || x > 100) return false;

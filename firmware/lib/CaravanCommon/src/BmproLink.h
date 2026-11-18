@@ -25,6 +25,7 @@ enum : uint8_t {
   P_BAT_MA = 0x61,
   P_BAT_MV = 0x62,
   P_SOLAR_MA = 0x64,
+  P_V2_MV = 0x65,  // a second voltage, ~0.1 V under 40.62 (charger output?)
   P_SOC = 0x66,
   P_MIN_LEFT = 0x67,
   P_TANKS = 0x80,  // node 0x90
@@ -39,8 +40,8 @@ bool parse(const uint8_t *d, size_t n, Msg &m);
 
 // What a message tells us; only fields with has* set are valid.
 struct Values {
-  bool hasBatV = false, hasBatA = false, hasSolarA = false, hasSoc = false, hasMinLeft = false;
-  float batV = 0, batA = 0, solarA = 0, soc = 0;
+  bool hasBatV = false, hasBatA = false, hasSolarA = false, hasSoc = false, hasMinLeft = false, hasV2 = false;
+  float batV = 0, batA = 0, solarA = 0, soc = 0, v2 = 0;
   int32_t minLeft = -1;
   bool hasTanks = false;
   float tankPct[4] = {};  // Top, Bottom, Grey, 4th (quarters -> %)
