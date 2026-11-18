@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "BleSensors.h"
+#include "BmproAdv.h"
 #include "VictronBle.h"
 
 namespace cv {
@@ -136,7 +137,16 @@ void bleClassify(const uint8_t *raw, size_t len, BleTag &tag) {
     snprintf(tag.label, sizeof(tag.label), "victron");
     return;
   }
-  // 2. A thermometer the hub already understands.
+  // 2. BMPRO broadcast (service data 0xFE0E, see BmproAdv.h).
+  for (int k = 0; k < nSvcData; k++)
+    if (svcDataUuid[k] == BMPRO_SVC_UUID && svcDataLen[k] >= 1) {
+      tag.kind = BLE_BMPRO;
+      uint8_t f = svcData[k][0];
+      snprintf(tag.label, sizeof(tag.label), "%s",
+               f == 0x01 ? "bmpro-battery" : f == 0x04 ? "bmpro-charging" : f == 0x00 ? "bmpro-id" : "bmpro");
+      return;
+    }
+  // 2b. A thermometer the hub already understands.
   BleSensorReading r;
   for (int k = 0; k < nSvcData; k++)
     if (decodeBleServiceData(svcDataUuid[k], svcData[k], svcDataLen[k], r)) break;

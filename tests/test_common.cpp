@@ -13,7 +13,10 @@
 #include "VeDirect.h"
 #include "VictronBle.h"
 #include "BleSensors.h"
+#include <vector>
 #include "BleTag.h"
+#include "BmproAdv.h"
+#include "BmproLink.h"
 #include "Leveling.h"
 #include "TheftGuard.h"
 #include "Weather.h"
@@ -960,6 +963,122 @@ static void testBleTag() {
   CHECK(t.kind == BLE_UNKNOWN);
 }
 
+static std::vector<uint8_t> unhex(const char *h) {
+  std::vector<uint8_t> v;
+  for (; h[0] && h[1]; h += 2) {
+    unsigned b;
+    sscanf(h, "%2x", &b);
+    v.push_back((uint8_t)b);
+  }
+  return v;
+}
+
+static void testBmproAdv() {
+  // Real adverts from Beau's van, 2026-11-17 (guided survey log).
+  auto bat = unhex("02010603030efe15160efe01953505f4ffff6c3101001b182567060000");
+  BmproAdvert a;
+  CHECK(bmproParseAdvert(bat.data(), bat.size(), a));
+  CHECK(a.frame == 1 && a.hasBattery);
+  NEAR(a.batV, 13.717f, 0.001f);
+  NEAR(a.batA, -3.067f, 0.001f);
+  NEAR(a.remainAh, 78.188f, 0.001f);
+  CHECK(a.uptimeS == 0x00066725);
+  // Big load on: -26.07 A.
+  auto load = unhex("02010603030efe15160efe011f352c9affffc33001001b183e68060000");
+  CHECK(bmproParseAdvert(load.data(), load.size(), a) && a.hasBattery);
+  NEAR(a.batA, -26.068f, 0.001f);
+  NEAR(a.batV, 13.599f, 0.001f);
+  // Charging: +2.185 A.
+  auto chg = unhex("02010603030efe15160efe011f3589080000ed2f01001b18fd68060000");
+  CHECK(bmproParseAdvert(chg.data(), chg.size(), a));
+  NEAR(a.batA, 2.185f, 0.001f);
+  // Charging frame: 9.5 A input (solar), b14 = 1.533 A.
+  auto out = unhex("02010603030efe15160efe04000000000000d8c80010000001fd055f00");
+  CHECK(bmproParseAdvert(out.data(), out.size(), a) && a.frame == 4 && a.hasInput && !a.hasBattery);
+  NEAR(a.inputA, 9.5f, 0.01f);
+  NEAR(a.b14A, 1.533f, 0.001f);
+  // Identity frame, and the tagger.
+  auto id = unhex("02010603030efe15160efe000107004120412440303600292a67060000");
+  CHECK(bmproParseAdvert(id.data(), id.size(), a) && a.frame == 0 && a.uptimeS == 0x0006672a);
+  BleTag t;
+  bleClassify(bat.data(), bat.size(), t);
+  CHECK(t.kind == BLE_BMPRO && !strcmp(t.label, "bmpro-battery"));
+  bleClassify(out.data(), out.size(), t);
+  CHECK(!strcmp(t.label, "bmpro-charging"));
+  // A neighbour's different BMPRO model: longer 0x04 frame, not decoded.
+  auto other = unhex("02010603030efe17160efe04050400412041252030360067cf279f02004b35");
+  CHECK(bmproParseAdvert(other.data(), other.size(), a) && a.frame == 4 && !a.hasInput && !a.hasBattery);
+  // Not BMPRO: the heater's advert.
+  auto htr = unhex("0201060502e0ffe7fe0bffe02e88a069961c040bf0");
+  CHECK(!bmproParseAdvert(htr.data(), htr.size(), a));
+  bleClassify(htr.data(), htr.size(), t);
+  CHECK(t.kind == BLE_HEATER);
+}
+
+static void testBmproLink() {
+  // Notifications from the app's HCI log, 2026-11-17 5:25 PM.
+  using namespace cv::bmpro;
+  Values v;
+  Msg m;
+  auto f = [&](const char *h) {
+    auto b = unhex(h);
+    static std::vector<uint8_t> keep;
+    keep = b;
+    return parse(keep.data(), keep.size(), m) && apply(m, v);
+  };
+  CHECK(f("1800406104fffff49f"));
+  NEAR(v.batA, -2.913f, 0.001f);
+  CHECK(f("1800406204000035a9"));
+  NEAR(v.batV, 13.737f, 0.001f);
+  CHECK(f("180040640400002f7a"));
+  NEAR(v.solarA, 12.154f, 0.001f);
+  CHECK(f("180040660400000063") && v.hasSoc && v.soc == 99);
+  CHECK(f("180040670400001aaf") && v.minLeft == 6831);
+  CHECK(f("180090800400020404") && v.hasTanks);
+  CHECK(v.tankPct[0] == 100 && v.tankPct[1] == 100 && v.tankPct[2] == 50 && v.tankPct[3] == 0);
+  // Pump 1 write reply after "on", pump 2 status "off".
+  CHECK(f("1600404c05010000002a") && v.hasPump[0] && v.pumpOn[0]);
+  CHECK(f("1800404d050000000000") && v.hasPump[1] && !v.pumpOn[1]);
+  // Unknown params are ignored, short frames rejected.
+  CHECK(!f("1800406b040000011c"));
+  CHECK(!f("18004062"));
+  uint8_t buf[8];
+  CHECK(encodePump(0, true, buf) == 6);
+  CHECK(!memcmp(buf, unhex("3e00404c0101").data(), 6));
+  encodePump(1, false, buf);
+  CHECK(!memcmp(buf, unhex("3e00404d0100").data(), 6));
+}
+
+// Real frames from Beau's Power Science heater (Android HCI snoop of the
+// AirHeaterBLE app, 2026-11-18). Room temperature on the app was 26 C.
+static void testHeaterReal() {
+  uint8_t f[airheater::CMD_LEN];
+  airheater::encode(airheater::CMD_STATUS, 0, 1234, f);
+  CHECK(std::vector<uint8_t>(f, f + 8) == unhex("aa550c220100002f"));
+  airheater::encode(airheater::CMD_POWER, 0, 1234, f);
+  CHECK(std::vector<uint8_t>(f, f + 8) == unhex("aa550c2203000031"));
+  airheater::encode(airheater::CMD_MODE, airheater::WIRE_TEMP, 1234, f);
+  CHECK(std::vector<uint8_t>(f, f + 8) == unhex("aa550c2202020032"));
+  airheater::encode(airheater::CMD_SETPOINT, 28, 1234, f);
+  CHECK(std::vector<uint8_t>(f, f + 8) == unhex("aa550c22041c004e"));
+
+  Heater h;
+  auto idle = unhex("aa5501000000000000000600000000" "1a0020");
+  CHECK(airheater::decode(idle.data(), idle.size(), h));
+  CHECK(h.phase == HTR_OFF);
+  NEAR(h.cabinC, 26, 0.01f);
+  auto level = unhex("aa550101000000000107068200150" "01a00c0");
+  CHECK(airheater::decode(level.data(), level.size(), h));
+  CHECK(h.mode == HTR_MODE_LEVEL && h.level == 7 && h.phase != HTR_OFF);
+  NEAR(h.supplyV, 13.0f, 0.01f);
+  NEAR(h.bodyC, 21, 0.01f);
+  auto therm = unhex("aa550101000064" "00021c01780015001a002b");
+  CHECK(airheater::decode(therm.data(), therm.size(), h));
+  CHECK(h.mode == HTR_MODE_TEMP && h.setC == 28);
+  NEAR(h.supplyV, 12.0f, 0.01f);
+  NEAR(h.cabinC, 26, 0.01f);
+}
+
 int main() {
   testTheftGuard();
   testHeater();
@@ -969,6 +1088,9 @@ int main() {
   testBleSensors();
   testVictronBle();
   testBleTag();
+  testBmproAdv();
+  testBmproLink();
+  testHeaterReal();
   testVeDirect();
   testAlerts();
   testAlertLevels();

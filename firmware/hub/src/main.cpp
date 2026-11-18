@@ -152,6 +152,7 @@ static void startHeater() {
   else gHeaterBle.release();  // switched away from Bluetooth: let go of the heater
 }
 
+static void stateChanged();
 static void heaterLoop() {
   static uint8_t lastErr = 0;
   HeaterDriver *d = heaterDriver();
@@ -161,7 +162,13 @@ static void heaterLoop() {
     return;
   }
   gState.htr.link = demo::kOn ? cv::HTR_LINK_BLE : gConfig.heater.link;
+  uint8_t prevPhase = gState.htr.phase;
+  bool prevOnline = gState.htr.online;
+  int8_t prevSet = gState.htr.setC;
   d->loop(gState);
+  // Tell the display straight away when the heater starts, stops or changes
+  // set point, rather than on the next once-a-second state frame.
+  if (gState.htr.phase != prevPhase || gState.htr.online != prevOnline || gState.htr.setC != prevSet) stateChanged();
   // A heater fault (out of fuel, didn't light...) goes to the phone once.
   uint8_t err = gState.htr.hasStatus() ? gState.htr.err : 0;
   if (err && err != lastErr) gNotify.push("Diesel heater", cv::heaterErrorText(err), cv::SEV_ALARM);
@@ -183,6 +190,7 @@ static void stateChanged() {
 
 static void configChanged() {
   gConfig.save();
+  gBmpro.setCapacityAh(gConfig.bat.capacityAh);
   gCloud.publishMetaSoon();
   gLink.pushConfigSoon();
 }
@@ -611,6 +619,7 @@ static void updateLoads(uint32_t now) {
         gBmproPumpSince[i] = now;
         gBmproPumpTripped[i] = false;
       }
+      if (p.on != p.sensed) stateChanged();  // tell the display straight away
       p.on = p.sensed;
       p.runSec = p.on ? (now - gBmproPumpSince[i]) / 1000 : 0;
       bool dry = false;
@@ -764,6 +773,7 @@ void setup() {
   if (survey::kOn) {
     survey::begin();  // listen-only Bluetooth logging; the BMPRO link stays off
   } else if (gConfig.usesBmpro()) {
+    gBmpro.setCapacityAh(gConfig.bat.capacityAh);
     gBmpro.begin(gConfig.bmproAddr, gConfig.bmproExplorer);
     gBmproOn = true;
     heapMark("bmpro");
@@ -777,8 +787,37 @@ void setup() {
   enableLoopWDT();
 }
 
+// Commands typed on the USB serial port (same JSON as the phone/display), e.g.
+// {"c":"pump","i":0,"on":true}. USB means someone is at the hub, so it counts
+// as local, like the touchscreen. The reply is printed back.
+static void serialCommands() {
+  static String line;
+  while (Serial.available()) {
+    char ch = (char)Serial.read();
+    if (ch == '\r') continue;
+    if (ch != '\n') {
+      if (line.length() < 512) line += ch;
+      continue;
+    }
+    line.trim();
+    if (line.startsWith("{")) {
+      JsonDocument in, reply;
+      if (deserializeJson(in, line)) {
+        Serial.println("[usb] not valid JSON");
+      } else {
+        hub::handleCommand(in.as<JsonObjectConst>(), hub::SRC_DISPLAY, reply);
+        String out;
+        serializeJson(reply, out);
+        Serial.println("[usb] " + (out == "null" ? String("ok") : out));
+      }
+    }
+    line = "";
+  }
+}
+
 void loop() {
   uint32_t now = millis();
+  serialCommands();
   {
     StateLock l;
     if (!demo::kOn) {

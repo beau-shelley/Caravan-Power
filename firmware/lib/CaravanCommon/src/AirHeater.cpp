@@ -56,7 +56,9 @@ bool decode(const uint8_t *d, size_t len, Heater &h) {
     if (d[9] >= HEATER_MIN_C && d[9] <= HEATER_MAX_C) h.setC = (int8_t)d[9];
     if (d[10] + 1 <= HEATER_LEVELS) h.level = d[10] + 1;
   }
-  h.supplyV = (d[11] | d[12] << 8) / 10.0f;
+  // Reads 0 V while the heater is off: keep the last real reading then.
+  float v = (d[11] | d[12] << 8) / 10.0f;
+  if (v > 0) h.supplyV = v;
   h.bodyC = s16(d + 13);
   h.cabinC = s16(d + 15);
   return true;

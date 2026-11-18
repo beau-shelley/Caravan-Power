@@ -15,7 +15,29 @@ static lv_obj_t *lSolarW, *lSolarA, *lChgA, *lChgSub, *lLoadA, *lLoadW;
 constexpr int NROWS = cv::NUM_SOLAR + 1, ROW_AC = cv::NUM_SOLAR;
 static lv_obj_t *mpName[NROWS], *mpChip[NROWS], *mpBar[NROWS], *mpW[NROWS];
 static int rowsAc = -1;  // layout currently shown: 0 = solar only, 1 = with mains row
-static lv_obj_t *tName[cv::NUM_TEMPS], *tVal[cv::NUM_TEMPS];
+// One row per temperature, plus "Heater set" shown only while the heater runs.
+constexpr int T_HTR = cv::NUM_TEMPS;
+static lv_obj_t *tName[cv::NUM_TEMPS + 1], *tVal[cv::NUM_TEMPS + 1];
+static int tRows = -1, tInner = 0;
+
+static void placeTempRows(int rows) {
+  if (rows == tRows) return;
+  tRows = rows;
+  int step = (tInner - 24) / rows;
+  for (int i = 0; i <= T_HTR; i++) {
+    bool show = i < rows;
+    if (!show) {
+      lv_obj_add_flag(tName[i], LV_OBJ_FLAG_HIDDEN);
+      lv_obj_add_flag(tVal[i], LV_OBJ_FLAG_HIDDEN);
+      continue;
+    }
+    lv_obj_clear_flag(tName[i], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(tVal[i], LV_OBJ_FLAG_HIDDEN);
+    int y = 24 + i * step + (step - 34) / 2;
+    lv_obj_set_pos(tName[i], 0, y + 6);
+    lv_obj_align(tVal[i], LV_ALIGN_TOP_RIGHT, 0, y);
+  }
+}
 static lv_obj_t *tkBar[cv::NUM_TANKS], *tkPct[cv::NUM_TANKS], *tkName[cv::NUM_TANKS];
 static lv_obj_t *tilePump[cv::NUM_PUMPS], *tileInv, *tileAc;
 static lv_obj_t *gasBar, *gasPct;
@@ -143,14 +165,14 @@ void buildHome(lv_obj_t *p) {
   lv_obj_t *t = card(p, colX(0, 3), BOT_Y, bw, BOT_H, "TEMPERATURE", col::CLIMATE);
   lv_obj_add_flag(t, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(t, goClimate, LV_EVENT_CLICKED, nullptr);
-  constexpr int tStep = (bh - 24) / cv::NUM_TEMPS;
-  for (int i = 0; i < cv::NUM_TEMPS; i++) {
-    int y = 24 + i * tStep + (tStep - 34) / 2;
-    tName[i] = lbl(t, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED, app::meta.tempName[i]);
-    lv_obj_set_pos(tName[i], 0, y + 6);
+  tInner = bh;
+  for (int i = 0; i <= T_HTR; i++) {
+    tName[i] = lbl(t, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED,
+                   i < T_HTR ? app::meta.tempName[i] : "Heater set");
     tVal[i] = lbl(t, &lv_font_montserrat_28, col::TEXT, "--");
-    lv_obj_align(tVal[i], LV_ALIGN_TOP_RIGHT, 0, y);
   }
+  tRows = -1;
+  placeTempRows(cv::NUM_TEMPS);
 
   // ---------------- water
   lv_obj_t *w = card(p, colX(1, 3), BOT_Y, bw, BOT_H, "WATER", col::WATER);
@@ -305,6 +327,20 @@ void updateHome() {
     } else {
       setText(tVal[i], "--");
       lv_obj_set_style_text_color(tVal[i], c(col::DIM), 0);
+    }
+  }
+  // Heater set point, only while the heater is running.
+  bool htrOn = s.htr.hasStatus() && s.htr.running();
+  placeTempRows(htrOn ? cv::NUM_TEMPS + 1 : cv::NUM_TEMPS);
+  if (htrOn) {
+    if (s.htr.mode == cv::HTR_MODE_LEVEL) {
+      lv_label_set_text(tName[T_HTR], "Heater level");
+      setText(tVal[T_HTR], "%d", (int)s.htr.level);
+      lv_obj_set_style_text_color(tVal[T_HTR], c(col::TEXT), 0);
+    } else {
+      lv_label_set_text(tName[T_HTR], "Heater set");
+      setText(tVal[T_HTR], "%d\xC2\xB0", (int)s.htr.setC);
+      lv_obj_set_style_text_color(tVal[T_HTR], c(tempColor(cv::TEMP_INSIDE, s.htr.setC)), 0);
     }
   }
 
