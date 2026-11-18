@@ -38,7 +38,11 @@ volatile bool gRetargeted = false;
 volatile bool gDecodedAny = false;
 volatile uint32_t gFrames = 0;
 // Voltage readings side by side, for matching the Trek3's figure.
-volatile float gVBcast = 0, gVConn = 0, gV2 = 0;  // notifications from the OdysseyLink's data characteristic
+volatile float gVBcast = 0, gVConn = 0, gV2 = 0;
+// Last battery reading over the connection. While it is fresh the broadcast is
+// ignored: its voltage updates only every few minutes (13.28 V while the
+// connection and the Trek3 said 13.05-13.1 V, 2026-11-18).
+volatile uint32_t gConnBatMs = 0;  // notifications from the OdysseyLink's data characteristic
 
 // Decoded data handed from the BLE task to loop(), with arrival times.
 BmproData gData;
@@ -122,6 +126,7 @@ void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
   // Not used: frame 0x04 bytes 16-17 matched the solar figure once, but read
   // 61 A at night with no charging (2026-11-18), so its meaning is unknown.
   // Solar comes from the connection (param 40.64) instead.
+  if (gConnBatMs && millis() - gConnBatMs < 15000) return;
   if (out.batValid) applyDecoded(out);
 }
 
@@ -531,6 +536,7 @@ bool Bmpro::decode(const char *charUuid, const uint8_t *data, size_t len, BmproD
     out.batA = v.batA;
     out.batSoc = v.hasSoc ? v.soc : -1;
     out.batTtgMin = v.hasMinLeft ? v.minLeft : -1;
+    gConnBatMs = millis();
   }
   if (v.hasSolarA) {
     out.chargerValid = true;
