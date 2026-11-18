@@ -17,6 +17,7 @@ class WeatherClient {
  private:
   uint32_t nextMs_ = 0;
   float lastLat_ = 0, lastLon_ = 0;
+  float tryLat_ = 999, tryLon_ = 999;  // where the last attempt was for (success or not)
   bool force_ = true;
   char query_[48] = "";
   void runSearch();
