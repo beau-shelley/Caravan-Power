@@ -612,6 +612,7 @@ static void updateLoads(uint32_t now) {
         gBmproPumpSince[i] = now;
         gBmproPumpTripped[i] = false;
       }
+      if (p.on != p.sensed) stateChanged();  // tell the display straight away
       p.on = p.sensed;
       p.runSec = p.on ? (now - gBmproPumpSince[i]) / 1000 : 0;
       bool dry = false;

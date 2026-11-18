@@ -338,7 +338,8 @@ void bleTask(void *) {
       bool ok = c && c->writeValue(w.data, w.len, w.response);
       logLine(String("WRITE ") + w.uuid + " " + hex(w.data, w.len) + (ok ? "ok" : "FAILED"));
     }
-    vTaskDelay(pdMS_TO_TICKS(100));
+    // Sleep up to 100 ms, but wake the moment a write (a pump press) is queued.
+    xQueuePeek(gWriteQ, &w, pdMS_TO_TICKS(100));
   }
 }
 }  // namespace

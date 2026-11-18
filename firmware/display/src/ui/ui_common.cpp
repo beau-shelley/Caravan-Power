@@ -768,7 +768,12 @@ void togglePump(int i) {
     toast("Pump locked out - tank is empty", col::WARN);
     return;
   }
-  app::cmdPump(i, !p.on);
+  bool on = !p.on;
+  app::cmdPump(i, on);
+  // Show the new state at once; the hub's next state frame confirms it (or
+  // puts it back if the BMPRO didn't switch).
+  app::state.pump[i].on = on;
+  app::stateDirty = true;
 }
 
 void toggleInverter() { app::cmdInverter(!app::state.inv.on); }
