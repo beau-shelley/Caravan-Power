@@ -152,6 +152,7 @@ static void startHeater() {
   else gHeaterBle.release();  // switched away from Bluetooth: let go of the heater
 }
 
+static void stateChanged();
 static void heaterLoop() {
   static uint8_t lastErr = 0;
   HeaterDriver *d = heaterDriver();
@@ -161,7 +162,13 @@ static void heaterLoop() {
     return;
   }
   gState.htr.link = demo::kOn ? cv::HTR_LINK_BLE : gConfig.heater.link;
+  uint8_t prevPhase = gState.htr.phase;
+  bool prevOnline = gState.htr.online;
+  int8_t prevSet = gState.htr.setC;
   d->loop(gState);
+  // Tell the display straight away when the heater starts, stops or changes
+  // set point, rather than on the next once-a-second state frame.
+  if (gState.htr.phase != prevPhase || gState.htr.online != prevOnline || gState.htr.setC != prevSet) stateChanged();
   // A heater fault (out of fuel, didn't light...) goes to the phone once.
   uint8_t err = gState.htr.hasStatus() ? gState.htr.err : 0;
   if (err && err != lastErr) gNotify.push("Diesel heater", cv::heaterErrorText(err), cv::SEV_ALARM);
