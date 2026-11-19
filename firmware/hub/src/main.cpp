@@ -293,7 +293,8 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
       settimeofday(&tv, nullptr);
       Serial.printf("[net] clock set from the display (%lu)\n", (unsigned long)ts);
     }
-    reply["t"] = "ok";
+    // no reply: the display sends this unasked, so an "ok" would reach its UI
+    reply.clear();
   } else if (!strcmp(c, "state")) {
     cv::stateToJson(gState, reply.to<JsonObject>());
   } else if (!strcmp(c, "hello")) {

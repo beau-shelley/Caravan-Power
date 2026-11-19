@@ -149,10 +149,29 @@ void onHubLink(bool up) {
 static volatile bool gWxWanted = false;
 static float gWxLat = 0, gWxLon = 0;
 static QueueHandle_t gLocalQ;  // String*: commands of our own for the hub
+static String gWxLast;          // last good {"c":"wx_set",...}, re-sent after a hub restart
+static uint32_t gWxLastMs = 0;
+
+static void queueLocal(const String &json) {
+  String *s = new String(json);
+  if (xQueueSend(gLocalQ, &s, 0) != pdTRUE) delete s;
+}
+
+void resendWeather() {
+  if (!gOn) return;
+  Lock l;
+  if (gWxLast.length() && millis() - gWxLastMs < 3UL * 3600 * 1000) queueLocal(gWxLast);
+}
 
 void requestWeather(float lat, float lon) {
   if (!gOn) return;
   Lock l;
+  // Same place, fetched under 20 min ago: answer from memory straight away.
+  if (gWxLast.length() && millis() - gWxLastMs < 20UL * 60 * 1000 && fabsf(lat - gWxLat) < 0.05f &&
+      fabsf(lon - gWxLon) < 0.05f) {
+    queueLocal(gWxLast);
+    return;
+  }
   gWxLat = lat;
   gWxLon = lon;
   gWxWanted = true;
@@ -186,9 +205,14 @@ static void fetchWeather() {
   JsonDocument d;
   d["c"] = "wx_set";
   cv::weatherToJson(w, d["wx"].to<JsonObject>());
-  String *s = new String();
-  serializeJson(d, *s);
-  if (xQueueSend(gLocalQ, &s, 0) != pdTRUE) delete s;
+  String js;
+  serializeJson(d, js);
+  {
+    Lock l;
+    gWxLast = js;
+    gWxLastMs = millis();
+    queueLocal(js);
+  }
   Serial.printf("[weather] %.1f C, %s - sent to the hub\n", w.temp, cv::wxText(w.code));
 }
 
@@ -350,7 +374,7 @@ void begin() {
   gOutQ = xQueueCreate(16, sizeof(Out));
   gCmdQ = xQueueCreate(8, sizeof(String *));
   gPushQ = xQueueCreate(16, sizeof(Push));
-  gLocalQ = xQueueCreate(2, sizeof(String *));
+  gLocalQ = xQueueCreate(4, sizeof(String *));
 
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(HOSTNAME "-display");

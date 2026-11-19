@@ -42,6 +42,7 @@ void onHubLink(bool) {}
 bool takeCommand(JsonDocument &) { return false; }
 bool takeLocalCommand(JsonDocument &) { return false; }
 void requestWeather(float, float) {}
+void resendWeather() {}
 }  // namespace cloud
 
 // Same resolution as the firmware (board.h); override with

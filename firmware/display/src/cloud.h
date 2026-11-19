@@ -37,5 +37,6 @@ bool takeCommand(JsonDocument &cmd);
 // not as a cloud command).
 void requestWeather(float lat, float lon);
 bool takeLocalCommand(JsonDocument &cmd);
+void resendWeather();  // hub link (re)connected: give it the last forecast at once
 
 }  // namespace cloud

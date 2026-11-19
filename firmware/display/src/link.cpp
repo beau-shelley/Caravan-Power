@@ -224,6 +224,10 @@ void linkLoop() {
   bool up = gLastRxMs && millis() - gLastRxMs < 4000;
   // Pass our NTP clock to the hub once a minute (a hub without Wi-Fi has no other).
   static uint32_t nextTimeMs = 0;
+  if (up && !linkUp) {
+    nextTimeMs = millis();  // hub (re)started: clock first, then the last forecast
+    cloud::resendWeather();
+  }
   if (up && (int32_t)(millis() - nextTimeMs) >= 0 && time(nullptr) > 1700000000) {
     nextTimeMs = millis() + 60000;
     JsonDocument t;
