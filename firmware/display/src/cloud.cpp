@@ -319,8 +319,8 @@ static void sendPush(const Push &m) {
   else if (m.sev == cv::SEV_WARN) prio = 4, tags = "warning";
   else prio = 3, tags = "information_source";
 
-  for (int attempt = 0; attempt < 5; attempt++) {
-    while (!gWifiUp) vTaskDelay(pdMS_TO_TICKS(2000));
+  for (int attempt = 0; attempt < 3; attempt++) {  // runs on the cloud task: keep retries short
+    if (!gWifiUp) return;
     WiFiClientSecure tls;
     tls.setCACert(ROOT_CA_PEM);
     HTTPClient http;
@@ -338,11 +338,6 @@ static void sendPush(const Push &m) {
   }
 }
 
-static void pushTask(void *) {
-  Push m;
-  for (;;)
-    if (xQueueReceive(gPushQ, &m, portMAX_DELAY) == pdTRUE) sendPush(m);
-}
 
 // ---------------------------------------------------------------- Wi-Fi + task
 static void netTask(void *) {
@@ -359,8 +354,26 @@ static void netTask(void *) {
       WiFi.disconnect();
       joinNet(gNetIdx + 1);  // the other network, if there is one
     }
+    // One TLS session at a time: with the MQTT link open there is only ~13 KB
+    // of internal RAM left (largest block ~5 KB), too little for a second
+    // handshake (2026-11-20: every forecast fetch failed, HTTP -1). So push
+    // alerts and the forecast pause MQTT for the few seconds they take.
+    bool wantPush = ntfyConfigured() && uxQueueMessagesWaiting(gPushQ) > 0;
+    bool wantWx = gWxWanted && time(nullptr) > 1700000000;
+    if (up && (wantPush || wantWx)) {
+      if (gMqtt.connected()) {
+        gMqtt.disconnect();
+        gTls.stop();
+        gMqttUp = false;
+        Serial.println("[cloud] MQTT paused for a push alert / forecast");
+      }
+      Push m;
+      while (xQueueReceive(gPushQ, &m, 0) == pdTRUE) sendPush(m);
+      if (wantWx) fetchWeather();
+      gNextTryMs = 0;  // reconnect straight away
+      gHubUpNew = true;
+    }
     mqttLoop();
-    if (up && time(nullptr) > 1700000000) fetchWeather();
     vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
@@ -394,7 +407,6 @@ void begin() {
 
   gOn = true;
   xTaskCreatePinnedToCore(netTask, "cloud", 8192, nullptr, 1, nullptr, 0);
-  if (ntfyConfigured()) xTaskCreatePinnedToCore(pushTask, "push", 8192, nullptr, 1, nullptr, 0);
   Serial.printf("[cloud] on: MQTT %s, push alerts %s\n", mqttConfigured() ? MQTT_HOST : "off",
                 ntfyConfigured() ? "on" : "off");
 }
