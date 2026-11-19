@@ -303,14 +303,9 @@ void updateHome() {
   // energy flow
   float solarW = s.solarW();
   setText(lSolarW, "%.0f W", solarW);
-  float solarA = 0;  // roof (via the BMPRO) + Victron controllers
-  for (const auto &m : s.solar)
-    if (m.online) solarA += m.batA;
-  setText(lSolarA, "%.1f A", solarA);
+  setText(lSolarA, "%s", "");  // total watts only (roof + portable)
   setText(lChgA, s.bat.chargeA >= 99.95f ? "%.0f A" : "%.1f A", s.bat.chargeA);
-  if (s.bat.acOn) setText(lChgSub, "mains %.0f A", s.bat.acA);
-  else if (s.bat.chargerA > 0.5f) setText(lChgSub, "BMPRO %.1f A", s.bat.chargerA);
-  else setText(lChgSub, "solar only");
+  setText(lChgSub, "%s", "");  // total charge in (solar + BMPRO + mains) only
   // Roof row always; the portable panels only while they're charging.
   unsigned solarMask = 1;
   for (int i = 1; i < cv::NUM_SOLAR; i++)
