@@ -281,6 +281,19 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gRestartAtMs = millis() | 1;
   } else if (!strcmp(c, "ping")) {
     reply["t"] = "pong";
+  } else if (!strcmp(c, "time")) {
+    // Clock from the display board (NTP there), for hubs running without Wi-Fi.
+    uint32_t ts = cmd["ts"] | 0u;
+    if (src == SRC_CLOUD || ts < 1700000000) {
+      replyErr(reply, "bad time");
+      return;
+    }
+    if (!gNet.timeValid() || labs((long)((int64_t)time(nullptr) - ts)) > 5) {
+      struct timeval tv = {(time_t)ts, 0};
+      settimeofday(&tv, nullptr);
+      Serial.printf("[net] clock set from the display (%lu)\n", (unsigned long)ts);
+    }
+    reply["t"] = "ok";
   } else if (!strcmp(c, "state")) {
     cv::stateToJson(gState, reply.to<JsonObject>());
   } else if (!strcmp(c, "hello")) {
@@ -502,6 +515,14 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gWeather.search(q);
   } else if (!strcmp(c, "weather_refresh")) {
     gWeather.refreshSoon();
+  } else if (!strcmp(c, "wx_set")) {
+    // Forecast fetched by the display for a hub without Wi-Fi (answer to {"t":"wx_req"}).
+    if (src != SRC_DISPLAY) {
+      replyErr(reply, "display only");
+      return;
+    }
+    gWeather.fromDisplay(gState, cmd["wx"]);
+    stateChanged();
 
   // ---------------- secure mode (anti-theft)
   } else if (!strcmp(c, "secure")) {
@@ -725,6 +746,10 @@ static void heapMark(const char *what) {
 
 // Network services run on core 0 so a slow TLS handshake over Starlink never
 // stalls sensor reading or the touchscreen link on core 1.
+#ifndef HUB_WIFI
+#define HUB_WIFI 1
+#endif
+
 static void netTask(void *) {
   gWeb.begin();
   heapMark("web");
@@ -775,8 +800,12 @@ void setup() {
 
   gLink.begin(LINK_SERIAL, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE, PIN_LINK_RE);
   if (demo::kOn) demo::begin(gState);
-  gNet.begin();
-  heapMark("wifi");
+  if (HUB_WIFI) {
+    gNet.begin();
+    heapMark("wifi");
+  } else {
+    gNet.beginOffline();
+  }
   gNotify.begin();
   for (int i = 0; i < cv::NUM_SOLAR; i++) startSolar(i);
   if (gConfig.victron[GPS_SHARES_SOLAR].src != SOLAR_VEDIRECT) {  // the shared UART is free for a GPS
@@ -794,8 +823,10 @@ void setup() {
     gBmproOn = true;
     heapMark("bmpro");
   }
-  xTaskCreatePinnedToCore(netTask, "net", 10240, nullptr, 1, nullptr, 0);  // ~4.3 KB seen under load; HTTPS weather/TLS needs headroom
-  heapMark("net task");
+  if (HUB_WIFI) {
+    xTaskCreatePinnedToCore(netTask, "net", 10240, nullptr, 1, nullptr, 0);  // ~4.3 KB seen under load; HTTPS weather/TLS needs headroom
+    heapMark("net task");
+  }
 
   // Watchdog: if loop() stops running for 30 s (a hang or a deadlock), the
   // hub restarts itself. The Arduino core feeds it after every loop().
@@ -898,6 +929,7 @@ void loop() {
     if (secure::loop(gState, secureSensorOk(), now)) stateChanged();
     updateLoads(now);
     gNet.loop(gState);
+    if (!HUB_WIFI) gWeather.loop(gState);  // asks the display for the forecast (no net task)
     if (demo::kOn) demo::tick(gState, now);
     // Mains chargers have no sensor: whatever charge the BMPRO and Victrons
     // don't explain is theirs. Runs every loop, after the battery drivers, so

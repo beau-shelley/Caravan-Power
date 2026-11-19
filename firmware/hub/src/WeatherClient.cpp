@@ -52,7 +52,10 @@ void WeatherClient::runSearch() {
     }
     http.end();
   }
-  if (code != 200) out["err"] = WiFi.status() == WL_CONNECTED ? "Search failed - try again" : "No internet connection";
+  if (code != 200)
+    out["err"] = gNet.offline()                     ? "Set the location on your phone"
+                 : WiFi.status() == WL_CONNECTED ? "Search failed - try again"
+                                                 : "No internet connection";
   String s;
   serializeJson(out, s);
   StateLock l;
@@ -61,7 +64,9 @@ void WeatherClient::runSearch() {
 
 void WeatherClient::loop(cv::State &s) {
   if (query_[0]) runSearch();
-  if (WiFi.status() != WL_CONNECTED || time(nullptr) < 1700000000) return;
+  bool viaDisplay = gNet.offline();
+  if (!viaDisplay && WiFi.status() != WL_CONNECTED) return;
+  if (time(nullptr) < 1700000000) return;
 
   float lat, lon;
   uint8_t src;
@@ -85,6 +90,18 @@ void WeatherClient::loop(cv::State &s) {
   tryLat_ = lat;
   tryLon_ = lon;
   nextMs_ = millis() + 5UL * 60 * 1000;  // retry in 5 min if this fails
+  if (viaDisplay) {
+    JsonDocument r;
+    r["t"] = "wx_req";
+    r["lat"] = lat;
+    r["lon"] = lon;
+    String js;
+    serializeJson(r, js);
+    StateLock l;
+    gLink.queueReply(js);
+    Serial.printf("[weather] asked the display for the forecast (%.3f, %.3f)\n", lat, lon);
+    return;
+  }
   // HTTPS needs a big free block; with both Bluetooth links open the classic
   // ESP32 can be short of one. Skip rather than fail (and fragment) the heap.
   if (ESP.getMaxAllocHeap() < 32000) {
@@ -125,6 +142,22 @@ void WeatherClient::loop(cv::State &s) {
   lastLon_ = lon;
   nextMs_ = millis() + 30UL * 60 * 1000;
   Serial.printf("[weather] %.1f C, %s, gusts today %.0f km/h\n", w.temp, cv::wxText(w.code), w.day[0].gustMax);
+}
+
+void WeatherClient::fromDisplay(cv::State &s, JsonObjectConst wx) {
+  cv::Weather w;
+  cv::weatherFromJson(w, wx);
+  if (!w.valid) return;
+  StateLock l;
+  const LocationCfg &loc = gConfig.location;
+  w.updated = time(nullptr) > 1700000000 ? (uint32_t)time(nullptr) : w.updated;
+  w.locSrc = loc.src;
+  memcpy(w.place, loc.name, sizeof(w.place));
+  s.wx = w;
+  lastLat_ = loc.lat;
+  lastLon_ = loc.lon;
+  nextMs_ = millis() + 30UL * 60 * 1000;
+  Serial.printf("[weather] from the display: %.1f C, %s\n", w.temp, cv::wxText(w.code));
 }
 
 }  // namespace hub

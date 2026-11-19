@@ -97,6 +97,8 @@ class Notifier {
 class Net {
  public:
   void begin();
+  void beginOffline();  // Wi-Fi off build (HUB_WIFI=0)
+  bool offline() const { return offline_; }
   void loop(cv::State &s);
   bool timeValid() const;
   // Network watchdog, run from the net task: pings the router every 30 s. If
@@ -108,6 +110,7 @@ class Net {
 
  private:
   volatile uint32_t netAliveMs_ = 0;
+  bool offline_ = false;
   uint32_t nextPingMs_ = 30000, lastPingOkMs_ = 0, rejoinedMs_ = 0, pingDoneMs_ = 0;
   void *ping_ = nullptr;  // esp_ping_handle_t while a ping round runs
 };

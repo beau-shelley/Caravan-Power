@@ -171,6 +171,8 @@ static void handleFrame(const char *line, size_t len) {
     cloud::onHubEvent(line, len);
   } else if (!strcmp(t, "push")) {  // push alert for ntfy
     cloud::onHubPush(doc.as<JsonObjectConst>());
+  } else if (!strcmp(t, "wx_req")) {  // hub without Wi-Fi wants the forecast
+    cloud::requestWeather(doc["lat"] | 0.0f, doc["lon"] | 0.0f);
   } else if (!strcmp(t, "hello")) {
     cloud::onHubMeta(doc["meta"]);
     cloud::onHubRules(doc["rules"]);
@@ -214,11 +216,21 @@ void linkLoop() {
       send(c);
       c.clear();
     }
+    if (gQCount < QLEN && cloud::takeLocalCommand(c)) send(c);
   }
   // Our turn to talk: the hub just finished a frame and is now listening.
   if (gotFrame && !gSer.available()) transmitOne();
 
   bool up = gLastRxMs && millis() - gLastRxMs < 4000;
+  // Pass our NTP clock to the hub once a minute (a hub without Wi-Fi has no other).
+  static uint32_t nextTimeMs = 0;
+  if (up && (int32_t)(millis() - nextTimeMs) >= 0 && time(nullptr) > 1700000000) {
+    nextTimeMs = millis() + 60000;
+    JsonDocument t;
+    t["c"] = "time";
+    t["ts"] = (uint32_t)time(nullptr);
+    send(t);
+  }
   if (up && !linkUp) {
     gHelloPending = true;  // (re)connected: fetch names + rules
     // Meta from the hub changes rarely; re-ask every reconnect.

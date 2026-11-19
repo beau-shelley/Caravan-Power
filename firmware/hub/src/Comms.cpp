@@ -75,6 +75,16 @@ void Net::begin() {
   configTzTime(TZ_INFO, "pool.ntp.org", "time.google.com");
 }
 
+// Wi-Fi off build: the display sends the time ({"c":"time"}); keep the
+// local timezone rules so midnight resets and the UTC offset still work.
+void Net::beginOffline() {
+  setenv("TZ", TZ_INFO, 1);
+  tzset();
+  WiFi.mode(WIFI_OFF);
+  offline_ = true;
+  Serial.println("[net] Wi-Fi off in this build (the display board runs the cloud and the clock)");
+}
+
 bool Net::timeValid() const { return time(nullptr) > 1700000000; }
 
 // ---- watchdog
@@ -161,14 +171,14 @@ void Net::loop(cv::State &s) {
   }
   static bool was = false;
   static uint32_t lastTry = 0;
-  bool up = WiFi.status() == WL_CONNECTED;
+  bool up = !offline_ && WiFi.status() == WL_CONNECTED;
   if (up && !was) {
     Serial.printf("[net] Wi-Fi up, IP %s (heap %u free, largest %u)\n", WiFi.localIP().toString().c_str(),
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     MDNS.begin(HOSTNAME);
     MDNS.addService("http", "tcp", 80);
   }
-  if (!up && millis() - lastTry > 30000) {  // belt and braces
+  if (!up && !offline_ && millis() - lastTry > 30000) {  // belt and braces
     lastTry = millis();
     if (sizeof(kSsid) / sizeof(kSsid[0]) > 1) {
       WiFi.disconnect(false);
