@@ -119,6 +119,10 @@ void touchCb(lv_indev_drv_t *, lv_indev_data_t *data) {
 }
 }  // namespace
 
+#ifndef DISPLAY_PCLK_MHZ
+#define DISPLAY_PCLK_MHZ 30  // ~33 Hz refresh; 21 gives ~23 Hz with more bus headroom
+#endif
+
 namespace board {
 void begin() {
   Serial.printf("[board] PSRAM: %u bytes, free internal heap: %u bytes\n", ESP.getPsramSize(), ESP.getFreeHeap());
@@ -136,7 +140,12 @@ void begin() {
 
   esp_lcd_rgb_panel_config_t cfg = {};
   cfg.clk_src = LCD_CLK_SRC_DEFAULT;
-  cfg.timings.pclk_hz = 30 * 1000 * 1000;
+  // Wi-Fi on this board (forecast, clock, cloud) shares the PSRAM bus with the
+  // frame buffer: with it running the panel tore and flickered (2026-11-19).
+  // Wi-Fi/lwIP and TLS buffers now stay in internal RAM (platformio.ini),
+  // bigger bounce buffers ride out bus stalls, and the DMA restarts at each
+  // vsync so a missed refill can't leave the picture shifted.
+  cfg.timings.pclk_hz = DISPLAY_PCLK_MHZ * 1000 * 1000;
   cfg.timings.h_res = W;
   cfg.timings.v_res = H;
   cfg.timings.hsync_pulse_width = 162;
@@ -149,7 +158,7 @@ void begin() {
   cfg.data_width = 16;
   cfg.bits_per_pixel = 16;
   cfg.num_fbs = 2;
-  cfg.bounce_buffer_size_px = W * 10;
+  cfg.bounce_buffer_size_px = W * 16;  // 2 x 32 KB of internal RAM
   cfg.sram_trans_align = 4;
   cfg.psram_trans_align = 64;
   cfg.hsync_gpio_num = 46;
@@ -166,7 +175,7 @@ void begin() {
     Serial.printf("[board] ERROR: RGB panel initialization failed: %d\n", err);
     while (true) delay(1000);
   }
-  Serial.printf("[board] RGB panel initialized: %dx%d, 30MHz\n", W, H);
+  Serial.printf("[board] RGB panel initialized: %dx%d, %dMHz\n", W, H, DISPLAY_PCLK_MHZ);
 
   lv_init();
   const size_t n = W * 60;
