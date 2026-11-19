@@ -159,7 +159,7 @@ void begin() {
   cfg.data_width = 16;
   cfg.bits_per_pixel = 16;
   cfg.num_fbs = 2;
-  cfg.bounce_buffer_size_px = W * 15;  // 2 x 30 KB internal RAM; must divide 600 lines
+  cfg.bounce_buffer_size_px = W * 30;  // 2 x 60 KB internal RAM (must divide 600 lines); 15 lines still tore with the cloud link up
   cfg.sram_trans_align = 4;
   cfg.psram_trans_align = 64;
   cfg.hsync_gpio_num = 46;
