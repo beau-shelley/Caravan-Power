@@ -4,6 +4,8 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_heap_caps.h>
+#include <mbedtls/platform.h>
 
 #include "CaravanModel.h"
 #include "../../hub/src/root_ca.h"
@@ -386,7 +388,21 @@ static void netTask(void *) {
   }
 }
 
+// mbedTLS takes its ~40 KB per connection from internal RAM, which on this
+// board is mostly spoken for (Wi-Fi, the RGB bounce buffers): the forecast
+// failed with "SSL - Memory allocation failed" with 69 KB free but no block
+// over 24 KB (2026-11-20), while 2.7 MB of PSRAM sat idle. Use PSRAM first.
+static void *tlsCalloc(size_t n, size_t size) {
+  void *p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+
 void begin() {
+#if defined(MBEDTLS_PLATFORM_MEMORY) && !defined(MBEDTLS_PLATFORM_CALLOC_MACRO)
+  mbedtls_platform_set_calloc_free(tlsCalloc, heap_caps_free);
+#else
+#warning "mbedTLS allocator can't be changed at run time - TLS buffers stay in internal RAM"
+#endif
   // Wi-Fi alone is enough: the clock and the forecast for the hub need it even
   // with no broker or ntfy topic set (those are checked where they're used).
   if (!wifiConfigured()) {
