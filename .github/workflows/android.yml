@@ -1,10 +1,9 @@
 name: android
 
 on:
-  push:
-    paths:
-      - "android/**"
-      - ".github/workflows/android.yml"
+  # Manual only (Actions tab > android > Run workflow): the free minutes for this
+  # private repo ran out, so app builds are done on the Surface instead
+  # (tools/build-app.ps1).
   workflow_dispatch:
 
 permissions:
@@ -41,7 +40,7 @@ jobs:
       # The app checks these releases for updates (android/.../Updater.kt).
       # Tag app-build-<run number>; the build number is also the APK's versionCode.
       - name: Publish as a release
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/project-thread-1xdmyo' || github.ref == 'refs/heads/claude/project-thread-9avdir' || github.ref == 'refs/heads/claude/project-thread-ng15gl')
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
