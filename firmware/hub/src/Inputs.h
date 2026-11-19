@@ -72,6 +72,7 @@ class BatteryShunt {
   void setSoc(float pct) {
     soc_.setSoc(pct);
     seeded_ = true;
+    bootSynced_ = true;  // a manual % wins over the BMPRO's
   }
   void setCapacityAh(float ah) { soc_.setCapacityAh(ah); }
   float soc() const { return soc_.soc(); }
@@ -81,6 +82,7 @@ class BatteryShunt {
  private:
   bool ok_ = false, chgOk_ = false;
   bool seeded_ = false;  // has a starting % (saved, set, or estimated)
+  bool bootSynced_ = false;  // caught up with the BMPRO's % since this start
   cv::SocEstimator soc_;
   uint32_t lastMs_ = 0, lastSaveMs_ = 0, lastFeedMs_ = 0;
   float lastSavedSoc_ = -1;

@@ -269,14 +269,25 @@ bool BatteryShunt::begin() {
 }
 
 void BatteryShunt::feed(cv::State &s, float v, float a, uint32_t sampleMs, float bmproSoc) {
+  // The BMPRO's own % is only trusted when the bank fits its 600 Ah limit.
+  bool useBmpro = bmproSoc >= 0 && soc_.config().capacityAh <= 600;
   if (!seeded_) {
-    // First reading after a fresh flash. The BMPRO's own % is only a good
-    // start when the bank fits its 600 Ah limit; otherwise guess from volts.
-    bool useBmpro = bmproSoc >= 0 && soc_.config().capacityAh <= 600;
+    // First reading after a fresh flash: otherwise guess from volts.
     soc_.setSoc(useBmpro ? bmproSoc : cv::SocEstimator::socFromRestVoltageLfp(v));
     seeded_ = true;
+    bootSynced_ = true;
     lastSavedSoc_ = -100;  // save the start straight away
     Serial.printf("[bat] start at %.0f%% (%s)\n", soc_.soc(), useBmpro ? "BMPRO's %" : "from voltage");
+  } else if (!bootSynced_ && useBmpro) {
+    // First BMPRO reading since this start. The saved % is stale by however
+    // long the hub was unpowered (the BMPRO kept counting all along), so
+    // pick up from the BMPRO once, then count from there.
+    bootSynced_ = true;
+    if (fabsf(bmproSoc - soc_.soc()) >= 1) {
+      Serial.printf("[bat] saved %.0f%% -> BMPRO's %.0f%% (hub was off)\n", soc_.soc(), bmproSoc);
+      soc_.setSoc(bmproSoc);
+      lastSavedSoc_ = -100;
+    }
   }
   soc_.update(v, a, sampleMs);
   // ~10 s average current for time left (BMPRO readings come every ~1-2 s)
