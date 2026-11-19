@@ -58,7 +58,7 @@ if ($gh) {
     $subject = (git -C $root log -1 --format=%s).Trim()
     gh release create "app-build-$Build" $apk --repo $repo --target $sha `
       --title "Caravan app build $Build" --notes "$subject`n`nBuilt on this PC from commit $($sha.Substring(0,7))."
-    if ($LASTEXITCODE -eq 0) { $published = $true; Write-Host "Published release app-build-$Build: the app offers it under Setup > Update." }
+    if ($LASTEXITCODE -eq 0) { $published = $true; Write-Host "Published release app-build-$($Build) - the app offers it under Setup > Update." }
   } else {
     Write-Host "Commit $($sha.Substring(0,7)) isn't pushed, so no release."
   }
