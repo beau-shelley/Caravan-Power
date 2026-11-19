@@ -320,6 +320,18 @@ void bleTask(void *) {
     // Keep a permanent connection to the OdysseyLink (it accepts several
     // centrals at once, so the phone app keeps working alongside us).
     bool up = gClient && gClient->isConnected();
+    // Connected but the data stream has gone quiet (it normally sends ~2
+    // frames a second): drop the link so the next pass reconnects and logs in.
+    static uint32_t lastFrames = 0, lastFrameMs = 0;
+    if (gFrames != lastFrames || !up) {
+      lastFrames = gFrames;
+      lastFrameMs = millis();
+    } else if (millis() - lastFrameMs > 30000) {
+      logLine("no data from the OdysseyLink for 30 s - reconnecting");
+      gClient->disconnect();
+      lastFrameMs = millis();
+      up = false;
+    }
     if (!up && gTargetAddr[0] && (int32_t)(millis() - nextTry) >= 0) {
       // 10 s between tries, backing off to 60 s if it keeps failing.
       nextTry = millis() + (failures < 3 ? 10000 : 60000);
