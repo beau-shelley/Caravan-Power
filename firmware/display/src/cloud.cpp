@@ -194,13 +194,16 @@ static void fetchWeather() {
   http.setTimeout(15000);
   if (!http.begin(tls, String("https://api.open-meteo.com") + path)) return;
   int code = http.GET();
+  char err[100] = "";
+  if (code < 0) tls.lastError(err, sizeof(err));
   String body = code == 200 ? http.getString() : String();
   http.end();
   cv::Weather w;
   if (code != 200 || !cv::parseOpenMeteo(body.c_str(), body.length(), w)) {
-    Serial.printf("[weather] fetch failed (HTTP %d, internal RAM %u free, largest %u) - the hub asks again in 5 min\n",
-                  code, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    Serial.printf("[weather] fetch failed (HTTP %d, TLS '%s', internal RAM %u free, largest %u, PSRAM %u) - the hub asks again in 5 min\n",
+                  code, err, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     return;
   }
   w.updated = (uint32_t)time(nullptr);
@@ -331,8 +334,10 @@ static void sendPush(const Push &m) {
     http.addHeader("Tags", tags);
     if (strlen(NTFY_TOKEN)) http.addHeader("Authorization", String("Bearer ") + NTFY_TOKEN);
     int code = http.POST((uint8_t *)m.msg, strlen(m.msg));
+    char err[100] = "";
+    if (code < 0) tls.lastError(err, sizeof(err));
     http.end();
-    Serial.printf("[push] '%s' -> HTTP %d\n", title, code);
+    Serial.printf("[push] '%s' -> HTTP %d %s\n", title, code, err);
     if (code >= 200 && code < 300) return;
     vTaskDelay(pdMS_TO_TICKS(5000 << attempt));
   }
