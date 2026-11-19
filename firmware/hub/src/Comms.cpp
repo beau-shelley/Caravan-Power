@@ -50,13 +50,39 @@ Net gNet;
 SemaphoreHandle_t gStateMux = nullptr;  // created in setup()
 
 // ================================================================ Net
+// Up to two Wi-Fi networks (e.g. home + phone hotspot). Define WIFI_SSID2 /
+// WIFI_PASS2 in secrets.h for the second; the hub switches between them
+// every 30 s until one connects.
+#ifdef WIFI_SSID2
+static const char *const kSsid[] = {WIFI_SSID, WIFI_SSID2};
+static const char *const kPass[] = {WIFI_PASS, WIFI_PASS2};
+#else
+static const char *const kSsid[] = {WIFI_SSID};
+static const char *const kPass[] = {WIFI_PASS};
+#endif
+static int gNetIdx = 0;
+static void joinNet(int idx) {
+  gNetIdx = idx % (int)(sizeof(kSsid) / sizeof(kSsid[0]));
+  WiFi.begin(kSsid[gNetIdx], kPass[gNetIdx]);
+  Serial.printf("[net] connecting to '%s'\n", kSsid[gNetIdx]);
+}
+
 void Net::begin() {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(HOSTNAME);
   WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  joinNet(0);
   configTzTime(TZ_INFO, "pool.ntp.org", "time.google.com");
-  Serial.printf("[net] connecting to '%s'\n", WIFI_SSID);
+}
+
+// Wi-Fi off build: the display sends the time ({"c":"time"}); keep the
+// local timezone rules so midnight resets and the UTC offset still work.
+void Net::beginOffline() {
+  setenv("TZ", TZ_INFO, 1);
+  tzset();
+  WiFi.mode(WIFI_OFF);
+  offline_ = true;
+  Serial.println("[net] Wi-Fi off in this build (the display board runs the cloud and the clock)");
 }
 
 bool Net::timeValid() const { return time(nullptr) > 1700000000; }
@@ -86,7 +112,7 @@ void Net::watchdog() {
       lastPingOkMs_ = now;
       WiFi.disconnect(false);
       delay(200);
-      WiFi.begin(WIFI_SSID, WIFI_PASS);
+      joinNet(gNetIdx);
     } else {
       Serial.println("[net] network still jammed after rejoining - restarting");
       delay(100);
@@ -145,16 +171,21 @@ void Net::loop(cv::State &s) {
   }
   static bool was = false;
   static uint32_t lastTry = 0;
-  bool up = WiFi.status() == WL_CONNECTED;
+  bool up = !offline_ && WiFi.status() == WL_CONNECTED;
   if (up && !was) {
     Serial.printf("[net] Wi-Fi up, IP %s (heap %u free, largest %u)\n", WiFi.localIP().toString().c_str(),
                   (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     MDNS.begin(HOSTNAME);
     MDNS.addService("http", "tcp", 80);
   }
-  if (!up && millis() - lastTry > 30000) {  // belt and braces
+  if (!up && !offline_ && millis() - lastTry > 30000) {  // belt and braces
     lastTry = millis();
-    WiFi.reconnect();
+    if (sizeof(kSsid) / sizeof(kSsid[0]) > 1) {
+      WiFi.disconnect(false);
+      joinNet(gNetIdx + 1);  // try the other network
+    } else {
+      WiFi.reconnect();
+    }
   }
   was = up;
   s.wifi = up;
@@ -174,8 +205,9 @@ void Net::loop(cv::State &s) {
 }
 
 // ================================================================ RS485 link
+static constexpr uint32_t kPollMs = 100;
 // Half duplex: the hub is bus master. It sends a state frame every second and
-// a tiny poll frame every 250 ms; the display only transmits right after it
+// a tiny poll frame every 100 ms (so a button press on the display is heard quickly); the display only transmits right after it
 // receives a frame, so the two never talk over each other.
 // DE (driver enable, active high) and /RE (receiver enable, active low) can
 // be bridged on one pin or wired to two; either way HIGH = transmit, LOW = listen.
@@ -237,10 +269,10 @@ void DisplayLink::loop(const cv::State &s) {
   if (pending_.length()) {  // e.g. town search results from the network task
     write(pending_.c_str(), pending_.length());
     pending_ = "";
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
   } else if (outQ_ && xQueueReceive(outQ_, &out, 0) == pdTRUE) {  // alert events / pushes for the cloud
     write(out.json, strlen(out.json));
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
   } else if (configDirty_) {
     configDirty_ = false;
     JsonDocument doc;
@@ -248,18 +280,18 @@ void DisplayLink::loop(const cv::State &s) {
     cmd["c"] = "hello";
     handleCommand(cmd.as<JsonObjectConst>(), SRC_DISPLAY, doc);
     send(doc);
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
   } else if ((int32_t)(now - nextStateMs_) >= 0) {
     nextStateMs_ = now + 1000;
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
     JsonDocument doc;
     cv::stateToJson(s, doc.to<JsonObject>());
     send(doc);
   } else if ((int32_t)(now - nextPollMs_) >= 0) {
-    nextPollMs_ = now + 250;
+    nextPollMs_ = now + kPollMs;
     if (s.lvl.online) {
       // The poll slot carries the level reading, so the touchscreen's level
-      // page updates 4x a second instead of once.
+      // page updates 10x a second instead of once.
       JsonDocument doc;
       JsonObject o = doc.to<JsonObject>();
       o["t"] = "lvl";
@@ -547,6 +579,16 @@ void Cloud::loop(const cv::State &s) {
   }
   if (!gMqtt.connected()) {
     if ((int32_t)(millis() - nextTryMs_) < 0) return;
+    // A TLS handshake needs a ~40 KB block. With both Bluetooth links open the
+    // classic ESP32 hub rarely has one, and failed handshakes fragment the
+    // heap further (2026-11-19: largest block shrank ~1 KB a minute). Wait
+    // for memory instead of trying; the display board will take over cloud.
+    if (ESP.getMaxAllocHeap() < 40000) {
+      Serial.printf("[cloud] skipped: largest free block %u bytes, need ~40 KB - retry in 5 min\n",
+                    (unsigned)ESP.getMaxAllocHeap());
+      nextTryMs_ = millis() + 300000;
+      return;
+    }
     String will = gBase + "online";
     String cid = String(DEVICE_ID) + "-hub-" + String((uint32_t)ESP.getEfuseMac(), HEX);
     Serial.printf("[cloud] connecting to %s:%d\n", MQTT_HOST, MQTT_PORT);

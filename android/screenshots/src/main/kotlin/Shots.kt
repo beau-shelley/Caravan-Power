@@ -41,7 +41,7 @@ import com.caravan.monitor.Temp
 import com.caravan.monitor.Weather
 import com.caravan.monitor.ui.AlertsContent
 import com.caravan.monitor.ui.CaravanColors
-import com.caravan.monitor.ui.camoBackground
+import com.caravan.monitor.ui.caravanBackground
 import com.caravan.monitor.ui.ClimateContent
 import com.caravan.monitor.ui.AppScaffold
 import com.caravan.monitor.ui.HomeContent
@@ -62,6 +62,7 @@ val META = Meta(
     remoteControl = true,
     fw = "1.4.0",
     screenSleepSec = 300,
+    batteryAh = 405,
 )
 
 // The hub's built-in default rules (CaravanModel.cpp loadDefaultRules).
@@ -161,9 +162,9 @@ fun Theme(content: @Composable () -> Unit) {
 const val WIDTH_DP = 412   // a typical Android phone (e.g. Pixel / Galaxy S) in dp
 const val SCALE = 2.5f
 
-fun shot(name: String, heightDp: Int, content: @Composable () -> Unit) {
-    val scene = ImageComposeScene((WIDTH_DP * SCALE).toInt(), (heightDp * SCALE).toInt(), Density(SCALE)) {
-        Theme { Box(Modifier.fillMaxSize().camoBackground()) { content() } }
+fun shot(name: String, heightDp: Int, widthDp: Int = WIDTH_DP, content: @Composable () -> Unit) {
+    val scene = ImageComposeScene((widthDp * SCALE).toInt(), (heightDp * SCALE).toInt(), Density(SCALE)) {
+        Theme { Box(Modifier.fillMaxSize().caravanBackground()) { content() } }
     }
     // Two frames so layout-dependent things (lazy lists) settle.
     scene.render(0)
@@ -180,6 +181,16 @@ fun main() {
         AppScaffold(0, {}, 0) {
             HomeContent(CHARGING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop)
         }
+    }
+    // Same Home on a small phone and a big one: the layout scales and fills the screen.
+    shot("14-home-small-phone", 640, 360) {
+        AppScaffold(0, {}, 0) { HomeContent(CHARGING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
+    }
+    shot("15-home-tall-phone", 1000, 412) {
+        AppScaffold(0, {}, 0) { HomeContent(CHARGING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
+    }
+    shot("16-home-big-phone", 1000, 480) {
+        AppScaffold(0, {}, 0) { HomeContent(CHARGING, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
     }
     shot("2-home-alerts", 840) {
         AppScaffold(0, {}, 2) {
@@ -201,7 +212,7 @@ fun main() {
             }
         }
     }
-    shot("5-setup", 1500) {
+    shot("5-setup", 1900) {
         AppScaffold(2, {}, 0) {
             SetupContent(SETTINGS, CONNECTED, META, "0.2.0", batteryExempt = false,
                 onSaveSettings = { _, _ -> }, onBatteryExempt = nop, onScreenSleep = {}, onRemoteControl = {}, onOpenWebPage = nop)
@@ -211,6 +222,9 @@ fun main() {
     val cold = ALERTING.copy(alerts = emptyList(),
         tmp = listOf(Temp(true, 18.6, 12.4, 21.0, 80), Temp(true, 7.8, 6.1, 19.5, 75), Temp(true, 3.4, 2.8, 4.6, 90)),
         htr = Heater(link = 1, online = true, phase = 2, mode = 0, setC = 22, level = 6, cabinC = 18.6, bodyC = 142.0, supplyV = 12.9))
+    shot("17-home-heater-running", 915) {
+        AppScaffold(0, {}, 0) { HomeContent(cold, META, RULES, CONNECTED, nop, { _, _ -> }, nop, nop) }
+    }
     shot("7-climate-heater", 840) {
         AppScaffold(3, {}, 0) { ClimateContent(cold, META, CONNECTED, { _, _ -> }, nop) }
     }

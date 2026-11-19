@@ -13,10 +13,14 @@ class WeatherClient {
   void refreshSoon() { force_ = true; }
   // Town search for the touchscreen (results are sent to the display).
   void search(const char *query);
+  // Wi-Fi off hub: the display fetches the forecast we ask for ({"t":"wx_req"})
+  // and sends it back with {"c":"wx_set","wx":{...}}.
+  void fromDisplay(cv::State &s, JsonObjectConst wx);
 
  private:
   uint32_t nextMs_ = 0;
   float lastLat_ = 0, lastLon_ = 0;
+  float tryLat_ = 999, tryLon_ = 999;  // where the last attempt was for (success or not)
   bool force_ = true;
   char query_[48] = "";
   void runSearch();

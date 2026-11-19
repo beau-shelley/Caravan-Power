@@ -10,7 +10,7 @@ power level, set point, and status.
 
 | Link | State | What you get |
 |---|---|---|
-| Bluetooth (AirHeaterBLE protocol) | written, **protocol assumed** | on/off, mode, set point, phase, error, cabin + heat-exchanger temperature, supply voltage |
+| Bluetooth (AirHeaterBLE protocol) | written, **protocol confirmed** from an HCI snoop of Beau's heater (2026-11-18) | on/off, mode, set point, phase, error, cabin + heat-exchanger temperature, supply voltage |
 | 433 MHz remote through a CC1101 module in the hub box | **stub only** (`Heater433` in `firmware/hub/src/Heater.cpp`) | on/off and set point only, no status (the remote is one-way) |
 | Fake-data build (`hub-esp32-demo`) | simulated | behaves like a Bluetooth heater, sped up: 40 s to light, 30 s to cool |
 
@@ -19,10 +19,14 @@ Save. Close the AirHeaterBLE app first: the heater takes one Bluetooth
 connection at a time. Until a heater is set up, the heater card stays hidden
 everywhere.
 
-## What is assumed
+## The protocol
 
-Everything below comes from people who have reverse-engineered these heaters
-(for example the vevor-ble-bridge project), not from Beau's heater. It all
+This follows the vevor-ble-bridge project and was confirmed on Beau's heater
+(69:96:1c:04:0b:f0) from an Android HCI snoop of the AirHeaterBLE app on
+2026-11-18: status poll, on/off, mode, set temperature, supply voltage and the
+cabin (room) temperature all decode as below. Its "room" temperature read a steady 26 C on
+a cool night, so it is shown on the heater card only, not used as the van's
+inside temperature. It all
 lives in `firmware/lib/CaravanCommon/src/AirHeater.{h,cpp}`, so corrections
 touch nothing else.
 

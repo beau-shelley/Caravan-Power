@@ -32,4 +32,11 @@ void onHubLink(bool up);                           // RS485 link up / down
 // Returns false when there are none. Call from the UI task.
 bool takeCommand(JsonDocument &cmd);
 
+// Forecast for a hub without Wi-Fi: it asks with {"t":"wx_req"}; we fetch it
+// and hand back {"c":"wx_set",...} through takeLocalCommand (sent as our own,
+// not as a cloud command).
+void requestWeather(float lat, float lon);
+bool takeLocalCommand(JsonDocument &cmd);
+void resendWeather();  // hub link (re)connected: give it the last forecast at once
+
 }  // namespace cloud

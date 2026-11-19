@@ -4,6 +4,9 @@
 // Starlink (or any) Wi-Fi
 #define WIFI_SSID "Starlink"
 #define WIFI_PASS "changeme"
+// Optional second network (e.g. phone hotspot), tried in turn with the first
+// #define WIFI_SSID2 "AndroidAP"
+// #define WIFI_PASS2 "changeme"
 
 // Device id used in MQTT topics and the mDNS name (caravan.local)
 #define DEVICE_ID "caravan"

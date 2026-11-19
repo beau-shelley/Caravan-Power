@@ -7,6 +7,8 @@
 
 #include "CaravanModel.h"
 #include "../../hub/src/root_ca.h"
+#include "../../hub/src/root_ca_web.h"
+#include "Weather.h"
 
 // One secrets file for both boards: the hub's.
 #if __has_include("../../hub/src/secrets.h")
@@ -14,6 +16,9 @@
 #else
 #warning "firmware/hub/src/secrets.h missing - the display runs without the cloud"
 #include "../../hub/src/secrets.example.h"
+#endif
+#ifndef TZ_INFO
+#define TZ_INFO "AEST-10AEDT,M10.1.0,M4.1.0/3"
 #endif
 #ifndef CLOUD_ON_DISPLAY
 #define CLOUD_ON_DISPLAY 1
@@ -27,6 +32,22 @@ static bool mqttConfigured() { return CLOUD_ON_DISPLAY && strlen(MQTT_HOST) && !
 static bool ntfyConfigured() { return CLOUD_ON_DISPLAY && strlen(NTFY_TOPIC) && !strstr(NTFY_TOPIC, "CHANGE-ME"); }
 static bool gOn = false;  // begin() set everything up
 static bool wifiConfigured() { return strlen(WIFI_SSID) && strcmp(WIFI_PASS, "changeme") != 0; }
+
+// Same networks as the hub: WIFI_SSID, then the optional WIFI_SSID2 (e.g. the
+// phone hotspot in the van), tried in turn every 30 s until one connects.
+#ifdef WIFI_SSID2
+static const char *const kSsid[] = {WIFI_SSID, WIFI_SSID2};
+static const char *const kPass[] = {WIFI_PASS, WIFI_PASS2};
+#else
+static const char *const kSsid[] = {WIFI_SSID};
+static const char *const kPass[] = {WIFI_PASS};
+#endif
+static int gNetIdx = 0;
+static void joinNet(int idx) {
+  gNetIdx = idx % (int)(sizeof(kSsid) / sizeof(kSsid[0]));
+  WiFi.begin(kSsid[gNetIdx], kPass[gNetIdx]);
+  Serial.printf("[wifi] joining %s\n", kSsid[gNetIdx]);
+}
 
 // ---- shared between the UI task (producer) and the net task
 static SemaphoreHandle_t gMux;
@@ -120,6 +141,89 @@ void onHubLink(bool up) {
     gHubUp = up;
     gHubUpNew = true;
   }
+}
+
+// ---------------------------------------------------------------- forecast
+// A hub without Wi-Fi asks us ({"t":"wx_req","lat","lon"}); the cloud task
+// fetches Open-Meteo and the answer goes back as {"c":"wx_set","wx":{...}}.
+static volatile bool gWxWanted = false;
+static float gWxLat = 0, gWxLon = 0;
+static QueueHandle_t gLocalQ;  // String*: commands of our own for the hub
+static String gWxLast;          // last good {"c":"wx_set",...}, re-sent after a hub restart
+static uint32_t gWxLastMs = 0;
+
+static void queueLocal(const String &json) {
+  String *s = new String(json);
+  if (xQueueSend(gLocalQ, &s, 0) != pdTRUE) delete s;
+}
+
+void resendWeather() {
+  if (!gOn) return;
+  Lock l;
+  if (gWxLast.length() && millis() - gWxLastMs < 3UL * 3600 * 1000) queueLocal(gWxLast);
+}
+
+void requestWeather(float lat, float lon) {
+  if (!gOn) return;
+  Lock l;
+  // Same place, fetched under 20 min ago: answer from memory straight away.
+  if (gWxLast.length() && millis() - gWxLastMs < 20UL * 60 * 1000 && fabsf(lat - gWxLat) < 0.05f &&
+      fabsf(lon - gWxLon) < 0.05f) {
+    queueLocal(gWxLast);
+    return;
+  }
+  gWxLat = lat;
+  gWxLon = lon;
+  gWxWanted = true;
+}
+
+static void fetchWeather() {
+  float lat, lon;
+  {
+    Lock l;
+    if (!gWxWanted) return;
+    gWxWanted = false;
+    lat = gWxLat;
+    lon = gWxLon;
+  }
+  char path[400];
+  cv::openMeteoPath(path, sizeof(path), lat, lon);
+  WiFiClientSecure tls;
+  tls.setCACert(WEB_ROOTS_PEM);
+  HTTPClient http;
+  http.setTimeout(15000);
+  if (!http.begin(tls, String("https://api.open-meteo.com") + path)) return;
+  int code = http.GET();
+  String body = code == 200 ? http.getString() : String();
+  http.end();
+  cv::Weather w;
+  if (code != 200 || !cv::parseOpenMeteo(body.c_str(), body.length(), w)) {
+    Serial.printf("[weather] fetch failed (HTTP %d, internal RAM %u free, largest %u) - the hub asks again in 5 min\n",
+                  code, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    return;
+  }
+  w.updated = (uint32_t)time(nullptr);
+  JsonDocument d;
+  d["c"] = "wx_set";
+  cv::weatherToJson(w, d["wx"].to<JsonObject>());
+  String js;
+  serializeJson(d, js);
+  {
+    Lock l;
+    gWxLast = js;
+    gWxLastMs = millis();
+    queueLocal(js);
+  }
+  Serial.printf("[weather] %.1f C, %s - sent to the hub\n", w.temp, cv::wxText(w.code));
+}
+
+bool takeLocalCommand(JsonDocument &cmd) {
+  String *s = nullptr;
+  if (!gOn || xQueueReceive(gLocalQ, &s, 0) != pdTRUE) return false;
+  bool ok = !deserializeJson(cmd, *s);
+  delete s;
+  return ok;
 }
 
 bool takeCommand(JsonDocument &cmd) {
@@ -253,28 +357,33 @@ static void netTask(void *) {
     if (!up && millis() - lastJoinMs > 30000) {  // auto-reconnect is on; this is the backstop
       lastJoinMs = millis();
       WiFi.disconnect();
-      WiFi.begin(WIFI_SSID, WIFI_PASS);
+      joinNet(gNetIdx + 1);  // the other network, if there is one
     }
     mqttLoop();
+    if (up && time(nullptr) > 1700000000) fetchWeather();
     vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
 
 void begin() {
-  if (!CLOUD_ON_DISPLAY || !wifiConfigured() || (!mqttConfigured() && !ntfyConfigured())) {
-    Serial.println("[cloud] off (nothing set in secrets.h)");
+  // Wi-Fi alone is enough: the clock and the forecast for the hub need it even
+  // with no broker or ntfy topic set (those are checked where they're used).
+  if (!wifiConfigured()) {
+    Serial.println("[cloud] off (no Wi-Fi set in secrets.h)");
     return;
   }
   gMux = xSemaphoreCreateMutex();
   gOutQ = xQueueCreate(16, sizeof(Out));
   gCmdQ = xQueueCreate(8, sizeof(String *));
   gPushQ = xQueueCreate(16, sizeof(Push));
+  gLocalQ = xQueueCreate(4, sizeof(String *));
 
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(HOSTNAME "-display");
   WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Serial.printf("[wifi] joining %s\n", WIFI_SSID);
+  joinNet(0);
+  // Clock from NTP: shown on screen and passed to the hub, which may have no Wi-Fi.
+  configTzTime(TZ_INFO, "pool.ntp.org", "time.google.com");
 
   gTls.setCACert(ROOT_CA_PEM);
   gMqtt.setServer(MQTT_HOST, MQTT_PORT);

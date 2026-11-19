@@ -15,7 +15,30 @@ static lv_obj_t *lSolarW, *lSolarA, *lChgA, *lChgSub, *lLoadA, *lLoadW;
 constexpr int NROWS = cv::NUM_SOLAR + 1, ROW_AC = cv::NUM_SOLAR;
 static lv_obj_t *mpName[NROWS], *mpChip[NROWS], *mpBar[NROWS], *mpW[NROWS];
 static int rowsAc = -1;  // layout currently shown: 0 = solar only, 1 = with mains row
-static lv_obj_t *tName[cv::NUM_TEMPS], *tVal[cv::NUM_TEMPS];
+static int rowsKey = -1; // mains row + which solar rows are shown, as bits
+// One row per temperature, plus "Heater set" shown only while the heater runs.
+constexpr int T_HTR = cv::NUM_TEMPS;
+static lv_obj_t *tName[cv::NUM_TEMPS + 1], *tVal[cv::NUM_TEMPS + 1];
+static int tRows = -1, tInner = 0;
+
+static void placeTempRows(int rows) {
+  if (rows == tRows) return;
+  tRows = rows;
+  int step = (tInner - 24) / rows;
+  for (int i = 0; i <= T_HTR; i++) {
+    bool show = i < rows;
+    if (!show) {
+      lv_obj_add_flag(tName[i], LV_OBJ_FLAG_HIDDEN);
+      lv_obj_add_flag(tVal[i], LV_OBJ_FLAG_HIDDEN);
+      continue;
+    }
+    lv_obj_clear_flag(tName[i], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(tVal[i], LV_OBJ_FLAG_HIDDEN);
+    int y = 24 + i * step + (step - 34) / 2;
+    lv_obj_set_pos(tName[i], 0, y + 6);
+    lv_obj_align(tVal[i], LV_ALIGN_TOP_RIGHT, 0, y);
+  }
+}
 static lv_obj_t *tkBar[cv::NUM_TANKS], *tkPct[cv::NUM_TANKS], *tkName[cv::NUM_TANKS];
 static lv_obj_t *tilePump[cv::NUM_PUMPS], *tileInv, *tileAc;
 static lv_obj_t *gasBar, *gasPct;
@@ -47,22 +70,33 @@ static constexpr int BAT_W = splitW(LARGE ? 37 : 39), FLOW_W = INNER_W - GAP - B
 
 // Places the source rows. Solar only: two roomy rows with the charge-state chip
 // under the name. With mains: three single-line rows, mains first.
-static void layoutRows(bool ac) {
-  if (rowsAc == (int)ac) return;
+// Rows shown: the mains row while bulk AC charging, solar row i when bit i of
+// solarMask is set (the portable panels only while they're charging).
+static void layoutRows(bool ac, unsigned solarMask = (1u << cv::NUM_SOLAR) - 1) {
+  int key = (ac ? 1 : 0) | (int)(solarMask << 1);
+  if (rowsKey == key) return;
+  rowsKey = key;
   rowsAc = ac;
   constexpr int fw = innerOf(FLOW_W), rowTop = LARGE ? 128 : 112, space = innerOf(TOP_H) - rowTop;
   constexpr int nameW = LARGE ? 130 : 112, wattW = LARGE ? 100 : 90, chipW = LARGE ? 104 : 96;
-  for (int i = 0; i < NROWS; i++) {
-    bool show = i != ROW_AC || ac;
+  // Keep the two-row spacing even when fewer rows show, so a lone roof row
+  // doesn't jump around; with mains the rows squeeze up to three.
+  int shown = (ac ? 1 : 0);
+  for (int i = 0; i < cv::NUM_SOLAR; i++) shown += (solarMask >> i) & 1;
+  int slots = shown > cv::NUM_SOLAR ? shown : cv::NUM_SOLAR;
+  int slot = 0;
+  for (int pass = 0; pass < NROWS; pass++) {
+    int i = pass == 0 ? ROW_AC : pass - 1;  // mains first, then solar in order
+    bool show = i == ROW_AC ? ac : ((solarMask >> i) & 1);
     for (lv_obj_t *o : {mpName[i], mpChip[i], mpBar[i], mpW[i]})
       show ? lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
     if (!show) continue;
-    int slot = ac ? (i == ROW_AC ? 0 : i + 1) : i;
-    int y = rowTop + slot * space / (ac ? NROWS : cv::NUM_SOLAR);
+    int y = rowTop + slot++ * space / slots;
+    bool tight = slots > cv::NUM_SOLAR;  // three rows: chip goes beside the name
     lv_obj_set_width(mpName[i], nameW - 8);
     lv_obj_set_pos(mpName[i], 0, y);
-    int barX = ac ? nameW + chipW : nameW;
-    if (ac) lv_obj_set_pos(mpChip[i], nameW, y + (LARGE ? 3 : 1));
+    int barX = tight ? nameW + chipW : nameW;
+    if (tight) lv_obj_set_pos(mpChip[i], nameW, y + (LARGE ? 3 : 1));
     else lv_obj_set_pos(mpChip[i], 0, y + (LARGE ? 28 : 22));
     lv_obj_set_width(mpBar[i], fw - barX - wattW - 10);
     lv_obj_set_pos(mpBar[i], barX, y + 8);
@@ -135,6 +169,7 @@ void buildHome(lv_obj_t *p) {
   setChip(mpChip[ROW_AC], "Bulk", col::MAINS);
 
   rowsAc = -1;
+  rowsKey = -1;
   layoutRows(false);
 
   constexpr int bw = colW(3), bh = innerOf(BOT_H);
@@ -143,14 +178,14 @@ void buildHome(lv_obj_t *p) {
   lv_obj_t *t = card(p, colX(0, 3), BOT_Y, bw, BOT_H, "TEMPERATURE", col::CLIMATE);
   lv_obj_add_flag(t, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(t, goClimate, LV_EVENT_CLICKED, nullptr);
-  constexpr int tStep = (bh - 24) / cv::NUM_TEMPS;
-  for (int i = 0; i < cv::NUM_TEMPS; i++) {
-    int y = 24 + i * tStep + (tStep - 34) / 2;
-    tName[i] = lbl(t, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED, app::meta.tempName[i]);
-    lv_obj_set_pos(tName[i], 0, y + 6);
+  tInner = bh;
+  for (int i = 0; i <= T_HTR; i++) {
+    tName[i] = lbl(t, LARGE ? &lv_font_montserrat_20 : &lv_font_montserrat_16, col::MUTED,
+                   i < T_HTR ? app::meta.tempName[i] : "Heater set");
     tVal[i] = lbl(t, &lv_font_montserrat_28, col::TEXT, "--");
-    lv_obj_align(tVal[i], LV_ALIGN_TOP_RIGHT, 0, y);
   }
+  tRows = -1;
+  placeTempRows(cv::NUM_TEMPS);
 
   // ---------------- water
   lv_obj_t *w = card(p, colX(1, 3), BOT_Y, bw, BOT_H, "WATER", col::WATER);
@@ -268,12 +303,14 @@ void updateHome() {
   // energy flow
   float solarW = s.solarW();
   setText(lSolarW, "%.0f W", solarW);
-  setText(lSolarA, "%.1f A", s.bat.solarA);
+  setText(lSolarA, "%s", "");  // total watts only (roof + portable)
   setText(lChgA, s.bat.chargeA >= 99.95f ? "%.0f A" : "%.1f A", s.bat.chargeA);
-  if (s.bat.acOn) setText(lChgSub, "mains %.0f A", s.bat.acA);
-  else if (s.bat.chargerA > 0.5f) setText(lChgSub, "BMPRO %.1f A", s.bat.chargerA);
-  else setText(lChgSub, "solar only");
-  layoutRows(s.bat.online && s.bat.acOn);
+  setText(lChgSub, "%s", "");  // total charge in (solar + BMPRO + mains) only
+  // Roof row always; the portable panels only while they're charging.
+  unsigned solarMask = 1;
+  for (int i = 1; i < cv::NUM_SOLAR; i++)
+    if (s.solar[i].online && (s.solar[i].pvW > 5 || s.solar[i].batA > 0.3f)) solarMask |= 1u << i;
+  layoutRows(s.bat.online && s.bat.acOn, solarMask);
   if (rowsAc == 1) {
     lv_bar_set_value(mpBar[ROW_AC], (int)s.bat.acA, LV_ANIM_ON);
     setText(mpW[ROW_AC], "%.0f A", s.bat.acA);
@@ -305,6 +342,20 @@ void updateHome() {
     } else {
       setText(tVal[i], "--");
       lv_obj_set_style_text_color(tVal[i], c(col::DIM), 0);
+    }
+  }
+  // Heater set point, only while the heater is running.
+  bool htrOn = s.htr.hasStatus() && s.htr.running();
+  placeTempRows(htrOn ? cv::NUM_TEMPS + 1 : cv::NUM_TEMPS);
+  if (htrOn) {
+    if (s.htr.mode == cv::HTR_MODE_LEVEL) {
+      lv_label_set_text(tName[T_HTR], "Heater level");
+      setText(tVal[T_HTR], "%d", (int)s.htr.level);
+      lv_obj_set_style_text_color(tVal[T_HTR], c(col::TEXT), 0);
+    } else {
+      lv_label_set_text(tName[T_HTR], "Heater set");
+      setText(tVal[T_HTR], "%d\xC2\xB0", (int)s.htr.setC);
+      lv_obj_set_style_text_color(tVal[T_HTR], c(tempColor(cv::TEMP_INSIDE, s.htr.setC)), 0);
     }
   }
 

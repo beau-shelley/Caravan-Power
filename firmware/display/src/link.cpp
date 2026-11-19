@@ -52,7 +52,33 @@ void cmd(const char *c) {
   d["c"] = c;
   send(d);
 }
+// Pump buttons answer at once: the tile shows the new state straight away and
+// holds it for a few seconds while the command goes round the hub, so a state
+// frame sent before the hub acted can't flip it back. After that (or if the hub
+// says no) the hub's real state wins again.
+constexpr uint32_t PUMP_HOLD_MS = 3000;
+static uint32_t gPumpHoldUntil[cv::NUM_PUMPS] = {};
+static bool gPumpHoldOn[cv::NUM_PUMPS] = {};
+
+static void applyPumpHolds() {
+  uint32_t now = millis();
+  for (int i = 0; i < cv::NUM_PUMPS; i++) {
+    if (!gPumpHoldUntil[i]) continue;
+    if ((int32_t)(now - gPumpHoldUntil[i]) >= 0 || state.pump[i].on == gPumpHoldOn[i]) {
+      gPumpHoldUntil[i] = 0;  // expired, or the hub has caught up
+      continue;
+    }
+    state.pump[i].on = gPumpHoldOn[i];
+  }
+}
+
 void cmdPump(int i, bool on) {
+  if (i >= 0 && i < cv::NUM_PUMPS) {
+    state.pump[i].on = on;
+    gPumpHoldOn[i] = on;
+    gPumpHoldUntil[i] = (millis() + PUMP_HOLD_MS) | 1;
+    stateDirty = true;
+  }
   JsonDocument d;
   d["c"] = "pump";
   d["i"] = i;
@@ -133,17 +159,20 @@ static void handleFrame(const char *line, size_t len) {
   const char *t = doc["t"] | "";
   if (!strcmp(t, "p")) {
     // poll - nothing to parse
-  } else if (!strcmp(t, "lvl")) {  // fast level update (4 Hz)
+  } else if (!strcmp(t, "lvl")) {  // fast level update (10 Hz)
     cv::levelFromJson(state.lvl, doc.as<JsonObjectConst>());
     stateDirty = true;
   } else if (!strcmp(t, "state")) {
     cloud::onHubState(doc);  // also marks net.cloud with our own broker link
     cv::stateFromJson(state, doc.as<JsonObjectConst>());
+    applyPumpHolds();
     stateDirty = true;
   } else if (!strcmp(t, "event")) {  // alert raised / cleared, for the cloud
     cloud::onHubEvent(line, len);
   } else if (!strcmp(t, "push")) {  // push alert for ntfy
     cloud::onHubPush(doc.as<JsonObjectConst>());
+  } else if (!strcmp(t, "wx_req")) {  // hub without Wi-Fi wants the forecast
+    cloud::requestWeather(doc["lat"] | 0.0f, doc["lon"] | 0.0f);
   } else if (!strcmp(t, "hello")) {
     cloud::onHubMeta(doc["meta"]);
     cloud::onHubRules(doc["rules"]);
@@ -162,8 +191,11 @@ static void handleFrame(const char *line, size_t len) {
     cv::metaFromJson(meta, doc.as<JsonObjectConst>());
     metaVer++;
     stateDirty = true;
-  } else if (gReplyHandler) {
-    gReplyHandler(doc.as<JsonObjectConst>());
+  } else {
+    if (!strcmp(t, "err")) {  // the hub refused a command: drop any pump the tile was holding
+      for (auto &h : gPumpHoldUntil) h = 0;
+    }
+    if (gReplyHandler) gReplyHandler(doc.as<JsonObjectConst>());
   }
 }
 
@@ -184,11 +216,25 @@ void linkLoop() {
       send(c);
       c.clear();
     }
+    if (gQCount < QLEN && cloud::takeLocalCommand(c)) send(c);
   }
   // Our turn to talk: the hub just finished a frame and is now listening.
   if (gotFrame && !gSer.available()) transmitOne();
 
   bool up = gLastRxMs && millis() - gLastRxMs < 4000;
+  // Pass our NTP clock to the hub once a minute (a hub without Wi-Fi has no other).
+  static uint32_t nextTimeMs = 0;
+  if (up && !linkUp) {
+    nextTimeMs = millis();  // hub (re)started: clock first, then the last forecast
+    cloud::resendWeather();
+  }
+  if (up && (int32_t)(millis() - nextTimeMs) >= 0 && time(nullptr) > 1700000000) {
+    nextTimeMs = millis() + 60000;
+    JsonDocument t;
+    t["c"] = "time";
+    t["ts"] = (uint32_t)time(nullptr);
+    send(t);
+  }
   if (up && !linkUp) {
     gHelloPending = true;  // (re)connected: fetch names + rules
     // Meta from the hub changes rarely; re-ask every reconnect.

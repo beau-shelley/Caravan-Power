@@ -25,7 +25,7 @@ lv_obj_t *card(lv_obj_t *parent, int x, int y, int w, int h, const char *title, 
   lv_obj_set_pos(o, x, y);
   lv_obj_set_size(o, w, h);
   lv_obj_set_style_bg_color(o, c(col::CARD), 0);
-  lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_opa(o, col::CARD_OPA, 0);
   lv_obj_set_style_border_color(o, c(col::BORDER), 0);
   lv_obj_set_style_border_width(o, 1, 0);
   lv_obj_set_style_radius(o, 16, 0);
@@ -381,17 +381,14 @@ static void bannerCb(lv_event_t *) { showPage(PAGE_ALERTS); }
 static void buildShell() {
   lv_obj_t *scr = lv_scr_act();
   lv_obj_set_style_bg_color(scr, c(col::BG), 0);
-  // Subtle dark camo behind the cards (like the camo in the van's side stripe).
-  lv_obj_set_style_bg_img_src(scr, &tex_camo, 0);
-  lv_obj_set_style_bg_img_tiled(scr, true, 0);
+  // The camo X graphic from the side of the van, behind the cards.
+  lv_obj_set_style_bg_img_src(scr, &tex_bg, 0);
   lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
   // Nav rail
   lv_obj_t *rail = panel(scr, 0, 0, RAIL_W, SCR_H);
   lv_obj_set_style_bg_color(rail, c(col::RAIL), 0);
   lv_obj_set_style_bg_opa(rail, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_img_src(rail, &tex_tread, 0);  // black chequer plate, like the van's lower skirt
-  lv_obj_set_style_bg_img_tiled(rail, true, 0);
   // Thin lime pinstripe down the edge, like the line on the van's stripe.
   lv_obj_set_style_border_side(rail, LV_BORDER_SIDE_RIGHT, 0);
   lv_obj_set_style_border_color(rail, lv_color_mix(c(col::ACCENT), c(col::RAIL), 150), 0);
@@ -443,6 +440,10 @@ static void buildShell() {
 
   // Status bar
   lv_obj_t *bar = panel(scr, RAIL_W, 0, PAGE_W, BAR_H);
+  // Header strip: subtle camo (baked into tex_bg) with a green line under it.
+  lv_obj_set_style_border_side(bar, LV_BORDER_SIDE_BOTTOM, 0);
+  lv_obj_set_style_border_color(bar, lv_color_mix(c(col::ACCENT), c(col::RAIL), 150), 0);
+  lv_obj_set_style_border_width(bar, 2, 0);
   gTitle = lbl(bar, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "Home");
   lv_obj_align(gTitle, LV_ALIGN_LEFT_MID, 16, 2);
   lv_obj_add_flag(gTitle, LV_OBJ_FLAG_CLICKABLE);

@@ -9,7 +9,7 @@ All clients use the same JSON messages:
 
 **RS485** (115200 8N1) carries one JSON document per line, followed by `*HH\n`, where `HH` is the XOR of the JSON bytes. The hub is bus master:
 - every 1 s it sends a `state` frame;
-- every 250 ms it sends `{"t":"p"}` (a poll).
+- every 100 ms it sends `{"t":"p"}` (a poll), or a level reading (`{"t":"lvl"}`) while the level sensor is online.
 
 The display transmits only immediately after a hub frame ends, so the half-duplex bus never collides.
 
@@ -55,7 +55,8 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 | `ac_learn` | `slot` (-1 = OFF, n = new), `name` | then poll `ac_learn_status` |
 | `ac_del` | `slot` | |
 | `tank_cal` | `i`, `point` (`empty`/`full`), optional `mv` | omit `mv` to use the current reading |
-| `soc_set` | `soc` | |
+| `soc_set` | `soc` | sets the hub's battery % (e.g. 100 when you know it's full) |
+| `battery_set` | `cap` (Ah, 20-2000) | battery bank size; the hub counts amps in and out against it for `bat.soc` and `bat.ttg`, on any source (the BMPRO's own % tops out at 600 Ah, so it isn't used). Replies with the new `meta` |
 | `sensors` / `sensor_assign` | `addr`, `role` | wired DS18B20 role mapping |
 | `location_set` | `lat`, `lon`, `name`, `src` (2 phone, 3 manual) | weather location (refused while a GPS has a fix) |
 | `location_search` | `q` | town search via the hub (used by the touchscreen); reply `{"t":"loc_results","list":[{name,area,lat,lon}]}` |
@@ -88,7 +89,7 @@ All setup is done from the phone (the web dashboard's **Alerts & rules** and **S
 
 1. `GET /api/token` (HTTP Basic auth) → `{tok, wsPort}`, then open `ws://<hub>:<wsPort>/` and send `{"c":"auth","tok":…}`. Without a WebSocket, `POST /api/cmd` with one command per request works too, and the reply is the response body.
 2. Send `{"c":"hello"}`. The reply has `meta` (names, `rc`, `ss`, `tcal`, weather location) and `rules`.
-3. Change things with the commands above: `rule_set` / `rule_del` / `rules_reset` reply with the whole new rule list (`{"t":"rules",…}`); `display_set` and `remote_control` reply with the new `meta`. Every change is saved on the hub and pushed to the display.
+3. Change things with the commands above: `rule_set` / `rule_del` / `rules_reset` reply with the whole new rule list (`{"t":"rules",…}`); `display_set`, `battery_set` and `remote_control` reply with the new `meta`. Every change is saved on the hub and pushed to the display.
 
 `meta` keys: `sol`, `tmp`, `tank`, `pump` (names), `acp` (aircon preset names), `cap` battery Ah, `rc` remote control allowed, `tcal` tanks need calibrating here, `ls`/`ln` weather location source/name, `ss` screen dim timeout in seconds, `fw`.
 

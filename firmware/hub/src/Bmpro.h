@@ -24,6 +24,7 @@ namespace hub {
 struct BmproData {
   bool batValid = false;
   float batV = 0, batA = 0, batSoc = 0;
+  float remainAh = -1;  // from the broadcast; -1 = unknown
   int32_t batTtgMin = -1;
   bool chargerValid = false;
   float chargerA = 0;   // BMPRO charger output (solar input + DC-DC)
@@ -44,10 +45,14 @@ class Bmpro {
   // Copies freshly decoded values into the state; marks stale data offline.
   void loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps);
   void connect(const char *addr);  // change target (async)
+  // The newest battery reading, once each (false if nothing new). bmproSoc is
+  // the BMPRO's own % over the connection, or -1 (broadcasts don't carry one).
+  bool takeBattery(float &v, float &a, uint32_t &ms, float &bmproSoc);
   bool connected() const;
   bool decoded() const;  // any frame decoded yet?
   // Load current measured by the BMPRO, or -1 if not decoded / stale.
   float loadA() const;
+  float solarA() const;  // BMPRO solar input (the roof panels), -1 = no fresh reading
   bool setPump(int i, bool on, const char **why);
   // Raw write for protocol experiments, e.g. replaying a captured app write.
   bool write(const char *charUuid, const uint8_t *data, size_t len, bool response);

@@ -58,10 +58,12 @@ fun SectionCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Surfaces.card),
+        colors = CardDefaults.cardColors(containerColor = Surfaces.glass),
         shape = RoundedCornerShape(16.dp),
     ) {
-        Column(Modifier.padding(if (compact) 12.dp else 16.dp)) {
+        // fillMaxHeight only matters when the card is stretched (Home on a tall phone):
+        // the rows then spread out evenly instead of leaving a gap at the bottom.
+        Column(Modifier.fillMaxHeight().padding(if (compact) 12.dp else 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (icon != null) Icon(icon, null, Modifier.size(16.dp), tint = color)
                 else Box(Modifier.size(8.dp).clip(CircleShape).background(color))
@@ -71,7 +73,7 @@ fun SectionCard(
                 trailing?.invoke()
             }
             Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
-            content()
+            Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.SpaceEvenly) { content() }
         }
     }
 }

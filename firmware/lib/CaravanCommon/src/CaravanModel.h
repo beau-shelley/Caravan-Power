@@ -35,9 +35,14 @@ struct Solar {
   float yieldTodayKwh = 0;    // H20
   uint16_t maxWToday = 0;     // H21
   float yieldTotalKwh = 0;    // H19
+  bool viaBmpro = false;      // hub only: filled from the BMPRO's own solar input (not a Victron)
 };
 
 enum BatterySource : uint8_t { BAT_SRC_NONE = 0, BAT_SRC_SHUNT = 1, BAT_SRC_BMPRO = 2 };
+// Battery bank size (set on the phone). Default: 3 x 135 Ah lithium.
+constexpr float BAT_CAP_DEFAULT_AH = 405;
+constexpr float BAT_CAP_MIN_AH = 20;
+constexpr float BAT_CAP_MAX_AH = 2000;
 
 struct Battery {
   bool online = false;
@@ -259,7 +264,7 @@ struct Meta {
   char pumpName[NUM_PUMPS][16] = {"Internal", "External"};
   uint8_t acPresetCount = 0;
   char acPresetName[MAX_AC_PRESETS][16] = {};
-  float batCapacityAh = 300;
+  float batCapacityAh = BAT_CAP_DEFAULT_AH;
   uint8_t locSrc = 0;      // weather location source (see LocationSource)
   char locName[24] = "";   // weather location name
   bool remoteControl = true;

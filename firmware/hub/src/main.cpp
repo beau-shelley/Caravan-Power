@@ -152,6 +152,7 @@ static void startHeater() {
   else gHeaterBle.release();  // switched away from Bluetooth: let go of the heater
 }
 
+static void stateChanged();
 static void heaterLoop() {
   static uint8_t lastErr = 0;
   HeaterDriver *d = heaterDriver();
@@ -161,7 +162,13 @@ static void heaterLoop() {
     return;
   }
   gState.htr.link = demo::kOn ? cv::HTR_LINK_BLE : gConfig.heater.link;
+  uint8_t prevPhase = gState.htr.phase;
+  bool prevOnline = gState.htr.online;
+  int8_t prevSet = gState.htr.setC;
   d->loop(gState);
+  // Tell the display straight away when the heater starts, stops or changes
+  // set point, rather than on the next once-a-second state frame.
+  if (gState.htr.phase != prevPhase || gState.htr.online != prevOnline || gState.htr.setC != prevSet) stateChanged();
   // A heater fault (out of fuel, didn't light...) goes to the phone once.
   uint8_t err = gState.htr.hasStatus() ? gState.htr.err : 0;
   if (err && err != lastErr) gNotify.push("Diesel heater", cv::heaterErrorText(err), cv::SEV_ALARM);
@@ -183,6 +190,7 @@ static void stateChanged() {
 
 static void configChanged() {
   gConfig.save();
+  gShunt.setCapacityAh(gConfig.bat.capacityAh);
   gCloud.publishMetaSoon();
   gLink.pushConfigSoon();
 }
@@ -273,6 +281,20 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gRestartAtMs = millis() | 1;
   } else if (!strcmp(c, "ping")) {
     reply["t"] = "pong";
+  } else if (!strcmp(c, "time")) {
+    // Clock from the display board (NTP there), for hubs running without Wi-Fi.
+    uint32_t ts = cmd["ts"] | 0u;
+    if (src == SRC_CLOUD || ts < 1700000000) {
+      replyErr(reply, "bad time");
+      return;
+    }
+    if (!gNet.timeValid() || labs((long)((int64_t)time(nullptr) - ts)) > 5) {
+      struct timeval tv = {(time_t)ts, 0};
+      settimeofday(&tv, nullptr);
+      Serial.printf("[net] clock set from the display (%lu)\n", (unsigned long)ts);
+    }
+    // no reply: the display sends this unasked, so an "ok" would reach its UI
+    reply.clear();
   } else if (!strcmp(c, "state")) {
     cv::stateToJson(gState, reply.to<JsonObject>());
   } else if (!strcmp(c, "hello")) {
@@ -398,6 +420,17 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
   } else if (!strcmp(c, "soc_set")) {
     gShunt.setSoc(cmd["soc"] | 100.0f);
     gShunt.persist(true);
+    gState.bat.soc = gShunt.soc();
+    reply["t"] = "ok";
+  } else if (!strcmp(c, "battery_set")) {
+    // Battery bank size in Ah, set from the phone. The hub works out % and
+    // time left itself from it (the BMPRO's own % stops at 600 Ah).
+    float cap = cmd["cap"] | 0.0f;
+    if (cap < cv::BAT_CAP_MIN_AH || cap > cv::BAT_CAP_MAX_AH) return replyErr(reply, "capacity must be 20-2000 Ah");
+    gConfig.bat.capacityAh = cap;
+    gConfig.meta.batCapacityAh = cap;
+    configChanged();
+    cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
   } else if (!strcmp(c, "sensors")) {
     FoundSensor f[8];
     int n = gTemps.found(f, 8);
@@ -432,6 +465,12 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gConfig.meta.screenSleepSec = (uint16_t)sleep;
     configChanged();
     cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
+  } else if (!strcmp(c, "config_get")) {
+    // Whole saved config, e.g. to back it up over USB before an uploadfs
+    // (which wipes /config.json) and put it back with config_set. USB only:
+    // it carries keys and codes.
+    if (src != SRC_DISPLAY) return replyErr(reply, "config_get only works over USB or the display link");
+    gConfig.toJson(reply["cfg"].to<JsonObject>());
   } else if (!strcmp(c, "config_set")) {
     bool rc = gConfig.meta.remoteControl;
     gConfig.fromJson(cmd["cfg"]);
@@ -477,6 +516,14 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gWeather.search(q);
   } else if (!strcmp(c, "weather_refresh")) {
     gWeather.refreshSoon();
+  } else if (!strcmp(c, "wx_set")) {
+    // Forecast fetched by the display for a hub without Wi-Fi (answer to {"t":"wx_req"}).
+    if (src != SRC_DISPLAY) {
+      replyErr(reply, "display only");
+      return;
+    }
+    gWeather.fromDisplay(gState, cmd["wx"]);
+    stateChanged();
 
   // ---------------- secure mode (anti-theft)
   } else if (!strcmp(c, "secure")) {
@@ -611,6 +658,7 @@ static void updateLoads(uint32_t now) {
         gBmproPumpSince[i] = now;
         gBmproPumpTripped[i] = false;
       }
+      if (p.on != p.sensed) stateChanged();  // tell the display straight away
       p.on = p.sensed;
       p.runSec = p.on ? (now - gBmproPumpSince[i]) / 1000 : 0;
       bool dry = false;
@@ -699,6 +747,10 @@ static void heapMark(const char *what) {
 
 // Network services run on core 0 so a slow TLS handshake over Starlink never
 // stalls sensor reading or the touchscreen link on core 1.
+#ifndef HUB_WIFI
+#define HUB_WIFI 1
+#endif
+
 static void netTask(void *) {
   gWeb.begin();
   heapMark("web");
@@ -749,8 +801,12 @@ void setup() {
 
   gLink.begin(LINK_SERIAL, PIN_LINK_RX, PIN_LINK_TX, PIN_LINK_DE, PIN_LINK_RE);
   if (demo::kOn) demo::begin(gState);
-  gNet.begin();
-  heapMark("wifi");
+  if (HUB_WIFI) {
+    gNet.begin();
+    heapMark("wifi");
+  } else {
+    gNet.beginOffline();
+  }
   gNotify.begin();
   for (int i = 0; i < cv::NUM_SOLAR; i++) startSolar(i);
   if (gConfig.victron[GPS_SHARES_SOLAR].src != SOLAR_VEDIRECT) {  // the shared UART is free for a GPS
@@ -768,8 +824,10 @@ void setup() {
     gBmproOn = true;
     heapMark("bmpro");
   }
-  xTaskCreatePinnedToCore(netTask, "net", 10240, nullptr, 1, nullptr, 0);  // ~4.3 KB seen under load; HTTPS weather/TLS needs headroom
-  heapMark("net task");
+  if (HUB_WIFI) {
+    xTaskCreatePinnedToCore(netTask, "net", 10240, nullptr, 1, nullptr, 0);  // ~4.3 KB seen under load; HTTPS weather/TLS needs headroom
+    heapMark("net task");
+  }
 
   // Watchdog: if loop() stops running for 30 s (a hang or a deadlock), the
   // hub restarts itself. The Arduino core feeds it after every loop().
@@ -777,8 +835,44 @@ void setup() {
   enableLoopWDT();
 }
 
+// Commands typed on the USB serial port (same JSON as the phone/display), e.g.
+// {"c":"pump","i":0,"on":true}. USB means someone is at the hub, so it counts
+// as local, like the touchscreen. The reply is printed back.
+static void serialCommands() {
+  // A full config_set (settings backup) is ~3 KB, so allow up to 4 KB.
+  constexpr size_t MAX_LINE = 4096;
+  static String line;
+  static bool tooLong = false;
+  while (Serial.available()) {
+    char ch = (char)Serial.read();
+    if (ch == '\r') continue;
+    if (ch != '\n') {
+      if (line.length() < MAX_LINE) line += ch;
+      else tooLong = true;
+      continue;
+    }
+    line.trim();
+    if (tooLong) {
+      Serial.printf("[usb] line too long (max %u characters)\n", (unsigned)MAX_LINE);
+    } else if (line.startsWith("{")) {
+      JsonDocument in, reply;
+      if (deserializeJson(in, line)) {
+        Serial.println("[usb] not valid JSON");
+      } else {
+        hub::handleCommand(in.as<JsonObjectConst>(), hub::SRC_DISPLAY, reply);
+        String out;
+        serializeJson(reply, out);
+        Serial.println("[usb] " + (out == "null" ? String("ok") : out));
+      }
+    }
+    line = "";
+    tooLong = false;
+  }
+}
+
 void loop() {
   uint32_t now = millis();
+  serialCommands();
   {
     StateLock l;
     if (!demo::kOn) {
@@ -804,7 +898,28 @@ void loop() {
     gShunt.poll(gState, now);
     if (gBmproOn) {
       bool pumps = gConfig.pumpViaBmpro(0) || gConfig.pumpViaBmpro(1);
-      gBmpro.loop(gState, gConfig.bat.source == cv::BAT_SRC_BMPRO, gConfig.tankSource == TANK_BMPRO, pumps);
+      bool bat = gConfig.bat.source == cv::BAT_SRC_BMPRO;
+      gBmpro.loop(gState, bat, gConfig.tankSource == TANK_BMPRO, pumps);
+      float v, a, bmproSoc;
+      uint32_t ms;
+      if (bat && gBmpro.takeBattery(v, a, ms, bmproSoc)) gShunt.feed(gState, v, a, ms, bmproSoc);
+    }
+    // The BMPRO's solar input is the roof panels: show it as the first solar
+    // controller unless a Victron is set up and online in that slot.
+    {
+      cv::Solar &roof = gState.solar[0];
+      float a = gBmproOn ? gBmpro.solarA() : -1;
+      if ((!roof.online || roof.viaBmpro) && a >= 0) {
+        float v = gState.bat.v > 0 ? gState.bat.v : 13.2f;
+        roof = cv::Solar();
+        roof.online = roof.viaBmpro = true;
+        roof.batV = v;
+        roof.batA = a;
+        roof.pvW = a * v;
+        roof.cs = a > 0.3f ? 3 : 0;  // shown as "Bulk" while charging, "Off" at night
+      } else if (roof.viaBmpro && a < 0) {
+        roof = cv::Solar();
+      }
     }
     }  // !demo::kOn
     // Level sensor: always read (secure mode needs it); in the fake-data build
@@ -815,6 +930,7 @@ void loop() {
     if (secure::loop(gState, secureSensorOk(), now)) stateChanged();
     updateLoads(now);
     gNet.loop(gState);
+    if (!HUB_WIFI) gWeather.loop(gState);  // asks the display for the forecast (no net task)
     if (demo::kOn) demo::tick(gState, now);
     // Mains chargers have no sensor: whatever charge the BMPRO and Victrons
     // don't explain is theirs. Runs every loop, after the battery drivers, so

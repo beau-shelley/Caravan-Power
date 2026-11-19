@@ -16,8 +16,7 @@ LV_FONT_DECLARE(ui_icons_20);
 LV_FONT_DECLARE(ui_icons_24);
 LV_FONT_DECLARE(ui_icons_28);
 // Theme textures (tex_theme.c, made by tools/theme/make_theme.py).
-LV_IMG_DECLARE(tex_camo);   // seamless dark camo tile, screen background
-LV_IMG_DECLARE(tex_tread);  // chequer (diamond) plate tile, nav rail
+LV_IMG_DECLARE(tex_bg);     // full-screen background: plain, with a subtle camo header strip
 
 namespace ui {
 
@@ -78,17 +77,20 @@ int sleepSeconds();
 bool isExtraIcon(const char *sym);
 
 namespace col {
-// Caravan theme: gunmetal panels on a dark camo background, black chequer-plate
-// rail, lime accents (like the stripe on the van). Status colours keep their
-// meanings: amber warning, red alarm, fuchsia critical, blue cold/water.
+// Caravan theme, matched to the decals on the van: plain dark background with
+// the van's X (subtle camo fill, white outline, green pinstripes), a subtle camo
+// header strip, solid gunmetal-grey tiles (the van body) with white text, and
+// the decals' white and green as highlights. Status colours keep
+// their meanings: amber warning, red alarm, fuchsia critical, blue cold/water.
 // Same values in web/index.html (:root) and the app's Colors.kt.
-constexpr uint32_t BG = 0x0E0F10, RAIL = 0x0B0C0D, CARD = 0x1E2124, BORDER = 0x34383C;
-constexpr uint32_t TEXT = 0xECEEEA, MUTED = 0x9EA4A6, DIM = 0x5A6064;
-constexpr uint32_t SOLAR = 0xFACC15, CHARGE = 0x8FDB3A, LOAD = 0xF87171, WATER = 0x38BDF8;
-constexpr uint32_t CLIMATE = 0xA78BFA, ACCENT = 0xA3E635, WARN = 0xF59E0B, ALARM = 0xEF4444;
-constexpr uint32_t OK = 0x84CC16, TILE = 0x2A2E32, GAS = 0xFB923C, MAINS = 0x60A5FA;
-constexpr uint32_t SECURE = 0x84CC16;  // secure mode armed (green, same as the phone page)
-constexpr uint32_t CRIT = 0xD946EF;  // critical alerts (same colour as the phone page)
+constexpr uint32_t BG = 0x111214, RAIL = 0x0B0C0D, CARD = 0x4E5257, BORDER = 0x6A6F75;
+constexpr uint32_t TEXT = 0xFFFFFF, MUTED = 0xD3D6D9, DIM = 0x9A9FA4;
+constexpr uint32_t SOLAR = 0xFFD93B, CHARGE = 0x9BE03A, LOAD = 0xFF8A8A, WATER = 0x5CCBFF;
+constexpr uint32_t CLIMATE = 0xC4B0FF, ACCENT = 0x9BE03A, WARN = 0xFFB020, ALARM = 0xFF6B6B;
+constexpr uint32_t OK = 0x9BE03A, TILE = 0x3E4247, GAS = 0xFFA35C, MAINS = 0x8CC0FF;
+constexpr lv_opa_t CARD_OPA = LV_OPA_COVER;
+constexpr uint32_t SECURE = 0x9BE03A;  // secure mode armed (green, same as the phone page)
+constexpr uint32_t CRIT = 0xF07CFF;  // critical alerts (same colour as the phone page)
 constexpr uint32_t HEAT = 0xFB923C;  // diesel heater (warm orange, same as the phone page)
 }  // namespace col
 inline uint32_t sevColor(int sev) {

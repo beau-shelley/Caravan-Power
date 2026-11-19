@@ -5,6 +5,7 @@
 
 #include "Ble.h"
 #include "BleTag.h"
+#include "BmproAdv.h"
 
 namespace hub {
 namespace survey {
@@ -133,6 +134,23 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
   memcpy(label, dev->label, sizeof(label));
   int8_t rssi = dev->rssi;
   portEXIT_CRITICAL(&gLock);
+
+  // BMPRO broadcasts we can read: a plain-English line every 10 s.
+  if (tag.kind == cv::BLE_BMPRO) {
+    static uint32_t lastBat = 0, lastOut = 0;
+    cv::BmproAdvert b;
+    if (cv::bmproParseAdvert(raw, rawLen, b)) {
+      if (b.hasBattery && (!lastBat || now - lastBat >= 10000)) {
+        lastBat = now;
+        Serial.printf("[bmpro] %s battery %.2f V %+.2f A, counter %.3f Ah (b11=%u b12=%u), rssi %d\n",
+                      d->getAddress().toString().c_str(), b.batV, b.batA, b.remainAh, b.b11, b.b12, rssi);
+      } else if (b.hasInput && (!lastOut || now - lastOut >= 10000)) {
+        lastOut = now;
+        Serial.printf("[bmpro] %s input (solar/charger) %.1f A, b14 %.2f A, flags %04x\n",
+                      d->getAddress().toString().c_str(), b.inputA, b.b14A, b.outFlags);
+      }
+    }
+  }
   if (!print) return;
 
   String line;
