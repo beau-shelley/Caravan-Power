@@ -807,16 +807,22 @@ void setup() {
 // {"c":"pump","i":0,"on":true}. USB means someone is at the hub, so it counts
 // as local, like the touchscreen. The reply is printed back.
 static void serialCommands() {
+  // A full config_set (settings backup) is ~3 KB, so allow up to 4 KB.
+  constexpr size_t MAX_LINE = 4096;
   static String line;
+  static bool tooLong = false;
   while (Serial.available()) {
     char ch = (char)Serial.read();
     if (ch == '\r') continue;
     if (ch != '\n') {
-      if (line.length() < 512) line += ch;
+      if (line.length() < MAX_LINE) line += ch;
+      else tooLong = true;
       continue;
     }
     line.trim();
-    if (line.startsWith("{")) {
+    if (tooLong) {
+      Serial.printf("[usb] line too long (max %u characters)\n", (unsigned)MAX_LINE);
+    } else if (line.startsWith("{")) {
       JsonDocument in, reply;
       if (deserializeJson(in, line)) {
         Serial.println("[usb] not valid JSON");
@@ -828,6 +834,7 @@ static void serialCommands() {
       }
     }
     line = "";
+    tooLong = false;
   }
 }
 
