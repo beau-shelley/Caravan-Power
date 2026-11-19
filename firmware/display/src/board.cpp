@@ -120,7 +120,7 @@ void touchCb(lv_indev_drv_t *, lv_indev_data_t *data) {
 }  // namespace
 
 #ifndef DISPLAY_PCLK_MHZ
-#define DISPLAY_PCLK_MHZ 21  // ~23 Hz refresh. 30 (~33 Hz) tore once the cloud link (TLS in PSRAM) was running
+#define DISPLAY_PCLK_MHZ 30  // ~33 Hz refresh. 21 MHz (~23 Hz) stopped tearing but flickered badly
 #endif
 
 namespace board {
@@ -179,13 +179,29 @@ void begin() {
   Serial.printf("[board] RGB panel initialized: %dx%d, %dMHz\n", W, H, DISPLAY_PCLK_MHZ);
 
   lv_init();
-  const size_t n = W * 60;
-  auto *b1 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
-  auto *b2 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+  // LVGL draws into internal RAM (10 lines at a time) and each finished
+  // strip is copied to the PSRAM frame buffer once. Drawing straight into
+  // PSRAM (60-line buffers) read and wrote it many times per pixel, which
+  // with the cloud link's TLS also in PSRAM starved the panel's refills and
+  // made the screen tear (2026-11-20).
+  size_t n = W * 10;
+  auto *b1 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  auto *b2 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (!b1 || !b2) {  // not enough internal RAM: fall back to the old PSRAM buffers
+    heap_caps_free(b1);
+    heap_caps_free(b2);
+    n = W * 60;
+    b1 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+    b2 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+    Serial.println("[board] draw buffers in PSRAM (internal RAM short)");
+  }
   if (!b1 || !b2) {
-    Serial.println("[board] ERROR: PSRAM draw buffer allocation failed");
+    Serial.println("[board] ERROR: draw buffer allocation failed");
     while (true) delay(1000);
   }
+  Serial.printf("[board] draw buffers %u lines, internal RAM left %u (largest %u)\n", (unsigned)(n / W),
+                (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
   lv_disp_draw_buf_init(&gDrawBuf, b1, b2, n);
   lv_disp_drv_init(&gDispDrv);
   gDispDrv.hor_res = W;
