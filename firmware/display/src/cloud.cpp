@@ -198,7 +198,9 @@ static void fetchWeather() {
   http.end();
   cv::Weather w;
   if (code != 200 || !cv::parseOpenMeteo(body.c_str(), body.length(), w)) {
-    Serial.printf("[weather] fetch failed (HTTP %d) - the hub asks again in 5 min\n", code);
+    Serial.printf("[weather] fetch failed (HTTP %d, internal RAM %u free, largest %u) - the hub asks again in 5 min\n",
+                  code, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     return;
   }
   w.updated = (uint32_t)time(nullptr);
