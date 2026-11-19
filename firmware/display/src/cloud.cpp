@@ -340,8 +340,10 @@ static void netTask(void *) {
 }
 
 void begin() {
-  if (!CLOUD_ON_DISPLAY || !wifiConfigured() || (!mqttConfigured() && !ntfyConfigured())) {
-    Serial.println("[cloud] off (nothing set in secrets.h)");
+  // Wi-Fi alone is enough: the clock and the forecast for the hub need it even
+  // with no broker or ntfy topic set (those are checked where they're used).
+  if (!wifiConfigured()) {
+    Serial.println("[cloud] off (no Wi-Fi set in secrets.h)");
     return;
   }
   gMux = xSemaphoreCreateMutex();
