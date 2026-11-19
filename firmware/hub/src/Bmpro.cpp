@@ -11,7 +11,12 @@ namespace hub {
 Bmpro gBmpro;
 
 namespace {
-constexpr int LOG_LINES = 150;
+// Kept for the bmpro_log command. 40 lines of at most 120 characters: the
+// ring used to hold 150 full lines, and with the 20 s summary (~260
+// characters) in it the hub's free RAM fell ~770 B/min for 50 minutes
+// (2026-11-19) - about 40 KB on a board that has none to spare.
+constexpr int LOG_LINES = 40;
+constexpr unsigned LOG_LINE_MAX = 120;
 String gLog[LOG_LINES];
 int gLogHead = 0, gLogCount = 0;
 SemaphoreHandle_t gMux;
@@ -56,12 +61,15 @@ struct WriteReq {
 };
 QueueHandle_t gWriteQ;
 
-void logLine(const String &s) {
-  xSemaphoreTake(gMux, portMAX_DELAY);
-  gLog[gLogHead] = String(millis() / 1000) + "s " + s;
-  gLogHead = (gLogHead + 1) % LOG_LINES;
-  if (gLogCount < LOG_LINES) gLogCount++;
-  xSemaphoreGive(gMux);
+void logLine(const String &s, bool keep = true) {
+  if (keep) {
+    xSemaphoreTake(gMux, portMAX_DELAY);
+    String line = String(millis() / 1000) + "s " + s;
+    gLog[gLogHead] = line.length() > LOG_LINE_MAX ? line.substring(0, LOG_LINE_MAX) : line;
+    gLogHead = (gLogHead + 1) % LOG_LINES;
+    if (gLogCount < LOG_LINES) gLogCount++;
+    xSemaphoreGive(gMux);
+  }
   Serial.println("[bmpro] " + s);
 }
 
@@ -459,7 +467,7 @@ void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
     line += String("; amps: broadcast ") + String(gABcast, 1) + ", 40.61 " + String(gAConn, 1) +
             ", shown " + String(gData.batA, 1) + (gConnBatMs && now - gConnBatMs < 15000 ? " (from link)" : " (from broadcast)");
     xSemaphoreGive(gMux);
-    logLine(line);
+    logLine(line, false);  // serial only: too long and too frequent for the RAM log
     return;
   }
   xSemaphoreGive(gMux);
