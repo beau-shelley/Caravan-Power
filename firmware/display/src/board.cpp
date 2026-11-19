@@ -120,7 +120,7 @@ void touchCb(lv_indev_drv_t *, lv_indev_data_t *data) {
 }  // namespace
 
 #ifndef DISPLAY_PCLK_MHZ
-#define DISPLAY_PCLK_MHZ 30  // ~33 Hz refresh; 21 gives ~23 Hz with more bus headroom
+#define DISPLAY_PCLK_MHZ 21  // ~23 Hz refresh. 30 (~33 Hz) tore once the cloud link (TLS in PSRAM) was running
 #endif
 
 namespace board {
