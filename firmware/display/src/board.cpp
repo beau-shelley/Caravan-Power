@@ -179,22 +179,12 @@ void begin() {
   Serial.printf("[board] RGB panel initialized: %dx%d, %dMHz\n", W, H, DISPLAY_PCLK_MHZ);
 
   lv_init();
-  // LVGL draws into internal RAM (10 lines at a time) and each finished
-  // strip is copied to the PSRAM frame buffer once. Drawing straight into
-  // PSRAM (60-line buffers) read and wrote it many times per pixel, which
-  // with the cloud link's TLS also in PSRAM starved the panel's refills and
-  // made the screen tear (2026-11-20).
-  size_t n = W * 10;
-  auto *b1 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-  auto *b2 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-  if (!b1 || !b2) {  // not enough internal RAM: fall back to the old PSRAM buffers
-    heap_caps_free(b1);
-    heap_caps_free(b2);
-    n = W * 60;
-    b1 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
-    b2 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
-    Serial.println("[board] draw buffers in PSRAM (internal RAM short)");
-  }
+  // LVGL draw buffers in PSRAM: internal RAM goes to the panel's bounce
+  // buffers instead (drawing in internal RAM didn't stop the tearing, and
+  // internal RAM can't hold both - 939617a crash-looped).
+  size_t n = W * 60;
+  auto *b1 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
+  auto *b2 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
   if (!b1 || !b2) {
     Serial.println("[board] ERROR: draw buffer allocation failed");
     while (true) delay(1000);
