@@ -4,6 +4,8 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <esp_heap_caps.h>
+#include <mbedtls/platform.h>
 
 #include "CaravanModel.h"
 #include "../../hub/src/root_ca.h"
@@ -35,7 +37,10 @@ static bool wifiConfigured() { return strlen(WIFI_SSID) && strcmp(WIFI_PASS, "ch
 
 // Same networks as the hub: WIFI_SSID, then the optional WIFI_SSID2 (e.g. the
 // phone hotspot in the van), tried in turn every 30 s until one connects.
-#ifdef WIFI_SSID2
+#if defined(WIFI_SSID2) && defined(WIFI_SSID3)
+static const char *const kSsid[] = {WIFI_SSID, WIFI_SSID2, WIFI_SSID3};
+static const char *const kPass[] = {WIFI_PASS, WIFI_PASS2, WIFI_PASS3};
+#elif defined(WIFI_SSID2)
 static const char *const kSsid[] = {WIFI_SSID, WIFI_SSID2};
 static const char *const kPass[] = {WIFI_PASS, WIFI_PASS2};
 #else
@@ -194,13 +199,16 @@ static void fetchWeather() {
   http.setTimeout(15000);
   if (!http.begin(tls, String("https://api.open-meteo.com") + path)) return;
   int code = http.GET();
+  char err[100] = "";
+  if (code < 0) tls.lastError(err, sizeof(err));
   String body = code == 200 ? http.getString() : String();
   http.end();
   cv::Weather w;
   if (code != 200 || !cv::parseOpenMeteo(body.c_str(), body.length(), w)) {
-    Serial.printf("[weather] fetch failed (HTTP %d, internal RAM %u free, largest %u) - the hub asks again in 5 min\n",
-                  code, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+    Serial.printf("[weather] fetch failed (HTTP %d, TLS '%s', internal RAM %u free, largest %u, PSRAM %u) - the hub asks again in 5 min\n",
+                  code, err, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     return;
   }
   w.updated = (uint32_t)time(nullptr);
@@ -319,8 +327,8 @@ static void sendPush(const Push &m) {
   else if (m.sev == cv::SEV_WARN) prio = 4, tags = "warning";
   else prio = 3, tags = "information_source";
 
-  for (int attempt = 0; attempt < 5; attempt++) {
-    while (!gWifiUp) vTaskDelay(pdMS_TO_TICKS(2000));
+  for (int attempt = 0; attempt < 3; attempt++) {  // runs on the cloud task: keep retries short
+    if (!gWifiUp) return;
     WiFiClientSecure tls;
     tls.setCACert(ROOT_CA_PEM);
     HTTPClient http;
@@ -331,18 +339,15 @@ static void sendPush(const Push &m) {
     http.addHeader("Tags", tags);
     if (strlen(NTFY_TOKEN)) http.addHeader("Authorization", String("Bearer ") + NTFY_TOKEN);
     int code = http.POST((uint8_t *)m.msg, strlen(m.msg));
+    char err[100] = "";
+    if (code < 0) tls.lastError(err, sizeof(err));
     http.end();
-    Serial.printf("[push] '%s' -> HTTP %d\n", title, code);
+    Serial.printf("[push] '%s' -> HTTP %d %s\n", title, code, err);
     if (code >= 200 && code < 300) return;
     vTaskDelay(pdMS_TO_TICKS(5000 << attempt));
   }
 }
 
-static void pushTask(void *) {
-  Push m;
-  for (;;)
-    if (xQueueReceive(gPushQ, &m, portMAX_DELAY) == pdTRUE) sendPush(m);
-}
 
 // ---------------------------------------------------------------- Wi-Fi + task
 static void netTask(void *) {
@@ -352,6 +357,17 @@ static void netTask(void *) {
     if (up != gWifiUp) {
       gWifiUp = up;
       if (up) Serial.printf("[wifi] connected, IP %s\n", WiFi.localIP().toString().c_str());
+      static bool ntpStarted = false;
+      if (up && !ntpStarted) {
+        // Clock from NTP: shown on screen and passed to the hub (no Wi-Fi there).
+        // Started here, on this task, once Wi-Fi is up, and by IP address
+        // (Google's anycast time servers): SNTP looking up a host name while
+        // the MQTT connect resolved the broker crashed the display with an
+        // lwIP "Required to lock TCPIP core" assert (2026-11-20).
+        ntpStarted = true;
+        configTzTime(TZ_INFO, "216.239.35.0", "216.239.35.4");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+      }
       else Serial.println("[wifi] disconnected");
     }
     if (!up && millis() - lastJoinMs > 30000) {  // auto-reconnect is on; this is the backstop
@@ -359,13 +375,45 @@ static void netTask(void *) {
       WiFi.disconnect();
       joinNet(gNetIdx + 1);  // the other network, if there is one
     }
+    // One TLS session at a time: with the MQTT link open there is only ~13 KB
+    // of internal RAM left (largest block ~5 KB), too little for a second
+    // handshake (2026-11-20: every forecast fetch failed, HTTP -1). So push
+    // alerts and the forecast pause MQTT for the few seconds they take.
+    bool wantPush = ntfyConfigured() && uxQueueMessagesWaiting(gPushQ) > 0;
+    bool wantWx = gWxWanted && time(nullptr) > 1700000000;
+    if (up && (wantPush || wantWx)) {
+      if (gMqtt.connected()) {
+        gMqtt.disconnect();
+        gTls.stop();
+        gMqttUp = false;
+        Serial.println("[cloud] MQTT paused for a push alert / forecast");
+      }
+      Push m;
+      while (xQueueReceive(gPushQ, &m, 0) == pdTRUE) sendPush(m);
+      if (wantWx) fetchWeather();
+      gNextTryMs = 0;  // reconnect straight away
+      gHubUpNew = true;
+    }
     mqttLoop();
-    if (up && time(nullptr) > 1700000000) fetchWeather();
     vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
 
+// mbedTLS takes its ~40 KB per connection from internal RAM, which on this
+// board is mostly spoken for (Wi-Fi, the RGB bounce buffers): the forecast
+// failed with "SSL - Memory allocation failed" with 69 KB free but no block
+// over 24 KB (2026-11-20), while 2.7 MB of PSRAM sat idle. Use PSRAM first.
+static void *tlsCalloc(size_t n, size_t size) {
+  void *p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+
 void begin() {
+#if defined(MBEDTLS_PLATFORM_MEMORY) && !defined(MBEDTLS_PLATFORM_CALLOC_MACRO)
+  mbedtls_platform_set_calloc_free(tlsCalloc, heap_caps_free);
+#else
+#warning "mbedTLS allocator can't be changed at run time - TLS buffers stay in internal RAM"
+#endif
   // Wi-Fi alone is enough: the clock and the forecast for the hub need it even
   // with no broker or ntfy topic set (those are checked where they're used).
   if (!wifiConfigured()) {
@@ -382,8 +430,6 @@ void begin() {
   WiFi.setHostname(HOSTNAME "-display");
   WiFi.setAutoReconnect(true);
   joinNet(0);
-  // Clock from NTP: shown on screen and passed to the hub, which may have no Wi-Fi.
-  configTzTime(TZ_INFO, "pool.ntp.org", "time.google.com");
 
   gTls.setCACert(ROOT_CA_PEM);
   gMqtt.setServer(MQTT_HOST, MQTT_PORT);
@@ -394,7 +440,6 @@ void begin() {
 
   gOn = true;
   xTaskCreatePinnedToCore(netTask, "cloud", 8192, nullptr, 1, nullptr, 0);
-  if (ntfyConfigured()) xTaskCreatePinnedToCore(pushTask, "push", 8192, nullptr, 1, nullptr, 0);
   Serial.printf("[cloud] on: MQTT %s, push alerts %s\n", mqttConfigured() ? MQTT_HOST : "off",
                 ntfyConfigured() ? "on" : "off");
 }
