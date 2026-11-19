@@ -1,9 +1,16 @@
 name: build
 
 on:
-  # Manual only (Actions tab > build > Run workflow): the free minutes for this
-  # private repo ran out, so firmware is built and tests are run on the Surface
-  # (PlatformIO) instead.
+  # Run once per push (the result also shows on any open PR for that branch).
+  # There is no separate pull_request trigger: it re-ran the same ~15 min build
+  # for every push to a PR branch and doubled the failure emails.
+  push:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "hardware/**"
+      - "android/**"
+      - ".github/workflows/android.yml"
   workflow_dispatch:
 
 # A newer push to the same branch cancels the run it supersedes.
