@@ -15,6 +15,7 @@ static lv_obj_t *lSolarW, *lSolarA, *lChgA, *lChgSub, *lLoadA, *lLoadW;
 constexpr int NROWS = cv::NUM_SOLAR + 1, ROW_AC = cv::NUM_SOLAR;
 static lv_obj_t *mpName[NROWS], *mpChip[NROWS], *mpBar[NROWS], *mpW[NROWS];
 static int rowsAc = -1;  // layout currently shown: 0 = solar only, 1 = with mains row
+static int rowsKey = -1; // mains row + which solar rows are shown, as bits
 // One row per temperature, plus "Heater set" shown only while the heater runs.
 constexpr int T_HTR = cv::NUM_TEMPS;
 static lv_obj_t *tName[cv::NUM_TEMPS + 1], *tVal[cv::NUM_TEMPS + 1];
@@ -69,22 +70,33 @@ static constexpr int BAT_W = splitW(LARGE ? 37 : 39), FLOW_W = INNER_W - GAP - B
 
 // Places the source rows. Solar only: two roomy rows with the charge-state chip
 // under the name. With mains: three single-line rows, mains first.
-static void layoutRows(bool ac) {
-  if (rowsAc == (int)ac) return;
+// Rows shown: the mains row while bulk AC charging, solar row i when bit i of
+// solarMask is set (the portable panels only while they're charging).
+static void layoutRows(bool ac, unsigned solarMask = (1u << cv::NUM_SOLAR) - 1) {
+  int key = (ac ? 1 : 0) | (int)(solarMask << 1);
+  if (rowsKey == key) return;
+  rowsKey = key;
   rowsAc = ac;
   constexpr int fw = innerOf(FLOW_W), rowTop = LARGE ? 128 : 112, space = innerOf(TOP_H) - rowTop;
   constexpr int nameW = LARGE ? 130 : 112, wattW = LARGE ? 100 : 90, chipW = LARGE ? 104 : 96;
-  for (int i = 0; i < NROWS; i++) {
-    bool show = i != ROW_AC || ac;
+  // Keep the two-row spacing even when fewer rows show, so a lone roof row
+  // doesn't jump around; with mains the rows squeeze up to three.
+  int shown = (ac ? 1 : 0);
+  for (int i = 0; i < cv::NUM_SOLAR; i++) shown += (solarMask >> i) & 1;
+  int slots = shown > cv::NUM_SOLAR ? shown : cv::NUM_SOLAR;
+  int slot = 0;
+  for (int pass = 0; pass < NROWS; pass++) {
+    int i = pass == 0 ? ROW_AC : pass - 1;  // mains first, then solar in order
+    bool show = i == ROW_AC ? ac : ((solarMask >> i) & 1);
     for (lv_obj_t *o : {mpName[i], mpChip[i], mpBar[i], mpW[i]})
       show ? lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN) : lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
     if (!show) continue;
-    int slot = ac ? (i == ROW_AC ? 0 : i + 1) : i;
-    int y = rowTop + slot * space / (ac ? NROWS : cv::NUM_SOLAR);
+    int y = rowTop + slot++ * space / slots;
+    bool tight = slots > cv::NUM_SOLAR;  // three rows: chip goes beside the name
     lv_obj_set_width(mpName[i], nameW - 8);
     lv_obj_set_pos(mpName[i], 0, y);
-    int barX = ac ? nameW + chipW : nameW;
-    if (ac) lv_obj_set_pos(mpChip[i], nameW, y + (LARGE ? 3 : 1));
+    int barX = tight ? nameW + chipW : nameW;
+    if (tight) lv_obj_set_pos(mpChip[i], nameW, y + (LARGE ? 3 : 1));
     else lv_obj_set_pos(mpChip[i], 0, y + (LARGE ? 28 : 22));
     lv_obj_set_width(mpBar[i], fw - barX - wattW - 10);
     lv_obj_set_pos(mpBar[i], barX, y + 8);
@@ -157,6 +169,7 @@ void buildHome(lv_obj_t *p) {
   setChip(mpChip[ROW_AC], "Bulk", col::MAINS);
 
   rowsAc = -1;
+  rowsKey = -1;
   layoutRows(false);
 
   constexpr int bw = colW(3), bh = innerOf(BOT_H);
@@ -290,12 +303,19 @@ void updateHome() {
   // energy flow
   float solarW = s.solarW();
   setText(lSolarW, "%.0f W", solarW);
-  setText(lSolarA, "%.1f A", s.bat.solarA);
+  float solarA = 0;  // roof (via the BMPRO) + Victron controllers
+  for (const auto &m : s.solar)
+    if (m.online) solarA += m.batA;
+  setText(lSolarA, "%.1f A", solarA);
   setText(lChgA, s.bat.chargeA >= 99.95f ? "%.0f A" : "%.1f A", s.bat.chargeA);
   if (s.bat.acOn) setText(lChgSub, "mains %.0f A", s.bat.acA);
   else if (s.bat.chargerA > 0.5f) setText(lChgSub, "BMPRO %.1f A", s.bat.chargerA);
   else setText(lChgSub, "solar only");
-  layoutRows(s.bat.online && s.bat.acOn);
+  // Roof row always; the portable panels only while they're charging.
+  unsigned solarMask = 1;
+  for (int i = 1; i < cv::NUM_SOLAR; i++)
+    if (s.solar[i].online && (s.solar[i].pvW > 5 || s.solar[i].batA > 0.3f)) solarMask |= 1u << i;
+  layoutRows(s.bat.online && s.bat.acOn, solarMask);
   if (rowsAc == 1) {
     lv_bar_set_value(mpBar[ROW_AC], (int)s.bat.acA, LV_ANIM_ON);
     setText(mpW[ROW_AC], "%.0f A", s.bat.acA);

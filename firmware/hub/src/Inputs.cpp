@@ -269,7 +269,7 @@ void BatteryShunt::poll(cv::State &s, uint32_t nowMs) {
   // Charge sources we can see directly
   float solarA = 0;
   for (auto &x : s.solar)
-    if (x.online) solarA += x.batA;
+    if (x.online && !x.viaBmpro) solarA += x.batA;  // BMPRO solar is already in chargerA
   s.bat.solarA = solarA;
 
   if (chgOk_) {

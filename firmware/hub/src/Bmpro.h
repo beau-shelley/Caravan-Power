@@ -50,6 +50,7 @@ class Bmpro {
   bool decoded() const;  // any frame decoded yet?
   // Load current measured by the BMPRO, or -1 if not decoded / stale.
   float loadA() const;
+  float solarA() const;  // BMPRO solar input (the roof panels), -1 = no fresh reading
   bool setPump(int i, bool on, const char **why);
   // Raw write for protocol experiments, e.g. replaying a captured app write.
   bool write(const char *charUuid, const uint8_t *data, size_t len, bool response);

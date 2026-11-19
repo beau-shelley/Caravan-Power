@@ -376,6 +376,13 @@ void Bmpro::connect(const char *addr) {
 bool Bmpro::connected() const { return gClient && gClient->isConnected(); }
 bool Bmpro::decoded() const { return gDecodedAny; }
 
+float Bmpro::solarA() const {
+  xSemaphoreTake(gMux, portMAX_DELAY);
+  float a = gData.chargerValid && millis() - gChgMs < 30000 ? gData.chargerA : -1;
+  xSemaphoreGive(gMux);
+  return a;
+}
+
 float Bmpro::loadA() const {
   xSemaphoreTake(gMux, portMAX_DELAY);
   float a = gData.loadValid && millis() - gLoadMs < 30000 ? gData.loadA : -1;
