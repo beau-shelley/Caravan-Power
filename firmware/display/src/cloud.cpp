@@ -357,6 +357,17 @@ static void netTask(void *) {
     if (up != gWifiUp) {
       gWifiUp = up;
       if (up) Serial.printf("[wifi] connected, IP %s\n", WiFi.localIP().toString().c_str());
+      static bool ntpStarted = false;
+      if (up && !ntpStarted) {
+        // Clock from NTP: shown on screen and passed to the hub (no Wi-Fi there).
+        // Started here, on this task, once Wi-Fi is up, and by IP address
+        // (Google's anycast time servers): SNTP looking up a host name while
+        // the MQTT connect resolved the broker crashed the display with an
+        // lwIP "Required to lock TCPIP core" assert (2026-11-20).
+        ntpStarted = true;
+        configTzTime(TZ_INFO, "216.239.35.0", "216.239.35.4");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+      }
       else Serial.println("[wifi] disconnected");
     }
     if (!up && millis() - lastJoinMs > 30000) {  // auto-reconnect is on; this is the backstop
@@ -419,8 +430,6 @@ void begin() {
   WiFi.setHostname(HOSTNAME "-display");
   WiFi.setAutoReconnect(true);
   joinNet(0);
-  // Clock from NTP: shown on screen and passed to the hub, which may have no Wi-Fi.
-  configTzTime(TZ_INFO, "pool.ntp.org", "time.google.com");
 
   gTls.setCACert(ROOT_CA_PEM);
   gMqtt.setServer(MQTT_HOST, MQTT_PORT);
