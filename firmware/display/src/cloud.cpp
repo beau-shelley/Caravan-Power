@@ -35,7 +35,10 @@ static bool wifiConfigured() { return strlen(WIFI_SSID) && strcmp(WIFI_PASS, "ch
 
 // Same networks as the hub: WIFI_SSID, then the optional WIFI_SSID2 (e.g. the
 // phone hotspot in the van), tried in turn every 30 s until one connects.
-#ifdef WIFI_SSID2
+#if defined(WIFI_SSID2) && defined(WIFI_SSID3)
+static const char *const kSsid[] = {WIFI_SSID, WIFI_SSID2, WIFI_SSID3};
+static const char *const kPass[] = {WIFI_PASS, WIFI_PASS2, WIFI_PASS3};
+#elif defined(WIFI_SSID2)
 static const char *const kSsid[] = {WIFI_SSID, WIFI_SSID2};
 static const char *const kPass[] = {WIFI_PASS, WIFI_PASS2};
 #else
