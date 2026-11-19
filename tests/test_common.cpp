@@ -333,6 +333,42 @@ static void testSoc() {
   CHECK(e.synced());
   NEAR(SocEstimator::socFromRestVoltageLfp(13.1f), 50.0f, 0.01f);
   CHECK(SocEstimator::socFromRestVoltageLfp(9.0f) == 0);
+
+  // A bank bigger than the BMPRO's 600 Ah limit counts properly: 900 Ah,
+  // 90 A for 1 h = 10 %.
+  SocEstimator big;
+  c.capacityAh = 900;
+  big.begin(c, 100);
+  t = 0;
+  big.update(13.2f, -90, t);
+  for (int i = 0; i < 3600; i++) big.update(13.2f, -90, t += 1000);
+  NEAR(big.soc(), 90.0f, 0.05f);
+  NEAR(big.remainingAh(), 810.0f, 0.5f);
+  // Changing the battery size keeps the %
+  big.setCapacityAh(405);
+  NEAR(big.soc(), 90.0f, 0.05f);
+  NEAR(big.remainingAh(), 364.5f, 0.5f);
+
+  // Float sync: charger holding 13.7 V with ~0 A for 10 min -> full, even
+  // though it never reached the 13.9 V absorption threshold.
+  SocEstimator fl;
+  c.capacityAh = 405;
+  fl.begin(c, 60);
+  t = 0;
+  for (int i = 0; i < 300; i++) fl.update(13.7f, 0.9f, t += 1000);
+  CHECK(!fl.synced());  // 5 minutes isn't enough
+  fl.update(13.7f, -6.0f, t += 1000);  // a load comes on: timer restarts
+  for (int i = 0; i < 590; i++) fl.update(13.7f, 0.5f, t += 1000);
+  CHECK(!fl.synced());
+  for (int i = 0; i < 20; i++) fl.update(13.7f, 0.5f, t += 1000);
+  CHECK(fl.synced());
+  NEAR(fl.soc(), 100.0f, 0.01f);
+  // Charging at 13.4 V never counts as float
+  SocEstimator lo;
+  lo.begin(c, 60);
+  t = 0;
+  for (int i = 0; i < 1200; i++) lo.update(13.4f, 0.5f, t += 1000);
+  CHECK(!lo.synced());
 }
 
 static void testLink() {

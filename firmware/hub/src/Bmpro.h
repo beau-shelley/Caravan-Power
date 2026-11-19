@@ -45,7 +45,9 @@ class Bmpro {
   // Copies freshly decoded values into the state; marks stale data offline.
   void loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps);
   void connect(const char *addr);  // change target (async)
-  void setCapacityAh(float ah);    // battery size, for % from the broadcast Ah
+  // The newest battery reading, once each (false if nothing new). bmproSoc is
+  // the BMPRO's own % over the connection, or -1 (broadcasts don't carry one).
+  bool takeBattery(float &v, float &a, uint32_t &ms, float &bmproSoc);
   bool connected() const;
   bool decoded() const;  // any frame decoded yet?
   // Load current measured by the BMPRO, or -1 if not decoded / stale.

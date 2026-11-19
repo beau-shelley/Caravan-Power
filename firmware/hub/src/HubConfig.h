@@ -84,7 +84,7 @@ struct HeaterCfg {
 
 struct BatteryCfg {
   uint8_t source = cv::BAT_SRC_BMPRO;  // BMPRO over Bluetooth, or own INA226 shunt
-  float capacityAh = 300;
+  float capacityAh = cv::BAT_CAP_DEFAULT_AH;  // set on the phone (Setup > Battery)
   float chargeEff = 0.99f;
   float fullV = 13.9f;
   float tailA = 4.0f;

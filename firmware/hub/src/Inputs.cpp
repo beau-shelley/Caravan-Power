@@ -251,15 +251,42 @@ bool BatteryShunt::begin() {
   float saved = p.getFloat("soc", -1);
   p.end();
   float initial = saved;
+  seeded_ = saved >= 0;
   if (initial < 0) {
     float v = 0, a = 0;
-    initial = (ok_ && inaMeasure(INA_BAT, gConfig.bat.shuntOhm, v, a))
-                  ? cv::SocEstimator::socFromRestVoltageLfp(v * gConfig.bat.vCal)
-                  : 50;
+    if (ok_ && inaMeasure(INA_BAT, gConfig.bat.shuntOhm, v, a)) {
+      initial = cv::SocEstimator::socFromRestVoltageLfp(v * gConfig.bat.vCal);
+      seeded_ = true;
+    } else {
+      initial = 50;  // BMPRO: feed() picks a better start from the first reading
+    }
   }
   soc_.begin(c, initial);
   lastSavedSoc_ = initial;
+  Serial.printf("[bat] %.0f Ah, starting at %.0f%% (%s)\n", c.capacityAh, initial,
+                saved >= 0 ? "saved" : seeded_ ? "from voltage" : "waiting for a reading");
   return ok_;
+}
+
+void BatteryShunt::feed(cv::State &s, float v, float a, uint32_t sampleMs, float bmproSoc) {
+  if (!seeded_) {
+    // First reading after a fresh flash. The BMPRO's own % is only a good
+    // start when the bank fits its 600 Ah limit; otherwise guess from volts.
+    bool useBmpro = bmproSoc >= 0 && soc_.config().capacityAh <= 600;
+    soc_.setSoc(useBmpro ? bmproSoc : cv::SocEstimator::socFromRestVoltageLfp(v));
+    seeded_ = true;
+    lastSavedSoc_ = -100;  // save the start straight away
+    Serial.printf("[bat] start at %.0f%% (%s)\n", soc_.soc(), useBmpro ? "BMPRO's %" : "from voltage");
+  }
+  soc_.update(v, a, sampleMs);
+  // ~10 s average current for time left (BMPRO readings come every ~1-2 s)
+  float dt = avgPrimed_ ? (sampleMs - lastFeedMs_) / 1000.0f : 10;
+  avgA_ += (a - avgA_) * (dt >= 10 ? 1 : dt / 10);
+  avgPrimed_ = true;
+  lastFeedMs_ = sampleMs;
+  s.bat.soc = soc_.soc();
+  s.bat.ttgMin = soc_.timeToGoMin(avgA_);
+  persist(lastSavedSoc_ < 0);
 }
 
 void BatteryShunt::poll(cv::State &s, uint32_t nowMs) {
