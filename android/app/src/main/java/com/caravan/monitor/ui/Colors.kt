@@ -5,37 +5,41 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import com.caravan.monitor.Severity
 
-// Caravan theme: gunmetal cards on dark camo, black chequer plate, lime accents
-// (like the van). Same colours as the touchscreen (ui.h col::) and the web page.
+// Caravan theme, matched to the decals on the van: plain dark background with the
+// van's X (subtle camo fill, white outline, green pinstripes), solid gunmetal-grey cards (the van body) with white
+// text, and the decals' white and green as highlights. Same colours as the
+// touchscreen (ui.h col::) and the web page.
 object Accent {
-    val lime = Color(0xFFA3E635)  // theme accent: selected tab, primary buttons, info
-    val battery = Color(0xFF8FDB3A)
-    val solar = Color(0xFFFACC15)
-    val water = Color(0xFF38BDF8)
-    val mains = Color(0xFF60A5FA)
-    val gas = Color(0xFFFB923C)
-    val heat = Color(0xFFFB923C)  // diesel heater, same orange as the touchscreen and web page
-    val climate = Color(0xFFA78BFA)
-    val warn = Color(0xFFF59E0B)
-    val alarm = Color(0xFFEF4444)
-    val secure = Color(0xFF84CC16)  // secure mode armed, same green as the touchscreen and web page
-    val critical = Color(0xFFD946EF)  // fuchsia, same as the touchscreen and web page
-    val muted = Color(0xFF9EA4A6)
+    val lime = Color(0xFF9BE03A)  // highlight green (the decals): selected tab, primary buttons, info
+    val white = Color(0xFFF2F3F1)  // highlight white (the decals' outlines)
+    val battery = Color(0xFF9BE03A)
+    val solar = Color(0xFFFFD93B)
+    val water = Color(0xFF5CCBFF)
+    val mains = Color(0xFF8CC0FF)
+    val gas = Color(0xFFFFA35C)
+    val heat = Color(0xFFFFA35C)  // diesel heater, same orange as the touchscreen and web page
+    val climate = Color(0xFFC4B0FF)
+    val warn = Color(0xFFFFB020)
+    val alarm = Color(0xFFFF6B6B)
+    val secure = Color(0xFF9BE03A)  // secure mode armed, same green as the touchscreen and web page
+    val critical = Color(0xFFF07CFF)  // fuchsia, same as the touchscreen and web page
+    val muted = Color(0xFFD3D6D9)
 }
 
-/** Background and card colours (dark theme). */
+/** Background and card colours. */
 object Surfaces {
-    val background = Color(0xFF0E0F10)  // camo base
-    val camo = listOf(Color(0xFF141617), Color(0xFF191C1C), Color(0xFF1F2321))  // camo layers
+    val background = Color(0xFF111214)
+    val camo = listOf(Color(0xFF16181B), Color(0xFF1C1F22), Color(0xFF24272A), Color(0xFF2E3135))  // subtle: base, dark, mid, light
     val plate = Color(0xFF0B0C0D)       // chequer plate base (bottom bar)
     val ridge = Color(0xFF1B1D1F)       // chequer plate ridges
     val ridgeLight = Color(0xFF2A2D30)
-    val card = Color(0xFF1E2124)        // gunmetal
-    val raised = Color(0xFF2A2E32)
-    val track = Color(0xFF34383C)
-    val text = Color(0xFFECEEEA)
-    val onLime = Color(0xFF16210A)
-    val limeContainer = Color(0xFF34451A)  // tonal lime (selected chips, tab indicator)
+    val card = Color(0xFF4E5257)        // gunmetal grey, like the van body
+    val glass = card                    // cards are solid (Beau: texture on the background only)
+    val raised = Color(0xFF3E4247)      // tiles and buttons inside a card
+    val track = Color(0xFF36393D)
+    val text = Color(0xFFFFFFFF)
+    val onLime = Color(0xFF14200A)
+    val limeContainer = Color(0xFF3C5A1C)  // tonal green (selected chips)
 }
 
 /** Material colour scheme for the app (also used by the screenshot renderer). */

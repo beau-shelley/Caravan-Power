@@ -52,10 +52,7 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
         update = update,
         onUpdate = { updater.startOrInstall() },
         onSecure = { askSecure = it },
-        onArm = { sens ->
-            if (sens != state?.sec?.sens) hub.send("secure", "sens" to sens)
-            hub.send("secure", "arm" to true)
-        },
+        onArm = { hub.send("secure", "arm" to true) },  // uses the sensitivity set in Setup
     )
     // Arming is the slide on the Secure card; only disarming asks first.
     if (askSecure == false) {
@@ -129,6 +126,7 @@ fun SetupScreen() {
     val status by app.hub.status.collectAsStateWithLifecycle()
     val meta by app.hub.meta.collectAsStateWithLifecycle()
     val update by app.updater.info.collectAsStateWithLifecycle()
+    val state by app.hub.state.collectAsStateWithLifecycle()
     SetupContent(
         saved = saved,
         status = status,
@@ -147,6 +145,8 @@ fun SetupScreen() {
         onBatteryAh = { app.hub.send("battery_set", "cap" to it); app.hub.send("hello") },
         onBatteryFull = { app.hub.send("soc_set", "soc" to 100) },
         onSecureCode = { app.hub.send("secure_code", "code" to it); app.hub.send("hello") },
+        secSens = state?.sec?.sens ?: 1,
+        onSecureSens = { app.hub.send("secure", "sens" to it) },
         onOpenWebPage = { app.hub.baseUrl()?.let { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) } },
         update = update,
         updateTokenSet = update.state != UpdState.NO_TOKEN,

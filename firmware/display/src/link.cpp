@@ -52,7 +52,33 @@ void cmd(const char *c) {
   d["c"] = c;
   send(d);
 }
+// Pump buttons answer at once: the tile shows the new state straight away and
+// holds it for a few seconds while the command goes round the hub, so a state
+// frame sent before the hub acted can't flip it back. After that (or if the hub
+// says no) the hub's real state wins again.
+constexpr uint32_t PUMP_HOLD_MS = 3000;
+static uint32_t gPumpHoldUntil[cv::NUM_PUMPS] = {};
+static bool gPumpHoldOn[cv::NUM_PUMPS] = {};
+
+static void applyPumpHolds() {
+  uint32_t now = millis();
+  for (int i = 0; i < cv::NUM_PUMPS; i++) {
+    if (!gPumpHoldUntil[i]) continue;
+    if ((int32_t)(now - gPumpHoldUntil[i]) >= 0 || state.pump[i].on == gPumpHoldOn[i]) {
+      gPumpHoldUntil[i] = 0;  // expired, or the hub has caught up
+      continue;
+    }
+    state.pump[i].on = gPumpHoldOn[i];
+  }
+}
+
 void cmdPump(int i, bool on) {
+  if (i >= 0 && i < cv::NUM_PUMPS) {
+    state.pump[i].on = on;
+    gPumpHoldOn[i] = on;
+    gPumpHoldUntil[i] = (millis() + PUMP_HOLD_MS) | 1;
+    stateDirty = true;
+  }
   JsonDocument d;
   d["c"] = "pump";
   d["i"] = i;
@@ -133,12 +159,13 @@ static void handleFrame(const char *line, size_t len) {
   const char *t = doc["t"] | "";
   if (!strcmp(t, "p")) {
     // poll - nothing to parse
-  } else if (!strcmp(t, "lvl")) {  // fast level update (4 Hz)
+  } else if (!strcmp(t, "lvl")) {  // fast level update (10 Hz)
     cv::levelFromJson(state.lvl, doc.as<JsonObjectConst>());
     stateDirty = true;
   } else if (!strcmp(t, "state")) {
     cloud::onHubState(doc);  // also marks net.cloud with our own broker link
     cv::stateFromJson(state, doc.as<JsonObjectConst>());
+    applyPumpHolds();
     stateDirty = true;
   } else if (!strcmp(t, "event")) {  // alert raised / cleared, for the cloud
     cloud::onHubEvent(line, len);
@@ -162,8 +189,11 @@ static void handleFrame(const char *line, size_t len) {
     cv::metaFromJson(meta, doc.as<JsonObjectConst>());
     metaVer++;
     stateDirty = true;
-  } else if (gReplyHandler) {
-    gReplyHandler(doc.as<JsonObjectConst>());
+  } else {
+    if (!strcmp(t, "err")) {  // the hub refused a command: drop any pump the tile was holding
+      for (auto &h : gPumpHoldUntil) h = 0;
+    }
+    if (gReplyHandler) gReplyHandler(doc.as<JsonObjectConst>());
   }
 }
 
