@@ -142,8 +142,7 @@ void begin() {
   cfg.clk_src = LCD_CLK_SRC_DEFAULT;
   // Wi-Fi on this board (forecast, clock, cloud) shares the PSRAM bus with the
   // frame buffer: with it running the panel tore and flickered (2026-11-19).
-  // Wi-Fi/lwIP buffers now stay in internal RAM (platformio.ini; TLS stays in
-  // PSRAM: in internal RAM every HTTPS fetch failed),
+  // Wi-Fi/lwIP and TLS buffers now stay in internal RAM (platformio.ini),
   // bigger bounce buffers ride out bus stalls, and the DMA restarts at each
   // vsync so a missed refill can't leave the picture shifted.
   cfg.timings.pclk_hz = DISPLAY_PCLK_MHZ * 1000 * 1000;
