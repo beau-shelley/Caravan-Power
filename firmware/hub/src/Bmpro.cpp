@@ -38,7 +38,7 @@ volatile bool gRetargeted = false;
 volatile bool gDecodedAny = false;
 volatile uint32_t gFrames = 0;
 // Voltage readings side by side, for matching the Trek3's figure.
-volatile float gVBcast = 0, gVConn = 0, gV2 = 0;
+volatile float gVBcast = 0, gVConn = 0, gV2 = 0, gABcast = 0, gAConn = 0;
 // Last battery reading over the connection. While it is fresh the broadcast is
 // ignored: its voltage updates only every few minutes (13.28 V while the
 // connection and the Trek3 said 13.05-13.1 V, 2026-11-18).
@@ -119,6 +119,7 @@ void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
     out.batValid = true;
     out.batV = b.batV;
     gVBcast = b.batV;
+    gABcast = b.batA;
     out.batA = b.batA;
     out.remainAh = b.remainAh;  // logged only: doesn't match the 405 Ah bank, meaning unknown
     out.batSoc = -1;            // worked out in loop() from volts + amps
@@ -435,7 +436,7 @@ void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
   // Once a minute: what the OdysseyLink link is delivering, so a plain serial
   // log shows whether tanks, pumps and battery % are coming through.
   static uint32_t lastSummary = 0;
-  if (now - lastSummary >= 60000) {
+  if (now - lastSummary >= 20000) {
     lastSummary = now;
     auto age = [&](bool valid, uint32_t ms) { return valid ? String((now - ms) / 1000) + "s ago" : String("never"); };
     String line = String("link ") + (connected() ? "up" : "down") + ", " + gFrames + " frames; tanks";
@@ -447,6 +448,8 @@ void Bmpro::loop(cv::State &s, bool useBattery, bool useTanks, bool usePumps) {
     line += String("; BMPRO % ") + (gSocMs ? String((int)gData.batSoc) + " (" + (now - gSocMs) / 1000 + "s ago)" : String("never"));
     line += String("; minutes left ") + gData.batTtgMin;
     line += String("; volts: broadcast ") + String(gVBcast, 2) + ", 40.62 " + String(gVConn, 2) + ", 40.65 " + String(gV2, 2);
+    line += String("; amps: broadcast ") + String(gABcast, 1) + ", 40.61 " + String(gAConn, 1) +
+            ", shown " + String(gData.batA, 1) + (gConnBatMs && now - gConnBatMs < 15000 ? " (from link)" : " (from broadcast)");
     xSemaphoreGive(gMux);
     logLine(line);
     return;
@@ -536,6 +539,7 @@ bool Bmpro::decode(const char *charUuid, const uint8_t *data, size_t len, BmproD
   cv::bmpro::Msg m;
   if (!cv::bmpro::parse(data, len, m) || !cv::bmpro::apply(m, v)) return false;
   if (v.hasBatV) gVConn = v.batV;
+  if (v.hasBatA) gAConn = v.batA;
   if (v.hasV2) gV2 = v.v2;
   if (v.hasBatV && v.hasBatA) {
     out.batValid = true;
