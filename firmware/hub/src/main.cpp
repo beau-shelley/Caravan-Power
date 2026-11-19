@@ -440,6 +440,12 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     gConfig.meta.screenSleepSec = (uint16_t)sleep;
     configChanged();
     cv::metaToJson(gConfig.meta, reply.to<JsonObject>());
+  } else if (!strcmp(c, "config_get")) {
+    // Whole saved config, e.g. to back it up over USB before an uploadfs
+    // (which wipes /config.json) and put it back with config_set. USB only:
+    // it carries keys and codes.
+    if (src != SRC_DISPLAY) return replyErr(reply, "config_get only works over USB or the display link");
+    gConfig.toJson(reply["cfg"].to<JsonObject>());
   } else if (!strcmp(c, "config_set")) {
     bool rc = gConfig.meta.remoteControl;
     gConfig.fromJson(cmd["cfg"]);
