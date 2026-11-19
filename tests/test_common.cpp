@@ -1105,13 +1105,16 @@ static void testHeaterReal() {
   NEAR(h.cabinC, 26, 0.01f);
   auto level = unhex("aa550101000000000107068200150" "01a00c0");
   CHECK(airheater::decode(level.data(), level.size(), h));
-  CHECK(h.mode == HTR_MODE_LEVEL && h.level == 7 && h.phase != HTR_OFF);
+  CHECK(h.mode == HTR_MODE_LEVEL && h.level == 7 && h.phase == HTR_STARTING);
   NEAR(h.supplyV, 13.0f, 0.01f);
   NEAR(h.bodyC, 21, 0.01f);
   auto therm = unhex("aa550101000064" "00021c01780015001a002b");
   CHECK(airheater::decode(therm.data(), therm.size(), h));
-  CHECK(h.mode == HTR_MODE_TEMP && h.setC == 28);
+  CHECK(h.mode == HTR_MODE_TEMP && h.setC == 28 && h.phase == HTR_RUNNING);
   NEAR(h.supplyV, 12.0f, 0.01f);
+  // Just switched off: byte 3 = 0 but byte 6 still 0x64 = cooling down.
+  auto cooling = unhex("aa550300000064" "00021c01780015001a002a");
+  CHECK(airheater::decode(cooling.data(), cooling.size(), h) && h.phase == HTR_COOLING);
   NEAR(h.cabinC, 26, 0.01f);
 }
 

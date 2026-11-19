@@ -242,8 +242,8 @@ private fun BatteryCard(s: HubState, modifier: Modifier = Modifier) {
         Row(Modifier.fillMaxWidth()) {
             // Mains is only shown while the hub detects bulk mains charging (worked out, not measured).
             if (b.acOn) MiniStat("Mains", "${b.acA.toInt()} A", Modifier.weight(1f), Accent.mains)
-            MiniStat("Solar", "${fmt1(b.solarA)} A", Modifier.weight(1f))
-            MiniStat("BMPRO", "${fmt1(b.chargerA)} A", Modifier.weight(1f))
+            // Total charge coming in (all solar, BMPRO and mains), as on the display.
+            MiniStat("Charging", "${fmt1(b.chargeA)} A", Modifier.weight(1f))
             MiniStat("Load", "${fmt1(b.loadA)} A", Modifier.weight(1f))
         }
     }

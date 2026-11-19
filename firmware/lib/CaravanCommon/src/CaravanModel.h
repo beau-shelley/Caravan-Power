@@ -35,6 +35,7 @@ struct Solar {
   float yieldTodayKwh = 0;    // H20
   uint16_t maxWToday = 0;     // H21
   float yieldTotalKwh = 0;    // H19
+  bool viaBmpro = false;      // hub only: filled from the BMPRO's own solar input (not a Victron)
 };
 
 enum BatterySource : uint8_t { BAT_SRC_NONE = 0, BAT_SRC_SHUNT = 1, BAT_SRC_BMPRO = 2 };

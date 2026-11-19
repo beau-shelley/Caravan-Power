@@ -496,12 +496,12 @@ function render() {
 
   const solW = S.sol.reduce((a, x) => a + (x.on ? x.w : 0), 0);
   $("#solW").textContent = `${Math.round(solW)} W`;
-  $("#solA").textContent = `${b.sa.toFixed(1)} A`;
+  $("#solA").textContent = "";  // total watts only (roof + portable)
   $("#chgA").textContent = `${b.chg >= 99.95 ? Math.round(b.chg) : b.chg.toFixed(1)} A`;
   // Mains (2 x 60 A chargers) has no sensor: the hub infers it from what the
   // BMPRO + Victrons don't explain, and sets acon only while bulk charging.
   const mains = b.on && b.acon;
-  $("#chgSub").textContent = mains ? `mains ${Math.round(b.aca || 0)} A` : b.ca > 0.5 ? `BMPRO ${b.ca.toFixed(1)} A` : "solar only";
+  $("#chgSub").textContent = "";  // total charge only (solar + BMPRO + mains)
   $("#loadA").textContent = `${b.load.toFixed(1)} A`;
   $("#loadW").textContent = `${Math.round(b.load * (b.v || 12.8))} W`;
   $("#mppts").innerHTML = (mains ? `

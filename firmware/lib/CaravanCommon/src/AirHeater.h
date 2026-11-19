@@ -8,7 +8,8 @@
 // cabin temperature (26 C, matching the app) all match the layout below.
 // The app also sends cmd 10 at connect with the phone's clock as minutes
 // since midnight (0x04C0 = 20:16); the hub doesn't need it. Byte 5 (step)
-// stayed 0 during a short 25 s run, so the start-up phases are not yet seen.
+// is always 0 on this heater; byte 6 (0x64 while burning) gives the phase:
+// on + 0 = lighting, on + 64 = running, off + 64 = cooling down, off + 0 = off.
 // The layout follows bderleta/vevor-ble-bridge. See docs/HEATER.md.
 //
 // Transport: one GATT service 0xFFE0 with one characteristic 0xFFE1 that is

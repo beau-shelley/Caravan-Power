@@ -76,10 +76,22 @@ void WeatherClient::loop(cv::State &s) {
     memcpy(place, loc.name, sizeof(place));
   }
   // Refetch every 30 min, or straight away after moving > 5 km.
-  bool moved = cv::distanceKm(lat, lon, lastLat_, lastLon_) > 5;
+  // "Moved" is measured from the last attempt, so a failing fetch waits for
+  // the 5 min retry instead of being retried on every loop (2026-11-18: a
+  // fetch that never succeeded was retried several times a second).
+  bool moved = cv::distanceKm(lat, lon, tryLat_, tryLon_) > 5;
   if (!force_ && !moved && (int32_t)(millis() - nextMs_) < 0) return;
   force_ = false;
+  tryLat_ = lat;
+  tryLon_ = lon;
   nextMs_ = millis() + 5UL * 60 * 1000;  // retry in 5 min if this fails
+  // HTTPS needs a big free block; with both Bluetooth links open the classic
+  // ESP32 can be short of one. Skip rather than fail (and fragment) the heap.
+  if (ESP.getMaxAllocHeap() < 32000) {
+    Serial.printf("[weather] skipped: largest free block %u bytes, need ~32 KB - retry in 5 min\n",
+                  (unsigned)ESP.getMaxAllocHeap());
+    return;
+  }
 
   char path[400];
   cv::openMeteoPath(path, sizeof(path), lat, lon);

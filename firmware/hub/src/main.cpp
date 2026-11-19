@@ -859,6 +859,23 @@ void loop() {
       uint32_t ms;
       if (bat && gBmpro.takeBattery(v, a, ms, bmproSoc)) gShunt.feed(gState, v, a, ms, bmproSoc);
     }
+    // The BMPRO's solar input is the roof panels: show it as the first solar
+    // controller unless a Victron is set up and online in that slot.
+    {
+      cv::Solar &roof = gState.solar[0];
+      float a = gBmproOn ? gBmpro.solarA() : -1;
+      if ((!roof.online || roof.viaBmpro) && a >= 0) {
+        float v = gState.bat.v > 0 ? gState.bat.v : 13.2f;
+        roof = cv::Solar();
+        roof.online = roof.viaBmpro = true;
+        roof.batV = v;
+        roof.batA = a;
+        roof.pvW = a * v;
+        roof.cs = a > 0.3f ? 3 : 0;  // shown as "Bulk" while charging, "Off" at night
+      } else if (roof.viaBmpro && a < 0) {
+        roof = cv::Solar();
+      }
+    }
     }  // !demo::kOn
     // Level sensor: always read (secure mode needs it); in the fake-data build
     // its level isn't shown, and with no sensor plugged in a simulated one

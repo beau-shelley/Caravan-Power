@@ -569,6 +569,16 @@ void Cloud::loop(const cv::State &s) {
   }
   if (!gMqtt.connected()) {
     if ((int32_t)(millis() - nextTryMs_) < 0) return;
+    // A TLS handshake needs a ~40 KB block. With both Bluetooth links open the
+    // classic ESP32 hub rarely has one, and failed handshakes fragment the
+    // heap further (2026-11-19: largest block shrank ~1 KB a minute). Wait
+    // for memory instead of trying; the display board will take over cloud.
+    if (ESP.getMaxAllocHeap() < 40000) {
+      Serial.printf("[cloud] skipped: largest free block %u bytes, need ~40 KB - retry in 5 min\n",
+                    (unsigned)ESP.getMaxAllocHeap());
+      nextTryMs_ = millis() + 300000;
+      return;
+    }
     String will = gBase + "online";
     String cid = String(DEVICE_ID) + "-hub-" + String((uint32_t)ESP.getEfuseMac(), HEX);
     Serial.printf("[cloud] connecting to %s:%d\n", MQTT_HOST, MQTT_PORT);
