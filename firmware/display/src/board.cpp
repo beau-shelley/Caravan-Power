@@ -120,7 +120,7 @@ void touchCb(lv_indev_drv_t *, lv_indev_data_t *data) {
 }  // namespace
 
 #ifndef DISPLAY_PCLK_MHZ
-#define DISPLAY_PCLK_MHZ 30  // ~33 Hz refresh; 21 gives ~23 Hz with more bus headroom
+#define DISPLAY_PCLK_MHZ 30  // ~33 Hz refresh. 21 MHz (~23 Hz) stopped tearing but flickered badly
 #endif
 
 namespace board {
@@ -159,7 +159,7 @@ void begin() {
   cfg.data_width = 16;
   cfg.bits_per_pixel = 16;
   cfg.num_fbs = 2;
-  cfg.bounce_buffer_size_px = W * 15;  // 2 x 30 KB internal RAM; must divide 600 lines
+  cfg.bounce_buffer_size_px = W * 30;  // 2 x 60 KB internal RAM (must divide 600 lines); 15 lines still tore with the cloud link up
   cfg.sram_trans_align = 4;
   cfg.psram_trans_align = 64;
   cfg.hsync_gpio_num = 46;
@@ -179,13 +179,19 @@ void begin() {
   Serial.printf("[board] RGB panel initialized: %dx%d, %dMHz\n", W, H, DISPLAY_PCLK_MHZ);
 
   lv_init();
-  const size_t n = W * 60;
+  // LVGL draw buffers in PSRAM: internal RAM goes to the panel's bounce
+  // buffers instead (drawing in internal RAM didn't stop the tearing, and
+  // internal RAM can't hold both - 939617a crash-looped).
+  size_t n = W * 60;
   auto *b1 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
   auto *b2 = static_cast<lv_color_t *>(heap_caps_malloc(n * sizeof(lv_color_t), MALLOC_CAP_SPIRAM));
   if (!b1 || !b2) {
-    Serial.println("[board] ERROR: PSRAM draw buffer allocation failed");
+    Serial.println("[board] ERROR: draw buffer allocation failed");
     while (true) delay(1000);
   }
+  Serial.printf("[board] draw buffers %u lines, internal RAM left %u (largest %u)\n", (unsigned)(n / W),
+                (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
   lv_disp_draw_buf_init(&gDrawBuf, b1, b2, n);
   lv_disp_drv_init(&gDispDrv);
   gDispDrv.hor_res = W;
