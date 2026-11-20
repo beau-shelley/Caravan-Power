@@ -4,6 +4,7 @@
 #include "app.h"
 #include "board.h"
 #include "cloud.h"
+#include "evlog.h"
 #ifdef DISPLAY_DEMO_MODE
 #include "demo.h"
 #endif
@@ -19,9 +20,13 @@ uint32_t metaVer = 0, rulesVer = 0;
 uint32_t linkErrors = 0;
 Dropouts hubDrops, cloudDrops;
 
-static void trackDrop(Dropouts &d, bool up) {
+static void trackDrop(Dropouts &d, bool up, const char *what) {
   if (up == d.up) return;
   d.up = up;
+  if (!what) {  // tracked, but logged elsewhere
+  } else if (up && d.seenUp) evlog::add("%s back after %us", what, (unsigned)((millis() - d.downSinceMs) / 1000));
+  else if (up) evlog::add("%s up", what);
+  else if (d.seenUp) evlog::add("%s DOWN", what);
   if (up) {
     if (d.seenUp) d.longestS = max<uint32_t>(d.longestS, (millis() - d.downSinceMs) / 1000);
     d.seenUp = true;
@@ -262,8 +267,8 @@ void linkLoop() {
   if (gotFrame && !gSer.available()) transmitOne();
 
   bool up = gLastRxMs && millis() - gLastRxMs < 4000;
-  trackDrop(hubDrops, up);
-  trackDrop(cloudDrops, cloud::connected());
+  trackDrop(hubDrops, up, "hub link");
+  trackDrop(cloudDrops, cloud::connected(), nullptr);  // cloud.cpp logs its own
   // Pass our NTP clock to the hub once a minute (a hub without Wi-Fi has no other).
   static uint32_t nextTimeMs = 0;
   if (up && !linkUp) {

@@ -175,21 +175,23 @@ uint32_t scanBitrate() {
   }
 }
 
+volatile char gPendingCmd = 0;  // from serialCommand(), run on the CAN task
+
 void pollSerialCommands() {
-  while (Serial.available()) {
-    char c = (char)Serial.read();
-    switch (c) {
-      case 'd': case 'r': case 'q':
-        gMode = (Mode)c;
-        Serial.printf("[can] log mode: %s\n", c == 'd' ? "changes only" : c == 'r' ? "raw" : "quiet");
-        break;
-      case 's': printSummary(); break;
-      case 'b':
-        stop();
-        gStats.bitrate = 0;
-        break;
-      default: break;
-    }
+  char c = gPendingCmd;
+  if (!c) return;
+  gPendingCmd = 0;
+  switch (c) {
+    case 'd': case 'r': case 'q':
+      gMode = (Mode)c;
+      Serial.printf("[can] log mode: %s\n", c == 'd' ? "changes only" : c == 'r' ? "raw" : "quiet");
+      break;
+    case 's': printSummary(); break;
+    case 'b':
+      stop();
+      gStats.bitrate = 0;
+      break;
+    default: break;
   }
 }
 
@@ -234,6 +236,9 @@ void canTask(void *) {
 
 }  // namespace
 
+// The serial port is read by evlog (one reader only); one-letter lines land here.
+void serialCommand(char c) { gPendingCmd = c; }
+
 void begin() {
   // Core 0, above the idle task but below the Wi-Fi/timer tasks. It blocks on
   // the driver queue nearly all the time, so its CPU cost is the per-frame work.
@@ -256,6 +261,7 @@ Stats stats() {
 #else
 namespace canbus {
 void begin() {}
+void serialCommand(char) {}
 Stats stats() { return {}; }
 }  // namespace canbus
 #endif
