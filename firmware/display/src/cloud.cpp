@@ -252,7 +252,7 @@ static void onMqtt(char *topic, byte *payload, unsigned int len) {
   if (xQueueSend(gCmdQ, &s, 0) != pdTRUE) delete s;
 }
 
-static uint32_t gNextTryMs = 0, gBackoffMs = 2000, gConnFails = 0;
+static uint32_t gNextTryMs = 0, gBackoffMs = 2000, gConnFails = 0, gConnectedAtMs = 0;
 
 static void mqttLoop() {
   if (!mqttConfigured() || !gWifiUp) {
@@ -260,6 +260,21 @@ static void mqttLoop() {
     return;
   }
   if (!gMqtt.connected()) {
+    if (gMqttUp) {
+      // Just dropped. A link that lived under a minute counts as a failure:
+      // 2026-11-20 it connected and dropped 14 times in a row, and reconnecting
+      // that fast gets a client banned by the broker's flapping detection.
+      uint32_t lived = millis() - gConnectedAtMs;
+      gTls.stop();
+      if (lived < 60000) {
+        Serial.printf("[cloud] dropped after %us, retry in %us\n", (unsigned)(lived / 1000), (unsigned)(gBackoffMs / 1000));
+        gNextTryMs = millis() + gBackoffMs;
+        gBackoffMs = min<uint32_t>(gBackoffMs * 2, 300000);
+      } else {
+        Serial.printf("[cloud] dropped after %u min\n", (unsigned)(lived / 60000));
+        gBackoffMs = 2000;
+      }
+    }
     gMqttUp = false;
     if ((int32_t)(millis() - gNextTryMs) < 0) return;
     String will = kBase + "online";
@@ -270,7 +285,7 @@ static void mqttLoop() {
                   dnsOk ? ip.toString().c_str() : "DNS failed");
     if (gMqtt.connect(cid.c_str(), MQTT_USER, MQTT_PASS, will.c_str(), 1, true, "0")) {
       Serial.println("[cloud] connected");
-      gBackoffMs = 2000;
+      gConnectedAtMs = millis();  // backoff resets only once it has lived a minute
       gConnFails = 0;
       gMqtt.subscribe((kBase + "cmd").c_str(), 1);
       gHubUpNew = true;
@@ -293,7 +308,7 @@ static void mqttLoop() {
         gBackoffMs = 2000;
       }
       gNextTryMs = millis() + gBackoffMs;
-      gBackoffMs = min<uint32_t>(gBackoffMs * 2, 120000);
+      gBackoffMs = min<uint32_t>(gBackoffMs * 2, 300000);
       return;
     }
   }
@@ -323,7 +338,8 @@ static void mqttLoop() {
     }
   }
   auto pub = [](const char *sub, const String &s) {
-    if (s.length()) gMqtt.publish((kBase + sub).c_str(), (const uint8_t *)s.c_str(), s.length(), true);
+    if (s.length() && !gMqtt.publish((kBase + sub).c_str(), (const uint8_t *)s.c_str(), s.length(), true))
+      Serial.printf("[cloud] publish %s (%u bytes) failed\n", sub, (unsigned)s.length());
   };
   pub("meta", meta);
   pub("rules", rules);
