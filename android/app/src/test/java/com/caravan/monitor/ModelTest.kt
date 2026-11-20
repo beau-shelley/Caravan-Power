@@ -91,4 +91,13 @@ class ModelTest {
         assertEquals(1, Rule.parse(bad).levels.size)
         assertFalse(Rule(1, metric = "bat_v").toJson().has("lv"))
     }
+
+    @Test fun dataAgeText() {
+        val now = 1_000_000_000L
+        assertEquals("", DataAge.ago(0, now))
+        assertEquals("just now", DataAge.ago(now - 30_000, now))
+        assertEquals("5 min ago", DataAge.ago(now - 5 * 60_000, now))
+        assertEquals("3 h ago", DataAge.ago(now - 3 * 3_600_000L, now))
+        assertEquals("4 days ago", DataAge.ago(now - 4 * 86_400_000L, now))
+    }
 }

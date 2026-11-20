@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.caravan.monitor.Actions
 import com.caravan.monitor.Conn
 import com.caravan.monitor.ConnStatus
+import com.caravan.monitor.DataAge
 import com.caravan.monitor.HubState
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Rule
@@ -55,8 +56,11 @@ fun AlertsContent(
     onToggleRule: (Rule, Boolean) -> Unit,
     onEditRule: (Rule) -> Unit,
     onResetRules: () -> Unit,
+    /** Not live: "No connection" banner, active alerts greyed out, rules read-only. */
+    age: DataAge = DataAge(),
 ) {
-    val connected = status.conn == Conn.CONNECTED
+    val stale = !age.live && state != null
+    val connected = status.conn == Conn.CONNECTED && !stale
     var menu by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
@@ -77,11 +81,12 @@ fun AlertsContent(
                     }
                 }
             }
-            item { ConnectionStrip(status) }
+            item { if (stale) NoConnectionBanner(age, status) else ConnectionStrip(status) }
 
             val alerts = state?.alerts.orEmpty()
             item {
-                SectionCard("Active now", if (alerts.any { !it.ack }) sevColor(alerts.maxOf { it.sev }) else Accent.battery) {
+                SectionCard("Active now", if (alerts.any { !it.ack }) sevColor(alerts.maxOf { it.sev }) else Accent.battery,
+                    Modifier.greyedOut(stale)) {
                     if (alerts.isEmpty()) Text("All clear", color = Accent.muted)
                     alerts.forEach { a -> AlertRow(a, rules.firstOrNull { it.id == a.id }?.name) }
                     if (alerts.any { !it.ack }) {

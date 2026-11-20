@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.caravan.monitor.ConnStatus
+import com.caravan.monitor.DataAge
 import com.caravan.monitor.Heater
 import com.caravan.monitor.HubState
 import com.caravan.monitor.Meta
@@ -60,9 +61,14 @@ fun ClimateContent(
     status: ConnStatus,
     onHeater: (key: String, value: Any) -> Unit,
     onOpenSetup: () -> Unit,
+    /** Not live: a "No connection" banner and everything below greyed out. */
+    age: DataAge = DataAge(),
 ) {
+    val stale = !age.live && state != null
+    Column(Modifier.fillMaxSize()) {
+    if (stale) Box(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp)) { NoConnectionBanner(age, status, onOpenSetup) }
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().weight(1f).greyedOut(stale).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         val s = state
@@ -88,6 +94,7 @@ fun ClimateContent(
             Spacer(Modifier.height(6.dp))
             OutlinedButton(onClick = onOpenSetup) { Text("Open Setup") }
         }
+    }
     }
 }
 

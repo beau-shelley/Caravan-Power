@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.caravan.monitor.ConnStatus
+import com.caravan.monitor.DataAge
 import com.caravan.monitor.HubState
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Rule
@@ -79,16 +80,28 @@ fun HomeContent(
     /** Arm (true) or disarm (false) secure mode; the Android wrapper asks first. */
     onSecure: (Boolean) -> Unit = {},
     onArm: () -> Unit = {},
+    /** Not live: the banner says "No connection" and every value below is greyed out. */
+    age: DataAge = DataAge(),
 ) {
+    val stale = !age.live && state != null
+    Column(Modifier.fillMaxSize()) {
+    if (stale) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp)) {
+            NoConnectionBanner(age, status, onOpenSetup)
+            UpdateBanner(update, onUpdate)
+        }
+    }
     // Fills the screen on any phone: the main cards grow to use spare height, and it scrolls if it doesn't fit.
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
     val fill = maxHeight - 20.dp
     FillColumn(
         fill,
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().greyedOut(stale).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        ConnectionStrip(status, onOpenSetup)
-        UpdateBanner(update, onUpdate)
+        if (!stale) {
+            ConnectionStrip(status, onOpenSetup)
+            UpdateBanner(update, onUpdate)
+        }
         val s = state
         if (s == null) {
             Text("Caravan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -120,6 +133,7 @@ fun HomeContent(
         }
         TempsCard(s, meta, Modifier.grow())
         GasAndPumpsCard(s, meta, onPump, Modifier.grow())
+    }
     }
     }
 }

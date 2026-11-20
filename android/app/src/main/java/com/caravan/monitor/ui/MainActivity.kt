@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
 private fun App() {
     val hub = CaravanApp.instance.hub
     val state by hub.state.collectAsStateWithLifecycle()
+    val age by hub.age.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val snack = remember { SnackbarHostState() }
 
@@ -57,7 +58,7 @@ private fun App() {
         }
     }
 
-    AppScaffold(tab, { tab = it }, state?.alerts?.count { !it.ack } ?: 0, snackbarHost = { SnackbarHost(snack) }) {
+    AppScaffold(tab, { tab = it }, if (age.live) state?.alerts?.count { !it.ack } ?: 0 else 0, snackbarHost = { SnackbarHost(snack) }) {
         when (tab) {
             0 -> HomeScreen(onOpenAlerts = { tab = 1 }, onOpenSetup = { tab = 2 })
             1 -> AlertsScreen()
