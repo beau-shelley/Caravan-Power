@@ -14,6 +14,16 @@ extern bool stateDirty;
 extern uint32_t metaVer, rulesVer;  // bumped whenever names / rules arrive
 extern uint32_t linkErrors;
 
+// Overnight record of hub-link and cloud dropouts since this display started,
+// shown on Settings so a freeze is visible in the morning without a laptop.
+struct Dropouts {
+  bool seenUp = false, up = false;
+  uint32_t count = 0, longestS = 0, downSinceMs = 0;
+  time_t lastAt = 0;  // wall clock of the latest drop (0 = clock not set yet)
+};
+extern Dropouts hubDrops, cloudDrops;
+void dropoutSummary(char *buf, size_t len);
+
 void linkBegin();
 void linkLoop();
 
