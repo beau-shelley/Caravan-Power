@@ -1,6 +1,7 @@
 // ALERTS (active alerts + read-only rules) and SETTINGS pages.
 
 #include "../app.h"
+#include "../cloud.h"
 #include "ui.h"
 
 namespace ui {
@@ -375,7 +376,8 @@ void updateSettings() {
   if (s.ip[0]) setText(sUrl, "http://caravan.local   or   http://%s", s.ip);
   else setText(sUrl, "http://caravan.local");
   setText(sInfo, "Hub link: %s   Wi-Fi: %s   Cloud: %s   IP: %s   Hub fw %s   Link errors: %u",
-          app::linkUp ? "OK" : "DOWN", s.wifi ? "up" : "down", s.cloud ? "connected" : "offline",
+          app::linkUp ? "OK" : "DOWN", (cloud::wifiUp() || s.wifi) ? "up" : "down",
+          (cloud::connected() || s.cloud) ? "connected" : "offline",
           s.ip[0] ? s.ip : "-", app::meta.fw, (unsigned)app::linkErrors);
 
   // Poll learn status once a second while the learn dialog is showing.
