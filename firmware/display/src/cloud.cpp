@@ -51,6 +51,10 @@ static const char *const kPass[] = {WIFI_PASS};
 static int gNetIdx = 0;
 static void joinNet(int idx) {
   gNetIdx = idx % (int)(sizeof(kSsid) / sizeof(kSsid[0]));
+  // Stop any attempt still in progress first, or begin() fails with
+  // "sta is connecting" (ESP_ERR_WIFI_CONN) and that network is skipped.
+  WiFi.disconnect();
+  vTaskDelay(pdMS_TO_TICKS(200));
   WiFi.begin(kSsid[gNetIdx], kPass[gNetIdx]);
   Serial.printf("[wifi] joining %s\n", kSsid[gNetIdx]);
 }
