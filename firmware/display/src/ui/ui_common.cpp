@@ -665,11 +665,13 @@ static void updateShell() {
   updateWeather();
   updateSecure();
   lv_obj_set_style_text_color(gIcoLink, c(app::linkUp ? col::CHARGE : col::ALARM), 0);
-  // Wi-Fi and cloud now live on the display (the hub runs with Wi-Fi off), so
-  // light the icons from the display's own link, or the hub's if it has one.
+  // Wi-Fi and cloud now live on the display (the hub runs with Wi-Fi off).
+  // The Wi-Fi icon answers "is the van online for cloud features": white when
+  // the cloud is reachable, amber when on Wi-Fi but no internet/cloud yet,
+  // grey when there's no Wi-Fi at all.
   const bool wifi = cloud::wifiUp() || (app::linkUp && s.wifi);
   const bool cloudUp = cloud::connected() || (app::linkUp && s.cloud);
-  lv_obj_set_style_text_color(gIcoWifi, c(wifi ? col::TEXT : col::DIM), 0);
+  lv_obj_set_style_text_color(gIcoWifi, c(cloudUp ? col::TEXT : wifi ? col::WARN : col::DIM), 0);
   lv_obj_set_style_text_color(gIcoCloud, c(cloudUp ? col::ACCENT : col::DIM), 0);
 
   if (s.ts > 1700000000) {
