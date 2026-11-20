@@ -466,6 +466,14 @@ void begin() {
   gLocalQ = xQueueCreate(4, sizeof(String *));
 
   WiFi.mode(WIFI_STA);
+  // Why a join failed: 15 = handshake timeout (often a wrong password),
+  // 201 = network not found, 2/202 = authentication failed.
+  WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t info) {
+    static uint8_t last = 0;
+    uint8_t r = info.wifi_sta_disconnected.reason;
+    if (r != last) evlog::add("Wi-Fi disconnect reason %u", (unsigned)r);
+    last = r;
+  }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   WiFi.setHostname(HOSTNAME "-display");
   WiFi.setAutoReconnect(true);
   joinNet(0);
