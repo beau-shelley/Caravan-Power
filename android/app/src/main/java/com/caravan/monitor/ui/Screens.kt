@@ -40,6 +40,7 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
     val meta by hub.meta.collectAsStateWithLifecycle()
     val rules by hub.rules.collectAsStateWithLifecycle()
     val status by hub.status.collectAsStateWithLifecycle()
+    val age by hub.age.collectAsStateWithLifecycle()
     val updater = CaravanApp.instance.updater
     val update by updater.info.collectAsStateWithLifecycle()
     var askSecure by remember { mutableStateOf<Boolean?>(null) }  // true = arm, false = disarm
@@ -53,6 +54,7 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
         onUpdate = { updater.startOrInstall() },
         onSecure = { askSecure = it },
         onArm = { hub.send("secure", "arm" to true) },  // uses the sensitivity set in Setup
+        age = age,
     )
     // Arming is the slide on the Secure card; only disarming asks first.
     if (askSecure == false) {
@@ -73,7 +75,8 @@ fun ClimateScreen(onOpenSetup: () -> Unit) {
     val state by hub.state.collectAsStateWithLifecycle()
     val meta by hub.meta.collectAsStateWithLifecycle()
     val status by hub.status.collectAsStateWithLifecycle()
-    ClimateContent(state, meta, status, onHeater = { k, v -> hub.send("heater", k to v) }, onOpenSetup = onOpenSetup)
+    val age by hub.age.collectAsStateWithLifecycle()
+    ClimateContent(state, meta, status, onHeater = { k, v -> hub.send("heater", k to v) }, onOpenSetup = onOpenSetup, age = age)
 }
 
 @Composable
@@ -83,6 +86,7 @@ fun AlertsScreen() {
     val rules by hub.rules.collectAsStateWithLifecycle()
     val meta by hub.meta.collectAsStateWithLifecycle()
     val status by hub.status.collectAsStateWithLifecycle()
+    val age by hub.age.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<Rule?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
 
@@ -92,6 +96,7 @@ fun AlertsScreen() {
         onToggleRule = { r, on -> hub.send(JSONObject().put("c", "rule_set").put("rule", r.copy(enabled = on).toJson())) },
         onEditRule = { editing = it },
         onResetRules = { confirmReset = true },
+        age = age,
     )
 
     editing?.let { r ->
