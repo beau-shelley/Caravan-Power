@@ -252,7 +252,7 @@ static void onMqtt(char *topic, byte *payload, unsigned int len) {
   if (xQueueSend(gCmdQ, &s, 0) != pdTRUE) delete s;
 }
 
-static uint32_t gNextTryMs = 0, gBackoffMs = 2000;
+static uint32_t gNextTryMs = 0, gBackoffMs = 2000, gConnFails = 0;
 
 static void mqttLoop() {
   if (!mqttConfigured() || !gWifiUp) {
@@ -264,10 +264,14 @@ static void mqttLoop() {
     if ((int32_t)(millis() - gNextTryMs) < 0) return;
     String will = kBase + "online";
     String cid = String(DEVICE_ID) + "-display-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-    Serial.printf("[cloud] connecting to %s:%d\n", MQTT_HOST, MQTT_PORT);
+    IPAddress ip;
+    bool dnsOk = WiFi.hostByName(MQTT_HOST, ip);
+    Serial.printf("[cloud] connecting to %s:%d (%s)\n", MQTT_HOST, MQTT_PORT,
+                  dnsOk ? ip.toString().c_str() : "DNS failed");
     if (gMqtt.connect(cid.c_str(), MQTT_USER, MQTT_PASS, will.c_str(), 1, true, "0")) {
       Serial.println("[cloud] connected");
       gBackoffMs = 2000;
+      gConnFails = 0;
       gMqtt.subscribe((kBase + "cmd").c_str(), 1);
       gHubUpNew = true;
       Lock l;
@@ -277,6 +281,17 @@ static void mqttLoop() {
     } else {
       // rc 4 = bad username/password, 5 = not authorised, -2 = network / TLS
       Serial.printf("[cloud] failed rc=%d, retry in %us\n", gMqtt.state(), gBackoffMs / 1000);
+      gTls.stop();  // never reuse a half-open socket
+      // 2026-11-20: after one TLS send error on Starlink every later connect
+      // timed out (errno 113) while the laptop on the same Wi-Fi connected in
+      // 0.2 s. A stale Wi-Fi/IP state; rejoining the same network clears it.
+      if (++gConnFails >= 3) {
+        gConnFails = 0;
+        Serial.println("[cloud] 3 failed connects in a row: rejoining Wi-Fi");
+        WiFi.disconnect();
+        joinNet(gNetIdx);
+        gBackoffMs = 2000;
+      }
       gNextTryMs = millis() + gBackoffMs;
       gBackoffMs = min<uint32_t>(gBackoffMs * 2, 120000);
       return;
