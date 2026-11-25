@@ -1,6 +1,8 @@
 // ALERTS (active alerts + read-only rules) and SETTINGS pages.
 
 #include "../app.h"
+#include "../cloud.h"
+#include "../evlog.h"
 #include "ui.h"
 
 namespace ui {
@@ -167,7 +169,7 @@ void updateAlerts() {
 }
 
 // ================================================================ SETTINGS
-static lv_obj_t *sRemote, *sInfo, *sUrl, *sSleep, *sPresetDd, *learnBox, *learnLbl;
+static lv_obj_t *sEvents, *sDrops, *sRemote, *sInfo, *sUrl, *sSleep, *sPresetDd, *learnBox, *learnLbl;
 static lv_obj_t *kbModal, *kbTa;
 static int learnSlot = -1;
 
@@ -322,7 +324,7 @@ void buildSettings(lv_obj_t *p) {
   lv_obj_set_pos(l1, 0, LARGE ? 104 : 94);
 
   // ---- this display
-  lv_obj_t *a = settingsCard(col, "THIS DISPLAY", 130, col::ACCENT);
+  lv_obj_t *a = settingsCard(col, "THIS DISPLAY", 270, col::ACCENT);
   sSleep = lbl(a, &lv_font_montserrat_16, col::TEXT, "");
   lv_obj_set_pos(sSleep, 0, 30);
   lv_obj_t *l2 = lbl(a, &lv_font_montserrat_16, col::TEXT, "Allow remote control\n(cloud dashboard)");
@@ -334,6 +336,12 @@ void buildSettings(lv_obj_t *p) {
   lv_obj_add_event_cb(sRemote, remoteCb, LV_EVENT_VALUE_CHANGED, nullptr);
   sInfo = lbl(a, &lv_font_montserrat_12, col::MUTED, "");
   lv_obj_set_pos(sInfo, 0, 78);
+  sDrops = lbl(a, &lv_font_montserrat_12, col::MUTED, "");
+  lv_obj_set_pos(sDrops, 0, 98);
+  lv_obj_t *le = lbl(a, &lv_font_montserrat_12, col::TEXT, "Recent events (full log kept on the display; USB command \"log\")");
+  lv_obj_set_pos(le, 0, 136);
+  sEvents = lbl(a, &lv_font_montserrat_12, col::MUTED, "");
+  lv_obj_set_pos(sEvents, 0, 154);
 
   // ---- aircon learning (only when aircon control is switched on, see ui.h).
   // Stays here because you point the aircon remote at the hub's IR receiver.
@@ -375,8 +383,17 @@ void updateSettings() {
   if (s.ip[0]) setText(sUrl, "http://caravan.local   or   http://%s", s.ip);
   else setText(sUrl, "http://caravan.local");
   setText(sInfo, "Hub link: %s   Wi-Fi: %s   Cloud: %s   IP: %s   Hub fw %s   Link errors: %u",
-          app::linkUp ? "OK" : "DOWN", s.wifi ? "up" : "down", s.cloud ? "connected" : "offline",
+          app::linkUp ? "OK" : "DOWN", (cloud::wifiUp() || s.wifi) ? "up" : "down",
+          (cloud::connected() || s.cloud) ? "connected" : "offline",
           s.ip[0] ? s.ip : "-", app::meta.fw, (unsigned)app::linkErrors);
+  {
+    char d[200];
+    app::dropoutSummary(d, sizeof(d));
+    setText(sDrops, "%s", d);
+    char e[8 * 120];
+    evlog::tail(e, sizeof(e), 6);
+    setText(sEvents, "%s", e[0] ? e : "-");
+  }
 
   // Poll learn status once a second while the learn dialog is showing.
   static uint32_t lastPoll = 0;

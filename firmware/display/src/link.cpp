@@ -4,6 +4,7 @@
 #include "app.h"
 #include "board.h"
 #include "cloud.h"
+#include "evlog.h"
 #ifdef DISPLAY_DEMO_MODE
 #include "demo.h"
 #endif
@@ -17,6 +18,50 @@ bool linkUp = false;
 bool stateDirty = true;
 uint32_t metaVer = 0, rulesVer = 0;
 uint32_t linkErrors = 0;
+Dropouts hubDrops, cloudDrops;
+
+static void trackDrop(Dropouts &d, bool up, const char *what) {
+  if (up == d.up) return;
+  d.up = up;
+  if (!what) {  // tracked, but logged elsewhere
+  } else if (up && d.seenUp) evlog::add("%s back after %us", what, (unsigned)((millis() - d.downSinceMs) / 1000));
+  else if (up) evlog::add("%s up", what);
+  else if (d.seenUp) evlog::add("%s DOWN", what);
+  if (up) {
+    if (d.seenUp) d.longestS = max<uint32_t>(d.longestS, (millis() - d.downSinceMs) / 1000);
+    d.seenUp = true;
+  } else if (d.seenUp) {
+    d.count++;
+    d.downSinceMs = millis();
+    time_t now = time(nullptr);
+    d.lastAt = now > 1700000000 ? now : 0;
+  }
+}
+
+static int dropLine(char *b, size_t n, const char *what, const Dropouts &d) {
+  if (!d.seenUp) return snprintf(b, n, "%s: not connected yet", what);
+  if (!d.count) return snprintf(b, n, "%s: no dropouts", what);
+  char at[8] = "?";
+  if (d.lastAt) {
+    struct tm lt;
+    localtime_r(&d.lastAt, &lt);
+    snprintf(at, sizeof(at), "%02d:%02d", lt.tm_hour, lt.tm_min);
+  }
+  uint32_t longest = d.longestS;
+  if (!d.up) longest = max<uint32_t>(longest, (millis() - d.downSinceMs) / 1000);
+  return snprintf(b, n, "%s: dropped %u x, last %s, longest %um %02us%s", what, (unsigned)d.count, at,
+                  (unsigned)(longest / 60), (unsigned)(longest % 60), d.up ? "" : " (DOWN NOW)");
+}
+
+void dropoutSummary(char *buf, size_t len) {
+  uint32_t m = millis() / 60000;
+  int k = snprintf(buf, len, "Since display start %uh %02um.  ", (unsigned)(m / 60), (unsigned)(m % 60));
+  if (k < 0 || (size_t)k >= len) return;
+  k += dropLine(buf + k, len - k, "Hub link", hubDrops);
+  if ((size_t)k + 4 >= len) return;
+  k += snprintf(buf + k, len - k, "\n");
+  dropLine(buf + k, len - k, "Cloud", cloudDrops);
+}
 
 static HardwareSerial &gSer = Serial1;
 static cv::LinkReader gReader;
@@ -222,6 +267,8 @@ void linkLoop() {
   if (gotFrame && !gSer.available()) transmitOne();
 
   bool up = gLastRxMs && millis() - gLastRxMs < 4000;
+  trackDrop(hubDrops, up, "hub link");
+  trackDrop(cloudDrops, cloud::connected(), nullptr);  // cloud.cpp logs its own
   // Pass our NTP clock to the hub once a minute (a hub without Wi-Fi has no other).
   static uint32_t nextTimeMs = 0;
   if (up && !linkUp) {

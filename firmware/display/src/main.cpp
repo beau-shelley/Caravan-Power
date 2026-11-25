@@ -8,6 +8,7 @@
 #include "board.h"
 #include "canbus.h"
 #include "cloud.h"
+#include "evlog.h"
 #include "ui/ui.h"
 #ifdef DISPLAY_DEMO_MODE
 #include "demo.h"
@@ -18,6 +19,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("\n=== Caravan Power display ===");
+  evlog::begin();  // onboard event log in flash (see evlog.h)
   board::begin();
 #ifdef DISPLAY_DEMO_MODE
   demo::begin();
@@ -80,5 +82,6 @@ void loop() {
   ui::loop();
   lv_timer_handler();
   sleepLogic();
+  evlog::loop();
   delay(3);
 }

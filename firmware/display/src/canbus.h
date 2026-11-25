@@ -42,5 +42,6 @@ struct Stats {
 
 void begin();   // starts the core-0 task; returns immediately
 Stats stats();  // safe to call from any task
+void serialCommand(char c);  // a one-letter serial command (see above)
 
 }  // namespace canbus

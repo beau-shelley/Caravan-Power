@@ -26,6 +26,15 @@ bool backlightOn() { return true; }
 uint32_t lastTouchMs() { return gNow; }
 }  // namespace board
 
+// No flash log in the simulator.
+#include "evlog.h"
+namespace evlog {
+void begin() {}
+void add(const char *, ...) {}
+void loop() {}
+void tail(char *b, size_t n, int) { if (n) b[0] = 0; }
+}  // namespace evlog
+
 // No network in the simulator: the display's cloud link is a no-op.
 #include "cloud.h"
 namespace cloud {

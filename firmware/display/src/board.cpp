@@ -2,6 +2,7 @@
 
 #include <Wire.h>
 #include <esp_heap_caps.h>
+#include <esp_idf_version.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_rgb.h>
 #include <lvgl.h>
@@ -157,18 +158,24 @@ void begin() {
   cfg.timings.vsync_front_porch = 3;
   cfg.timings.flags.pclk_active_neg = 1;
   cfg.data_width = 16;
+#if ESP_IDF_VERSION_MAJOR < 6  // IDF 6 dropped these (RGB565 is the default)
   cfg.bits_per_pixel = 16;
+#endif
   cfg.num_fbs = 2;
   cfg.bounce_buffer_size_px = W * 30;  // 2 x 60 KB internal RAM (must divide 600 lines); 15 lines still tore with the cloud link up
+#if ESP_IDF_VERSION_MAJOR < 6
   cfg.sram_trans_align = 4;
   cfg.psram_trans_align = 64;
-  cfg.hsync_gpio_num = 46;
-  cfg.vsync_gpio_num = 3;
-  cfg.de_gpio_num = 5;
-  cfg.pclk_gpio_num = 7;
-  cfg.disp_gpio_num = -1;
+#else
+  cfg.dma_burst_size = 64;
+#endif
+  cfg.hsync_gpio_num = (gpio_num_t)46;
+  cfg.vsync_gpio_num = (gpio_num_t)3;
+  cfg.de_gpio_num = (gpio_num_t)5;
+  cfg.pclk_gpio_num = (gpio_num_t)7;
+  cfg.disp_gpio_num = (gpio_num_t)-1;
   const int dataPins[16] = {14, 38, 18, 17, 10, 39, 0, 45, 48, 47, 21, 1, 2, 42, 41, 40};
-  for (int i = 0; i < 16; ++i) cfg.data_gpio_nums[i] = dataPins[i];
+  for (int i = 0; i < 16; ++i) cfg.data_gpio_nums[i] = (gpio_num_t)dataPins[i];
   cfg.flags.fb_in_psram = 1;
   esp_err_t err = esp_lcd_new_rgb_panel(&cfg, &gPanel);
   if (err == ESP_OK) err = esp_lcd_panel_init(gPanel);
