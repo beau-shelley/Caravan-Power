@@ -23,6 +23,8 @@ void handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply);
 // uptime, why it last restarted, lowest free / largest-block RAM since boot,
 // and how many times the cloud link has (re)connected.
 void addSysStats(JsonObject o);
+void healthBegin();  // at boot: load the previous run's figures, count the boot
+void healthLoop();   // every loop: saves this run's figures every 10 min
 
 // ---------------------------------------------------------------- RS485 link
 class DisplayLink {

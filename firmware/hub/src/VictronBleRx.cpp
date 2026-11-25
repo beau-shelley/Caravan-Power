@@ -1,6 +1,7 @@
 #include "VictronBleRx.h"
 
 #include <NimBLEDevice.h>
+#include "BleCompat.h"
 
 #include "Ble.h"
 #include "BleTag.h"

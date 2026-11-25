@@ -7,6 +7,8 @@
 #include <cctype>
 #include <LittleFS.h>
 #include <Wire.h>
+#include <esp_heap_caps.h>
+#include <mbedtls/platform.h>
 
 #include "AcCharge.h"
 #include "AlertEngine.h"
@@ -807,10 +809,33 @@ static void netTask(void *) {
 }
 
 // ---------------------------------------------------------------- setup / loop
+#if defined(BOARD_HAS_PSRAM) && ESP_IDF_VERSION_MAJOR >= 5
+// mbedTLS takes ~40-55 KB per TLS connection (cloud MQTT, ntfy pushes, the
+// forecast). On the S3 hub it comes from PSRAM, so internal RAM stays free
+// for Wi-Fi and Bluetooth and the cloud can always reconnect.
+static void *tlsCalloc(size_t n, size_t size) {
+  void *p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+#endif
+
+static void tlsInPsram() {
+#if defined(BOARD_HAS_PSRAM) && ESP_IDF_VERSION_MAJOR >= 5
+#if defined(MBEDTLS_PLATFORM_MEMORY) && !defined(MBEDTLS_PLATFORM_CALLOC_MACRO)
+  mbedtls_platform_set_calloc_free(tlsCalloc, heap_caps_free);
+  Serial.println("[mem] TLS buffers in PSRAM");
+#else
+#warning "mbedTLS allocator can't be changed at run time - TLS buffers stay in internal RAM"
+#endif
+#endif
+}
+
 void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println("\n=== Caravan Power hub ===");
+  tlsInPsram();
+  healthBegin();
   gStateMux = xSemaphoreCreateRecursiveMutex();
 
   pinMode(PIN_BUZZER, OUTPUT);
@@ -867,7 +892,14 @@ void setup() {
 
   // Watchdog: if loop() stops running for 30 s (a hang or a deadlock), the
   // hub restarts itself. The Arduino core feeds it after every loop().
+#if ESP_IDF_VERSION_MAJOR >= 5
+  esp_task_wdt_config_t wdt = {};
+  wdt.timeout_ms = 30000;
+  wdt.trigger_panic = true;
+  if (esp_task_wdt_reconfigure(&wdt) != ESP_OK) esp_task_wdt_init(&wdt);
+#else
   esp_task_wdt_init(30, true);
+#endif
   enableLoopWDT();
 }
 
@@ -1028,6 +1060,7 @@ void loop() {
     gLink.loop(gState);
   }
   buzzerLoop(now);
+  healthLoop();
   statusLedLoop(now);
   if (survey::kOn) survey::loop();
   if (gRestartAtMs && millis() - gRestartAtMs > 1000) ESP.restart();
