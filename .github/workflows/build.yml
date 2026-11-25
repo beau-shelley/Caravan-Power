@@ -51,8 +51,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: pio-${{ matrix.project }}-${{ hashFiles(format('firmware/{0}/platformio.ini', matrix.project)) }}
-      - run: pip install platformio
+          key: pio-6.1.19-${{ matrix.project }}-${{ hashFiles(format('firmware/{0}/platformio.ini', matrix.project)) }}
+      # PlatformIO 6.2.0 moved to SCons 4.11, which dropped SCons.Tool.FortranCommon that the
+      # pinned pioarduino platform (display) still imports at link time. Stay on 6.1.x.
+      - run: pip install "platformio==6.1.19"
       - name: Build ${{ matrix.project }}
         working-directory: firmware/${{ matrix.project }}
         env:
