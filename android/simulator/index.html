@@ -496,7 +496,7 @@ function homeHTML() {
       ${un.slice(0, 2).map(alertRow).join("")}</section>`;
   const mini = (l, v, c = "") => `<div class="mini"><div class="l">${l}</div><div class="v" style="${c ? "color:" + c : ""}">${v}</div></div>`;
   out += card("Battery", "var(--battery)", `
-    <div style="display:flex;align-items:center;gap:12px"><div class="big" style="font-size:34px;line-height:1.1;color:${socColor(b.soc)}">${Math.floor(b.soc)}%</div>
+    <div style="display:flex;align-items:center;gap:12px"><div class="big" style="font-size:34px;line-height:1.1;color:${socColor(b.soc)}">${Math.round(b.soc)}%</div>
     <div><div style="font-variant-numeric:tabular-nums">${f2(b.v)} V &nbsp;·&nbsp; ${b.a > 0 ? "+" : ""}${f1(b.a)} A</div><div class="hint">${ttgText(b.a, b.ttg)}</div></div></div>
     <div style="height:6px"></div>${bar(b.soc / 100, socColor(b.soc))}<div style="height:6px"></div>
     <div class="minis">${S.acOn ? mini("Mains", Math.floor(S.acA) + " A", "var(--mains)") : ""}${mini("Solar", f1(b.solarA) + " A")}${mini("BMPRO", f1(b.chargerA) + " A")}${mini("Load", f1(b.loadA) + " A")}</div>`, "compact");

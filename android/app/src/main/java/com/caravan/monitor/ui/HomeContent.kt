@@ -243,7 +243,7 @@ private fun BatteryCard(s: HubState, modifier: Modifier = Modifier) {
     SectionCard("Battery", Accent.battery, modifier, compact = true) {
         if (!b.on) { Text("Offline", color = Accent.muted); return@SectionCard }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${b.soc.toInt()}%", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = socColor(b.soc))
+            Text("${Math.round(b.soc)}%", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = socColor(b.soc))
             Spacer(Modifier.width(12.dp))
             Column {
                 Text("${fmt2(b.v)} V  ·  ${signed(b.a)} A", style = MaterialTheme.typography.bodyLarge)
