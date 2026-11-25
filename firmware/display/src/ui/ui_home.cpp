@@ -306,9 +306,10 @@ void updateHome() {
   setText(lSolarA, "%s", "");  // total watts only (roof + portable)
   setText(lChgA, s.bat.chargeA >= 99.95f ? "%.0f A" : "%.1f A", s.bat.chargeA);
   setText(lChgSub, "%s", "");  // total charge in (solar + BMPRO + mains) only
-  // Roof row always; the portable panels only while they're charging.
-  unsigned solarMask = 1;
-  for (int i = 1; i < cv::NUM_SOLAR; i++)
+  // Each solar row only while that array is producing (roof and portable alike:
+  // a row reading 0 W at night is just clutter).
+  unsigned solarMask = 0;
+  for (int i = 0; i < cv::NUM_SOLAR; i++)
     if (s.solar[i].online && (s.solar[i].pvW > 5 || s.solar[i].batA > 0.3f)) solarMask |= 1u << i;
   layoutRows(s.bat.online && s.bat.acOn, solarMask);
   if (rowsAc == 1) {
@@ -337,7 +338,9 @@ void updateHome() {
   // temps
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
     if (s.temp[i].online) {
-      setText(tVal[i], "%d\xC2\xB0", (int)lroundf(s.temp[i].c));
+      // The fridge gets one decimal (a degree matters there); the rest whole degrees.
+      if (i == cv::TEMP_FRIDGE) setText(tVal[i], "%.1f\xC2\xB0", s.temp[i].c);
+      else setText(tVal[i], "%d\xC2\xB0", (int)lroundf(s.temp[i].c));
       lv_obj_set_style_text_color(tVal[i], c(tempColor(i, s.temp[i].c)), 0);
     } else {
       setText(tVal[i], "--");

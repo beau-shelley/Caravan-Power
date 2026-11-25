@@ -350,13 +350,19 @@ void updateClimate() {
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
     const cv::Temp &t = s.temp[i];
     if (t.online) {
-      setText(cVal[i], "%d\xC2\xB0", (int)lroundf(t.c));
+      // The fridge gets one decimal (a degree matters there); the rest whole degrees.
+      const bool fr = i == cv::TEMP_FRIDGE;
+      if (fr) setText(cVal[i], "%.1f\xC2\xB0", t.c);
+      else setText(cVal[i], "%d\xC2\xB0", (int)lroundf(t.c));
       lv_obj_set_style_text_color(cVal[i], c(tempColor(i, t.c)), 0);
       if (t.batt >= 0 && t.batt <= 20)  // Bluetooth sensor needs a new battery
-        setText(cMinMax[i], LV_SYMBOL_DOWN " %d\xC2\xB0  " LV_SYMBOL_UP " %d\xC2\xB0  " LV_SYMBOL_BATTERY_1 " %d%%",
-                (int)lroundf(t.minC), (int)lroundf(t.maxC), t.batt);
+        setText(cMinMax[i], fr ? LV_SYMBOL_DOWN " %.1f\xC2\xB0  " LV_SYMBOL_UP " %.1f\xC2\xB0  " LV_SYMBOL_BATTERY_1 " %d%%"
+                               : LV_SYMBOL_DOWN " %.0f\xC2\xB0  " LV_SYMBOL_UP " %.0f\xC2\xB0  " LV_SYMBOL_BATTERY_1 " %d%%",
+                t.minC, t.maxC, t.batt);
       else
-        setText(cMinMax[i], LV_SYMBOL_DOWN " %d\xC2\xB0   " LV_SYMBOL_UP " %d\xC2\xB0  today", (int)lroundf(t.minC), (int)lroundf(t.maxC));
+        setText(cMinMax[i], fr ? LV_SYMBOL_DOWN " %.1f\xC2\xB0   " LV_SYMBOL_UP " %.1f\xC2\xB0  today"
+                               : LV_SYMBOL_DOWN " %.0f\xC2\xB0   " LV_SYMBOL_UP " %.0f\xC2\xB0  today",
+                t.minC, t.maxC);
     } else {
       setText(cVal[i], "--");
       lv_obj_set_style_text_color(cVal[i], c(col::DIM), 0);

@@ -510,7 +510,7 @@ function render() {
       <div class="bar"><i style="width:${Math.min(100, (b.aca || 0) / 1.2)}%; background:var(--mains)"></i></div>
       <div style="width:150px; text-align:right"><b style="color:var(--mains)">${Math.round(b.aca || 0)} A</b><br>
         <span class="muted small">${Math.round((b.aca || 0) * (b.v || 13.6))} W · estimated</span></div>
-    </div>` : "") + S.sol.map((m, i) => `
+    </div>` : "") + S.sol.map((m, i) => !(m.on && (m.w > 5 || m.ba > 0.3)) ? "" : `
     <div class="row mppt between" style="padding:6px 0">
       <div style="width:110px"><b>${esc(META.sol[i])}</b><br><span class="chip" style="color:${m.err ? "var(--alarm)" : "var(--solar)"}">${m.on ? (m.err ? "Error " + m.err : CS[m.cs] || "Unknown") : "Offline"}</span></div>
       <div class="bar"><i style="width:${m.on ? Math.min(100, m.w / 7) : 0}%"></i></div>
@@ -518,10 +518,12 @@ function render() {
         <span class="muted small">${m.on ? `${m.pv >= 0 ? m.pv.toFixed(1) + " V PV" : m.bv.toFixed(2) + " V"} · ${m.ba.toFixed(1)} A · ${m.yt.toFixed(2)} kWh today` : ""}</span></div>
     </div>`).join("");
 
+  // The fridge gets one decimal (a degree matters there); the rest whole degrees.
+  const fmtTemp = (i, v) => i === 2 ? (+v).toFixed(1) : Math.round(v);
   $("#temps").innerHTML = S.tmp.map((t, i) => `
     <div class="t"><span class="muted">${esc(META.tmp[i])}</span>
-      <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? Math.round(t.c) + "°" : "--"}</span>
-      <span class="muted small">${t.on ? `&nbsp;↓${Math.round(t.lo)}° ↑${Math.round(t.hi)}°` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
+      <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? fmtTemp(i, t.c) + "°" : "--"}</span>
+      <span class="muted small">${t.on ? `&nbsp;↓${fmtTemp(i, t.lo)}° ↑${fmtTemp(i, t.hi)}°` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
 
   renderHeater();
   renderSecure();
