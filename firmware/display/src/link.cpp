@@ -1,5 +1,7 @@
 // RS485 client. The hub is bus master: we only transmit straight after a frame
 // from the hub arrives, so the half-duplex bus never has two talkers.
+#include <sys/time.h>
+
 #include "LinkCodec.h"
 #include "app.h"
 #include "board.h"
@@ -269,6 +271,15 @@ void linkLoop() {
   bool up = gLastRxMs && millis() - gLastRxMs < 4000;
   trackDrop(hubDrops, up, "hub link");
   trackDrop(cloudDrops, cloud::connected(), nullptr);  // cloud.cpp logs its own
+  // Without Wi-Fi of our own, take the clock from the hub (it has NTP), so the
+  // event log and dropout times show real times.
+  if (up && !cloud::wifiUp() && state.ts > 1700000000) {
+    int32_t diff = (int32_t)(state.ts - (uint32_t)time(nullptr));
+    if (diff > 5 || diff < -5) {
+      struct timeval tv = {(time_t)state.ts, 0};
+      settimeofday(&tv, nullptr);
+    }
+  }
   // Pass our NTP clock to the hub once a minute (a hub without Wi-Fi has no other).
   static uint32_t nextTimeMs = 0;
   if (up && !linkUp) {

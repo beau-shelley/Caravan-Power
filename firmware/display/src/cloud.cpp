@@ -26,6 +26,36 @@
 #ifndef CLOUD_ON_DISPLAY
 #define CLOUD_ON_DISPLAY 1
 #endif
+// Wi-Fi on the display. Only needed when the display runs the cloud (classic
+// ESP32 hub with Wi-Fi off). With the S3 hub doing Wi-Fi, the cloud, the clock
+// and the forecast, the display leaves its radio off: no TLS, no network task,
+// no Wi-Fi retries, nothing that can fragment its RAM.
+#ifndef DISPLAY_WIFI
+#define DISPLAY_WIFI CLOUD_ON_DISPLAY
+#endif
+
+#if !DISPLAY_WIFI
+namespace cloud {
+void begin() {
+  setenv("TZ", TZ_INFO, 1);  // local time for the event log; the clock itself comes from the hub
+  tzset();
+  Serial.println("[cloud] display Wi-Fi off: the hub runs Wi-Fi, the cloud and push alerts");
+}
+bool wifiUp() { return false; }
+bool connected() { return false; }
+void onHubState(JsonDocument &) {}
+void onHubMeta(JsonVariantConst) {}
+void onHubRules(JsonVariantConst) {}
+void onHubReply(const char *, size_t) {}
+void onHubEvent(const char *, size_t) {}
+void onHubPush(JsonObjectConst) {}
+void onHubLink(bool) {}
+bool takeCommand(JsonDocument &) { return false; }
+void requestWeather(float, float) {}
+bool takeLocalCommand(JsonDocument &) { return false; }
+void resendWeather() {}
+}  // namespace cloud
+#else
 
 namespace cloud {
 
@@ -492,3 +522,4 @@ void begin() {
 }
 
 }  // namespace cloud
+#endif  // DISPLAY_WIFI
