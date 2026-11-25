@@ -24,6 +24,7 @@ class AlertNotifier(private val context: Context) {
 
     private fun createChannels() {
         val m = context.getSystemService(NotificationManager::class.java)
+        m.deleteNotificationChannel("summary")  // the old morning summary (removed)
         m.createNotificationChannels(listOf(
             NotificationChannel(CH_CRIT, "Critical alarms", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "The last step of a stepped alert, e.g. battery at 5 %. Plays the alarm sound."
@@ -44,9 +45,6 @@ class AlertNotifier(private val context: Context) {
             },
             NotificationChannel(CH_INFO, "Info", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Information alerts from the caravan"
-            },
-            NotificationChannel(CH_SUMMARY, "Morning summary", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Each morning: solar in, power and water used, fridge overnight low"
             },
             NotificationChannel(CH_MONITOR, "Background connection", NotificationManager.IMPORTANCE_MIN).apply {
                 description = "Shown while the app watches the caravan for alerts"
@@ -116,27 +114,6 @@ class AlertNotifier(private val context: Context) {
         try { nm.notify(id, b.build()) } catch (_: SecurityException) {}
     }
 
-    /** The daily morning summary (one notification, replaced each day). */
-    fun summary(text: String) {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) return
-        val first = text.lineSequence().first()
-        val n = NotificationCompat.Builder(context, CH_SUMMARY)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Caravan this morning")
-            .setContentText(first)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setContentIntent(PendingIntent.getActivity(
-                context, 3, Intent(context, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            ))
-            .setAutoCancel(true)
-            .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .build()
-        try { nm.notify(NOTIF_SUMMARY, n) } catch (_: SecurityException) {}
-    }
-
     fun monitorNotification(text: String) =
         NotificationCompat.Builder(context, CH_MONITOR)
             .setSmallIcon(R.drawable.ic_notification)
@@ -156,8 +133,6 @@ class AlertNotifier(private val context: Context) {
         const val CH_WARN = "warn"
         const val CH_INFO = "info"
         const val CH_MONITOR = "monitor"
-        const val CH_SUMMARY = "summary"
-        const val NOTIF_SUMMARY = 2
         const val NOTIF_MONITOR = 1
         private const val NOTIF_BASE = 1000
         private const val REMOTE_BASE = 100_000

@@ -328,28 +328,16 @@ fun main() {
                 CONNECTED, nop, nop, { _, _ -> }, nop)
         }
     }
-    // Battery time, gas days and the morning summary, worked out on the phone from a demo day.
+    // Battery time and gas days, worked out on the phone from a demo day.
     val demo = demoUsage()
     shot("22-home-evening-outlook", 840) {
         AppScaffold(0, {}, 0) {
             HomeContent(demo.evening, adminMeta, RULES, CONNECTED, nop, { _, _ -> }, nop, nop, outlook = demo.outlook)
         }
     }
-    shot("23-morning-summary", 420) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF101418)).padding(16.dp)) {
-            androidx.compose.foundation.layout.Column(
-                Modifier.fillMaxWidth().background(Color(0xFF2A2F36), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).padding(16.dp)
-            ) {
-                androidx.compose.material3.Text("Caravan monitor · 7:00", color = Color(0xFF9AA4AE), style = MaterialTheme.typography.labelMedium)
-                androidx.compose.material3.Text("Caravan this morning", color = Color.White, fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
-                androidx.compose.material3.Text(demo.summary, color = Color(0xFFDDE3E8), style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-    }
 }
 
-class DemoUsage(val evening: HubState, val outlook: Outlook, val summary: String)
+class DemoUsage(val evening: HubState, val outlook: Outlook)
 
 /** A day and a bit of made-up readings fed through the real UsageLog, one a minute. */
 fun demoUsage(): DemoUsage {
@@ -386,8 +374,7 @@ fun demoUsage(): DemoUsage {
         if (evening == null && t - start > 20 * 3600 && ((t + tz) % 86400) / 3600 == 21L) evening = last to log.outlook(last, meta, t)
         t += 60
     }
-    val summary = UsageLog.summary(log.all(), end, dayStart, META.copy(batteryAh = 405), last, log.avgA) ?: "(no summary)"
     val (st, ol) = evening!!
-    return DemoUsage(st.copy(ts = st.ts), ol, summary)
+    return DemoUsage(st, ol)
 }
 
