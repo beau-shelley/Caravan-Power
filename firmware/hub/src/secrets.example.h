@@ -7,7 +7,7 @@
 // Optional second network (e.g. phone hotspot), tried in turn with the first
 // #define WIFI_SSID2 "AndroidAP"
 // #define WIFI_PASS2 "changeme"
-// Optional third network (display board only), e.g. Starlink:
+// Optional third network, e.g. Starlink:
 // #define WIFI_SSID3 "STARLINK"
 // #define WIFI_PASS3 "changeme"
 
@@ -29,11 +29,12 @@
 #define MQTT_USER "caravan-hub"
 #define MQTT_PASS "changeme"
 
-// The display board (ESP32-S3) runs the cloud MQTT link and the ntfy push
-// alerts, using the settings in this file: the classic ESP32 hub hasn't the RAM
-// for TLS next to Wi-Fi + Bluetooth. Both boards build with this one file.
-// Set to 0 only for a hub with no display (the hub then does it itself).
-#define CLOUD_ON_DISPLAY 1
+// Which board runs the cloud MQTT link and the ntfy push alerts (both boards
+// build with this one file). 0: the hub does it, which the ESP32-S3 N16R8 hub
+// has the RAM for (env hub-s3-n16r8 also forces 0). 1: the display does it,
+// for the classic ESP32 hub, which hasn't the RAM for TLS next to Wi-Fi +
+// Bluetooth.
+#define CLOUD_ON_DISPLAY 0
 
 // Phone push notifications via ntfy (https://ntfy.sh, free iOS/Android app).
 // Pick a long random topic name - anyone who knows it can read your alerts.

@@ -63,11 +63,20 @@ A 3D-printed backpack that bolts to the display's four screw bosses and carries 
 
 ## Hub (ESP32-S3-DevKitC-1) pin map
 
+The van's hub is an ESP32-S3 N16R8 (16 MB flash, 8 MB octal PSRAM), env `hub-s3-n16r8`. Its octal PSRAM also uses GPIO 35-37, which the map below already avoids. Flash it through the port marked USB (native USB).
+
+![S3 hub wiring](img/hub-s3-wiring.png)
+
+Whole system (hub, level sensor, RS485 module, display and power):
+
+![Full system wiring](img/system-wiring.png)
+
 | GPIO | Function | Goes to |
 |---|---|---|
 | 43 (TX) | RS485 DI | MAX3485 DI |
 | 44 (RX) | RS485 RO | MAX3485 RO |
-| 42 | RS485 DE+RE | MAX3485 DE and /RE tied together |
+| 42 | RS485 DE | MAX485 / MAX3485 DE |
+| 41 | RS485 /RE | MAX485 / MAX3485 /RE (driven with DE, so no bridge is needed; a module with DE and /RE tied together just uses GPIO42) |
 | 17 / 16 | VE.Direct #1 / #2 RX | *fallback only* |
 | 8 / 9 | I²C SDA / SCL | MPU-6050 level sensor (0x68); *fallbacks:* ADS1115 (0x48), INA226 (0x40 / 0x41) |
 | 4 | 1-Wire | all DS18B20 data lines + 4.7 kΩ pull-up to 3V3 |
@@ -81,6 +90,7 @@ A 3D-printed backpack that bolts to the display's four screw bosses and carries 
 | 5 | IR LED driver | transistor base via 1 kΩ |
 | 6 | IR receiver | TSOP38238 OUT (powered from 3V3) |
 | 7 | Buzzer | transistor base via 1 kΩ |
+| 48 or 38 | Status light | the board's own RGB LED (nothing to wire): red flashing = alarm, green = cloud connected, orange = Wi-Fi only, blue = no Wi-Fi |
 | 39 | GPS RX | GPS module TX (optional; shares UART2 with the VE.Direct #2 fallback) |
 | 40 | GPS TX | GPS module RX (optional, not needed) |
 

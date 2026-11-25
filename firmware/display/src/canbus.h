@@ -20,8 +20,11 @@
 #pragma once
 #include <Arduino.h>
 
+// Off by default (2026-11-25): the BMPRO data now comes over Bluetooth via the
+// hub, and the display should run nothing it doesn't need. Build with
+// -D FEATURE_CAN_LOG=1 to capture the bus again.
 #ifndef FEATURE_CAN_LOG
-#define FEATURE_CAN_LOG 1
+#define FEATURE_CAN_LOG 0
 #endif
 // 0 = auto-detect (listen at each common rate until valid frames arrive).
 // Set e.g. -D CAN_BITRATE=250000 once the BMPRO rate is known.
@@ -42,5 +45,6 @@ struct Stats {
 
 void begin();   // starts the core-0 task; returns immediately
 Stats stats();  // safe to call from any task
+void serialCommand(char c);  // a one-letter serial command (see above)
 
 }  // namespace canbus

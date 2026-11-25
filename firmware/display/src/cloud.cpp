@@ -1,4 +1,5 @@
 #include "cloud.h"
+#include "evlog.h"
 
 #include <HTTPClient.h>
 #include <PubSubClient.h>
@@ -25,6 +26,36 @@
 #ifndef CLOUD_ON_DISPLAY
 #define CLOUD_ON_DISPLAY 1
 #endif
+// Wi-Fi on the display. Only needed when the display runs the cloud (classic
+// ESP32 hub with Wi-Fi off). With the S3 hub doing Wi-Fi, the cloud, the clock
+// and the forecast, the display leaves its radio off: no TLS, no network task,
+// no Wi-Fi retries, nothing that can fragment its RAM.
+#ifndef DISPLAY_WIFI
+#define DISPLAY_WIFI CLOUD_ON_DISPLAY
+#endif
+
+#if !DISPLAY_WIFI
+namespace cloud {
+void begin() {
+  setenv("TZ", TZ_INFO, 1);  // local time for the event log; the clock itself comes from the hub
+  tzset();
+  Serial.println("[cloud] display Wi-Fi off: the hub runs Wi-Fi, the cloud and push alerts");
+}
+bool wifiUp() { return false; }
+bool connected() { return false; }
+void onHubState(JsonDocument &) {}
+void onHubMeta(JsonVariantConst) {}
+void onHubRules(JsonVariantConst) {}
+void onHubReply(const char *, size_t) {}
+void onHubEvent(const char *, size_t) {}
+void onHubPush(JsonObjectConst) {}
+void onHubLink(bool) {}
+bool takeCommand(JsonDocument &) { return false; }
+void requestWeather(float, float) {}
+bool takeLocalCommand(JsonDocument &) { return false; }
+void resendWeather() {}
+}  // namespace cloud
+#else
 
 namespace cloud {
 
@@ -50,6 +81,10 @@ static const char *const kPass[] = {WIFI_PASS};
 static int gNetIdx = 0;
 static void joinNet(int idx) {
   gNetIdx = idx % (int)(sizeof(kSsid) / sizeof(kSsid[0]));
+  // Stop any attempt still in progress first, or begin() fails with
+  // "sta is connecting" (ESP_ERR_WIFI_CONN) and that network is skipped.
+  WiFi.disconnect();
+  vTaskDelay(pdMS_TO_TICKS(200));
   WiFi.begin(kSsid[gNetIdx], kPass[gNetIdx]);
   Serial.printf("[wifi] joining %s\n", kSsid[gNetIdx]);
 }
@@ -252,7 +287,7 @@ static void onMqtt(char *topic, byte *payload, unsigned int len) {
   if (xQueueSend(gCmdQ, &s, 0) != pdTRUE) delete s;
 }
 
-static uint32_t gNextTryMs = 0, gBackoffMs = 2000;
+static uint32_t gNextTryMs = 0, gBackoffMs = 2000, gConnFails = 0, gConnectedAtMs = 0;
 
 static void mqttLoop() {
   if (!mqttConfigured() || !gWifiUp) {
@@ -260,14 +295,33 @@ static void mqttLoop() {
     return;
   }
   if (!gMqtt.connected()) {
+    if (gMqttUp) {
+      // Just dropped. A link that lived under a minute counts as a failure:
+      // 2026-11-20 it connected and dropped 14 times in a row, and reconnecting
+      // that fast gets a client banned by the broker's flapping detection.
+      uint32_t lived = millis() - gConnectedAtMs;
+      gTls.stop();
+      if (lived < 60000) {
+        evlog::add("cloud dropped after %us, retry in %us", (unsigned)(lived / 1000), (unsigned)(gBackoffMs / 1000));
+        gNextTryMs = millis() + gBackoffMs;
+        gBackoffMs = min<uint32_t>(gBackoffMs * 2, 300000);
+      } else {
+        evlog::add("cloud dropped after %u min", (unsigned)(lived / 60000));
+        gBackoffMs = 2000;
+      }
+    }
     gMqttUp = false;
     if ((int32_t)(millis() - gNextTryMs) < 0) return;
     String will = kBase + "online";
     String cid = String(DEVICE_ID) + "-display-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-    Serial.printf("[cloud] connecting to %s:%d\n", MQTT_HOST, MQTT_PORT);
+    IPAddress ip;
+    bool dnsOk = WiFi.hostByName(MQTT_HOST, ip);
+    Serial.printf("[cloud] connecting to %s:%d (%s)\n", MQTT_HOST, MQTT_PORT,
+                  dnsOk ? ip.toString().c_str() : "DNS failed");
     if (gMqtt.connect(cid.c_str(), MQTT_USER, MQTT_PASS, will.c_str(), 1, true, "0")) {
-      Serial.println("[cloud] connected");
-      gBackoffMs = 2000;
+      evlog::add("cloud connected (%s)", dnsOk ? ip.toString().c_str() : "?");
+      gConnectedAtMs = millis();  // backoff resets only once it has lived a minute
+      gConnFails = 0;
       gMqtt.subscribe((kBase + "cmd").c_str(), 1);
       gHubUpNew = true;
       Lock l;
@@ -276,9 +330,21 @@ static void mqttLoop() {
       gLastStatePubMs = 0;
     } else {
       // rc 4 = bad username/password, 5 = not authorised, -2 = network / TLS
-      Serial.printf("[cloud] failed rc=%d, retry in %us\n", gMqtt.state(), gBackoffMs / 1000);
+      evlog::add("cloud connect failed rc=%d (%s), retry in %us", gMqtt.state(),
+                 dnsOk ? ip.toString().c_str() : "DNS failed", (unsigned)(gBackoffMs / 1000));
+      gTls.stop();  // never reuse a half-open socket
+      // 2026-11-20: after one TLS send error on Starlink every later connect
+      // timed out (errno 113) while the laptop on the same Wi-Fi connected in
+      // 0.2 s. A stale Wi-Fi/IP state; rejoining the same network clears it.
+      if (++gConnFails >= 3) {
+        gConnFails = 0;
+        evlog::add("cloud: 3 failed connects in a row, rejoining Wi-Fi");
+        WiFi.disconnect();
+        joinNet(gNetIdx);
+        gBackoffMs = 2000;
+      }
       gNextTryMs = millis() + gBackoffMs;
-      gBackoffMs = min<uint32_t>(gBackoffMs * 2, 120000);
+      gBackoffMs = min<uint32_t>(gBackoffMs * 2, 300000);
       return;
     }
   }
@@ -308,7 +374,8 @@ static void mqttLoop() {
     }
   }
   auto pub = [](const char *sub, const String &s) {
-    if (s.length()) gMqtt.publish((kBase + sub).c_str(), (const uint8_t *)s.c_str(), s.length(), true);
+    if (s.length() && !gMqtt.publish((kBase + sub).c_str(), (const uint8_t *)s.c_str(), s.length(), true))
+      evlog::add("cloud publish %s (%u bytes) failed", sub, (unsigned)s.length());
   };
   pub("meta", meta);
   pub("rules", rules);
@@ -342,7 +409,7 @@ static void sendPush(const Push &m) {
     char err[100] = "";
     if (code < 0) tls.lastError(err, sizeof(err));
     http.end();
-    Serial.printf("[push] '%s' -> HTTP %d %s\n", title, code, err);
+    evlog::add("push '%.30s' -> HTTP %d %.30s", title, code, err);
     if (code >= 200 && code < 300) return;
     vTaskDelay(pdMS_TO_TICKS(5000 << attempt));
   }
@@ -356,7 +423,9 @@ static void netTask(void *) {
     bool up = WiFi.status() == WL_CONNECTED;
     if (up != gWifiUp) {
       gWifiUp = up;
-      if (up) Serial.printf("[wifi] connected, IP %s\n", WiFi.localIP().toString().c_str());
+      if (up)
+        evlog::add("Wi-Fi up: %s, IP %s, gw %s, dns %s, %ddBm", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(),
+                   WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str(), (int)WiFi.RSSI());
       static bool ntpStarted = false;
       if (up && !ntpStarted) {
         // Clock from NTP: shown on screen and passed to the hub (no Wi-Fi there).
@@ -368,7 +437,7 @@ static void netTask(void *) {
         configTzTime(TZ_INFO, "216.239.35.0", "216.239.35.4");
         vTaskDelay(pdMS_TO_TICKS(1000));
       }
-      else Serial.println("[wifi] disconnected");
+      else evlog::add("Wi-Fi down");
     }
     if (!up && millis() - lastJoinMs > 30000) {  // auto-reconnect is on; this is the backstop
       lastJoinMs = millis();
@@ -427,6 +496,14 @@ void begin() {
   gLocalQ = xQueueCreate(4, sizeof(String *));
 
   WiFi.mode(WIFI_STA);
+  // Why a join failed: 15 = handshake timeout (often a wrong password),
+  // 201 = network not found, 2/202 = authentication failed.
+  WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t info) {
+    static uint8_t last = 0;
+    uint8_t r = info.wifi_sta_disconnected.reason;
+    if (r != last) evlog::add("Wi-Fi disconnect reason %u", (unsigned)r);
+    last = r;
+  }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   WiFi.setHostname(HOSTNAME "-display");
   WiFi.setAutoReconnect(true);
   joinNet(0);
@@ -445,3 +522,4 @@ void begin() {
 }
 
 }  // namespace cloud
+#endif  // DISPLAY_WIFI

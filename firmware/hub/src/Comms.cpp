@@ -50,10 +50,14 @@ Net gNet;
 SemaphoreHandle_t gStateMux = nullptr;  // created in setup()
 
 // ================================================================ Net
-// Up to two Wi-Fi networks (e.g. home + phone hotspot). Define WIFI_SSID2 /
-// WIFI_PASS2 in secrets.h for the second; the hub switches between them
-// every 30 s until one connects.
-#ifdef WIFI_SSID2
+// Up to three Wi-Fi networks (e.g. home, phone hotspot, Starlink), the same
+// list as the display. Define WIFI_SSID2 / WIFI_PASS2 and WIFI_SSID3 /
+// WIFI_PASS3 in secrets.h; the hub moves to the next one every 30 s until one
+// connects.
+#if defined(WIFI_SSID2) && defined(WIFI_SSID3)
+static const char *const kSsid[] = {WIFI_SSID, WIFI_SSID2, WIFI_SSID3};
+static const char *const kPass[] = {WIFI_PASS, WIFI_PASS2, WIFI_PASS3};
+#elif defined(WIFI_SSID2)
 static const char *const kSsid[] = {WIFI_SSID, WIFI_SSID2};
 static const char *const kPass[] = {WIFI_PASS, WIFI_PASS2};
 #else
@@ -157,8 +161,9 @@ void Net::loop(cv::State &s) {
   static uint32_t nextHeapLog = 0;
   if ((int32_t)(millis() - nextHeapLog) >= 0) {
     nextHeapLog = millis() + 30000;
-    Serial.printf("[sys] heap %u free, min %u, largest %u\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap(),
-                  (unsigned)ESP.getMaxAllocHeap());
+    Serial.printf("[sys] heap %u free, min %u, largest %u; PSRAM %u free of %u\n", (unsigned)ESP.getFreeHeap(),
+                  (unsigned)ESP.getMinFreeHeap(), (unsigned)ESP.getMaxAllocHeap(), (unsigned)ESP.getFreePsram(),
+                  (unsigned)ESP.getPsramSize());
     // Unused stack per task (bytes never touched): what each could give back.
     static const char *kTasks[] = {"net", "push", "heater", "bmpro", "nimble_host", "loopTask", "ble_scan"};
     char line[160];

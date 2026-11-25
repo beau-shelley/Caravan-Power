@@ -60,7 +60,7 @@ void buildPower(lv_obj_t *p) {
   }
 
   lv_obj_t *b = card(p, GAP, PW_BOT_Y, PW_BAT_W, PW_BOT_H, "BATTERY DETAIL", col::CHARGE);
-  static const char *caps[] = {"Voltage", "Current", "Charge", "Solar in", "BMPRO / mains", "Loads", "Source"};
+  static const char *caps[] = {"Voltage", "Current", "Charge", "Victron solar", "BMPRO (roof)", "Loads", "Source"};
   constexpr int rowStep = (innerOf(PW_BOT_H) - 24) / 7;
   const lv_font_t *rf = rowStep >= 30 ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
   for (int i = 0; i < 7; i++) {
@@ -162,8 +162,10 @@ void updatePower() {
     for (int i = 0; i < 3; i++) setText(bpRows[i], "--");
   }
   setText(bpRows[3], "%.1f A", s.bat.solarA);
-  if (s.bat.acOn) setText(bpRows[4], "%.1f / %.0f A", s.bat.chargerA, s.bat.acA);
-  else setText(bpRows[4], "%.1f / 0 A", s.bat.chargerA);
+  // The BMPRO's own charger input: the roof panels (and the car's DC-DC while
+  // towing). Mains is only added while the hub detects mains bulk charging.
+  if (s.bat.acOn) setText(bpRows[4], "%.1f A  + mains %.0f A", s.bat.chargerA, s.bat.acA);
+  else setText(bpRows[4], "%.1f A", s.bat.chargerA);
   setText(bpRows[5], "%.1f A", s.bat.loadA);
   setText(bpRows[6], "%s", s.bat.source == cv::BAT_SRC_BMPRO ? "BMPRO" : s.bat.source == cv::BAT_SRC_SHUNT ? "Shunt" : "None");
 }
@@ -348,13 +350,19 @@ void updateClimate() {
   for (int i = 0; i < cv::NUM_TEMPS; i++) {
     const cv::Temp &t = s.temp[i];
     if (t.online) {
-      setText(cVal[i], "%d\xC2\xB0", (int)lroundf(t.c));
+      // The fridge gets one decimal (a degree matters there); the rest whole degrees.
+      const bool fr = i == cv::TEMP_FRIDGE;
+      if (fr) setText(cVal[i], "%.1f\xC2\xB0", t.c);
+      else setText(cVal[i], "%d\xC2\xB0", (int)lroundf(t.c));
       lv_obj_set_style_text_color(cVal[i], c(tempColor(i, t.c)), 0);
       if (t.batt >= 0 && t.batt <= 20)  // Bluetooth sensor needs a new battery
-        setText(cMinMax[i], LV_SYMBOL_DOWN " %d\xC2\xB0  " LV_SYMBOL_UP " %d\xC2\xB0  " LV_SYMBOL_BATTERY_1 " %d%%",
-                (int)lroundf(t.minC), (int)lroundf(t.maxC), t.batt);
+        setText(cMinMax[i], fr ? LV_SYMBOL_DOWN " %.1f\xC2\xB0  " LV_SYMBOL_UP " %.1f\xC2\xB0  " LV_SYMBOL_BATTERY_1 " %d%%"
+                               : LV_SYMBOL_DOWN " %.0f\xC2\xB0  " LV_SYMBOL_UP " %.0f\xC2\xB0  " LV_SYMBOL_BATTERY_1 " %d%%",
+                t.minC, t.maxC, t.batt);
       else
-        setText(cMinMax[i], LV_SYMBOL_DOWN " %d\xC2\xB0   " LV_SYMBOL_UP " %d\xC2\xB0  today", (int)lroundf(t.minC), (int)lroundf(t.maxC));
+        setText(cMinMax[i], fr ? LV_SYMBOL_DOWN " %.1f\xC2\xB0   " LV_SYMBOL_UP " %.1f\xC2\xB0  today"
+                               : LV_SYMBOL_DOWN " %.0f\xC2\xB0   " LV_SYMBOL_UP " %.0f\xC2\xB0  today",
+                t.minC, t.maxC);
     } else {
       setText(cVal[i], "--");
       lv_obj_set_style_text_color(cVal[i], c(col::DIM), 0);

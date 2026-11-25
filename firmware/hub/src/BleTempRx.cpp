@@ -11,10 +11,11 @@ namespace hub {
 BleTempRx gBleTemps;
 
 namespace {
-// Thermometers advertise every few seconds; temperatures change slowly, so
-// only call a sensor offline after 10 minutes of silence (a fridge's metal
-// cabinet can block many packets).
-constexpr uint32_t STALE_MS = 10UL * 60 * 1000;
+// Thermometers advertise every few seconds. Call a sensor offline after 2
+// minutes of silence: long enough to ride out packets a fridge's metal cabinet
+// blocks, short enough that the screens don't keep showing an old reading
+// (2026-11-25: was 10 min).
+constexpr uint32_t STALE_MS = 2UL * 60 * 1000;
 
 struct Dev {
   char addr[18];
@@ -24,6 +25,8 @@ struct Dev {
   int8_t batt;  // -1 unknown
   int rssi;
   uint32_t lastMs;  // 0 = name cached only, no reading yet
+  uint32_t changedMs;  // when the broadcast bytes last changed (a stuck sensor repeats them)
+  char raw[125];    // last advert + scan response payload as hex (first 62 bytes), for checking a decoder
 };
 constexpr int MAX_DEVS = 24;
 Dev gDevs[MAX_DEVS];
@@ -78,6 +81,13 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
   }
   if (!ok && !(newName && !strncmp(name, "TP3", 3))) return;
 
+  char raw[125] = "";
+  if (ok) {
+    const uint8_t *p = d->getPayload();
+    size_t n = d->getPayloadLength() < 62 ? d->getPayloadLength() : 62;
+    for (size_t k = 0; k < n; k++) snprintf(raw + k * 2, 3, "%02x", p[k]);
+  }
+
   portENTER_CRITICAL(&gLock);
   Dev *dev = slotFor(addr);
   if (name[0]) strncpy(dev->name, name, sizeof(dev->name) - 1);
@@ -88,6 +98,8 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
     if (r.hasBatt) dev->batt = (int8_t)r.battPct;
     dev->rssi = d->getRSSI();
     dev->lastMs = millis();
+    if (strcmp(dev->raw, raw) != 0 || !dev->changedMs) dev->changedMs = millis();
+    memcpy(dev->raw, raw, sizeof(dev->raw));
   }
   portEXIT_CRITICAL(&gLock);
 }
@@ -131,6 +143,15 @@ void BleTempRx::poll(cv::State &s) {
   }
 }
 
+uint32_t BleTempRx::unchangedMs(const char *addr) const {
+  uint32_t out = 0;
+  portENTER_CRITICAL(&gLock);
+  for (int i = 0; i < gDevCount; i++)
+    if (gDevs[i].changedMs && !strcasecmp(gDevs[i].addr, addr)) out = millis() - gDevs[i].changedMs;
+  portEXIT_CRITICAL(&gLock);
+  return out;
+}
+
 String BleTempRx::seen() const {
   Dev copy[MAX_DEVS];
   int n;
@@ -146,12 +167,12 @@ String BleTempRx::seen() const {
     int role = -1;
     for (int r = 0; r < cv::NUM_TEMPS; r++)
       if (gConfig.tempSrc[r] == TEMP_BLE && !strcasecmp(gConfig.tempBle[r], d.addr)) role = r;
-    char buf[200];
+    char buf[340];
     snprintf(buf, sizeof(buf),
              "%s{\"addr\":\"%s\",\"name\":\"%s\",\"type\":\"%s\",\"c\":%.1f,\"hum\":%.0f,\"batt\":%d,\"rssi\":%d,"
-             "\"age\":%lu,\"role\":%d}",
+             "\"age\":%lu,\"role\":%d,\"raw\":\"%s\"}",
              first ? "" : ",", d.addr, d.name, d.type, d.tempC, d.hum, d.batt, d.rssi,
-             (unsigned long)((millis() - d.lastMs) / 1000), role);
+             (unsigned long)((millis() - d.lastMs) / 1000), role, d.raw);
     out += buf;
     first = false;
   }
