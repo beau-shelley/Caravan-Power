@@ -24,6 +24,7 @@ struct Dev {
   int8_t batt;  // -1 unknown
   int rssi;
   uint32_t lastMs;  // 0 = name cached only, no reading yet
+  char raw[125];    // last advert + scan response payload as hex (first 62 bytes), for checking a decoder
 };
 constexpr int MAX_DEVS = 24;
 Dev gDevs[MAX_DEVS];
@@ -78,6 +79,13 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
   }
   if (!ok && !(newName && !strncmp(name, "TP3", 3))) return;
 
+  char raw[125] = "";
+  if (ok) {
+    const uint8_t *p = d->getPayload();
+    size_t n = d->getPayloadLength() < 62 ? d->getPayloadLength() : 62;
+    for (size_t k = 0; k < n; k++) snprintf(raw + k * 2, 3, "%02x", p[k]);
+  }
+
   portENTER_CRITICAL(&gLock);
   Dev *dev = slotFor(addr);
   if (name[0]) strncpy(dev->name, name, sizeof(dev->name) - 1);
@@ -88,6 +96,7 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
     if (r.hasBatt) dev->batt = (int8_t)r.battPct;
     dev->rssi = d->getRSSI();
     dev->lastMs = millis();
+    memcpy(dev->raw, raw, sizeof(dev->raw));
   }
   portEXIT_CRITICAL(&gLock);
 }
@@ -146,12 +155,12 @@ String BleTempRx::seen() const {
     int role = -1;
     for (int r = 0; r < cv::NUM_TEMPS; r++)
       if (gConfig.tempSrc[r] == TEMP_BLE && !strcasecmp(gConfig.tempBle[r], d.addr)) role = r;
-    char buf[200];
+    char buf[340];
     snprintf(buf, sizeof(buf),
              "%s{\"addr\":\"%s\",\"name\":\"%s\",\"type\":\"%s\",\"c\":%.1f,\"hum\":%.0f,\"batt\":%d,\"rssi\":%d,"
-             "\"age\":%lu,\"role\":%d}",
+             "\"age\":%lu,\"role\":%d,\"raw\":\"%s\"}",
              first ? "" : ",", d.addr, d.name, d.type, d.tempC, d.hum, d.batt, d.rssi,
-             (unsigned long)((millis() - d.lastMs) / 1000), role);
+             (unsigned long)((millis() - d.lastMs) / 1000), role, d.raw);
     out += buf;
     first = false;
   }
