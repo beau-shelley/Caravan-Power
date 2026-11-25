@@ -48,38 +48,27 @@ class UsageTest {
     @Test fun gasDaysFromLineFit() {
         val start = 1_700_000_000L
         // 60 % falling 5 % a day over two days, sampled every 10 min, with a refill before it.
-        val slices = mutableListOf(Slice(start - 6000, 600, gas = 10.0))
-        for (k in 0..288) slices += Slice(start + k * 600L, 600, gas = 60.0 - 5.0 * k / 144)
+        val slices = mutableListOf(Slice(start - 6000, 10.0))
+        for (k in 0..288) slices += Slice(start + k * 600L, 60.0 - 5.0 * k / 144)
         val now = start + 288 * 600L
         assertEquals(5.0, UsageLog.gasPerDay(slices, now)!!, 0.01)
         assertEquals("10 days left", UsageLog.gasShort(slices, 50.0, now))
         assertEquals("Measuring", UsageLog.gasShort(slices.take(20), 50.0, now))
+        // Only the first and last few hours seen (the phone was away in between): same rate.
+        val sparse = slices.filterIndexed { i, _ -> i < 20 || i > 270 }
+        assertEquals(5.0, UsageLog.gasPerDay(sparse, now)!!, 0.05)
     }
 
-    @Test fun slicesRoundTrip() {
-        val s = Slice(600, 590, 3.25, 81.0, -1.0, listOf(80.0, -1.0), 2.5, 1.9)
-        assertEquals(s, Slice.parse(s.toLine()))
-        val n = Slice(1200)
-        assertEquals(n.copy(fridgeMin = Double.NaN).toLine(), Slice.parse(n.toLine())!!.toLine())
-    }
-
-    @Test fun summaryCoversTheDay() {
+    @Test fun logKeepsGasEveryTenMinutes() {
         val log = UsageLog()
-        val dayStart = { t: Long -> Math.floorDiv(t, 86400L) * 86400L }
-        val end = 1_700_006_400L / 86400 * 86400 + 7 * 3600  // 7 am UTC
-        var t = end - 26 * 3600L
-        var tank = 80.0
-        while (t < end) {
-            tank -= 10.0 / 1440  // 10 % a day
-            log.add(state(a = -4.0, tank = Math.round(tank).toDouble(), fridge = 3.0, yt = 2.5), t * 1000)
-            t += 60
-        }
-        val text = UsageLog.summary(log.all(), end, dayStart, Meta(batteryAh = 405), null, log.avgA)!!
-        assertTrue(text, text.contains("Power used: 96 Ah"))
-        assertTrue(text, text.contains("Tank 1 down 10%"))
-        assertTrue(text, text.contains("Fridge overnight low: 3.0°C"))
-        assertTrue(text, text.contains("Solar in yesterday: 2.5 kWh"))
-        assertTrue(text, !text.contains("Battery now"))  // nothing "now" without live data
-        assertNull(UsageLog.summary(emptyList(), end, dayStart, Meta(), null, Double.NaN))
+        var t = 1_700_000_400_000L
+        var saves = 0
+        repeat(3600) { if (log.add(state(gas = 50.0), t)) saves++; t += 1000 }
+        assertEquals(5, saves)
+        assertEquals(6, log.all().size)
+        val back = UsageLog().apply { load(log.lines()) }
+        assertEquals(log.slices.toList(), back.slices.toList())
+        // A line from the older, wider log still loads its gas reading.
+        assertEquals(Slice(600, 63.0), Slice.parse("600,590,3.25,81,63,80|-1,2.5,1.9"))
     }
 }

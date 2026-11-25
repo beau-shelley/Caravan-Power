@@ -19,7 +19,7 @@ class CaravanApp : Application() {
         instance = this
         prefs = Prefs(this)
         notifier = AlertNotifier(this)
-        usage = UsageTracker(this, prefs, notifier)
+        usage = UsageTracker(this)
         hub = HubClient(this, prefs, notifier, usage)
         updater = Updater(this, prefs)
         MonitorService.sync(this)
