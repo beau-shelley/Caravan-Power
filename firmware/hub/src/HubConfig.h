@@ -29,7 +29,8 @@ struct VictronCfg {
   char key[33] = "";   // 32 hex chars from VictronConnect "Instant readout details"
 };
 
-enum TempSource : uint8_t { TEMP_WIRED = 0, TEMP_BLE = 1 };
+// TEMP_HEATER: the diesel heater's own room sensor (Bluetooth status), whole degrees.
+enum TempSource : uint8_t { TEMP_WIRED = 0, TEMP_BLE = 1, TEMP_HEATER = 2 };
 
 struct LevelCfg {
   bool zeroed = false;

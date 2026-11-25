@@ -588,10 +588,12 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     reply["t"] = "ble_sensors";
     reply["list"] = serialized(gBleTemps.seen());
   } else if (!strcmp(c, "temp_set")) {
-    // {"c":"temp_set","role":2,"src":1,"addr":"aa:bb:.."}  src 0 = wired DS18B20
+    // {"c":"temp_set","role":2,"src":1,"addr":"aa:bb:.."}  src 0 = wired DS18B20,
+    // 1 = Bluetooth thermometer, 2 = the diesel heater's room sensor
     int role = cmd["role"] | -1;
     if (role < 0 || role >= cv::NUM_TEMPS) return replyErr(reply, "bad role");
     uint8_t src = cmd["src"] | (uint8_t)TEMP_BLE;
+    if (src > TEMP_HEATER) return replyErr(reply, "bad source");
     const char *addr = cmd["addr"] | "";
     if (src == TEMP_BLE && strlen(addr) != 17) return replyErr(reply, "address must look like aa:bb:cc:dd:ee:ff");
     gConfig.tempSrc[role] = src;
@@ -927,6 +929,22 @@ void loop() {
     }
     gpsLoop(now);
     if (gBleTempsOn) gBleTemps.poll(gState);
+    // Roles fed by the diesel heater's room sensor: live only while the hub
+    // has its Bluetooth status (otherwise offline, never a stale number).
+    for (int role = 0; role < cv::NUM_TEMPS; role++) {
+      if (gConfig.tempSrc[role] != TEMP_HEATER) continue;
+      cv::Temp &t = gState.temp[role];
+      if (!gState.htr.hasStatus()) {
+        t.online = false;
+        continue;
+      }
+      float c = gState.htr.cabinC;
+      if (!t.online && t.minC == 0 && t.maxC == 0) t.minC = t.maxC = c;
+      t.online = true;
+      t.c = c;
+      if (c < t.minC) t.minC = c;
+      if (c > t.maxC) t.maxC = c;
+    }
     if (gConfig.tankSource == TANK_ADC) gTanks.poll(gState);
     gShunt.poll(gState, now);
     if (gBmproOn) {
