@@ -74,10 +74,10 @@ fun ClimateContent(
             s.tmp.forEachIndexed { i, t ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(meta.tempNames.getOrElse(i) { "Temp ${i + 1}" }, color = Accent.muted, modifier = Modifier.weight(1f))
-                    Text(if (t.on) "${fmtDeg(t.c)}°" else "–", fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
+                    Text(if (t.on) "${fmtTemp(i, t.c)}°" else "–", fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
                         color = if (t.on) tempColor(i, t.c) else Accent.muted)
-                    Text(if (t.on) "  ↓${fmtDeg(t.lo)}° ↑${fmtDeg(t.hi)}°" else "", style = MaterialTheme.typography.bodySmall,
-                        color = Accent.muted, modifier = Modifier.width(78.dp).padding(start = 6.dp))
+                    Text(if (t.on) "  ↓${fmtTemp(i, t.lo)}° ↑${fmtTemp(i, t.hi)}°" else "", style = MaterialTheme.typography.bodySmall,
+                        color = Accent.muted, modifier = Modifier.width(100.dp).padding(start = 6.dp))
                 }
             }
         }

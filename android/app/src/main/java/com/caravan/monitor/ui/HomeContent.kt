@@ -298,9 +298,9 @@ private fun TempsCard(s: HubState, meta: Meta, modifier: Modifier = Modifier) {
                 Column(Modifier.weight(1f)) {
                     Text(meta.tempNames.getOrElse(i) { "Temp ${i + 1}" }, style = MaterialTheme.typography.labelSmall, color = Accent.muted)
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(if (t.on) "${fmtDeg(t.c)}°" else "–", fontSize = 24.sp, fontWeight = FontWeight.SemiBold,
+                        Text(if (t.on) "${fmtTemp(i, t.c)}°" else "–", fontSize = 24.sp, fontWeight = FontWeight.SemiBold,
                             color = if (t.on) tempColor(i, t.c) else Accent.muted)
-                        if (t.on) Text("  ${fmtDeg(t.lo)}/${fmtDeg(t.hi)}°", style = MaterialTheme.typography.bodySmall,
+                        if (t.on) Text("  ${fmtTemp(i, t.lo)}/${fmtTemp(i, t.hi)}°", style = MaterialTheme.typography.bodySmall,
                             color = Accent.muted, modifier = Modifier.padding(bottom = 4.dp))
                     }
                 }
