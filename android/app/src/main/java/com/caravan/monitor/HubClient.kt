@@ -107,6 +107,21 @@ class HubClient(
         return send(o)
     }
 
+    /**
+     * Admin login check against the hub's own web login (WEB_USER / WEB_PASS).
+     * true / false when the hub is on this Wi-Fi, null when it can't be asked
+     * directly (away from the van, or not connected).
+     */
+    suspend fun checkLogin(user: String, pass: String): Boolean? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val st = _status.value
+        if (st.cloud || st.conn != Conn.CONNECTED || st.host.isBlank()) return@withContext null
+        when (fetchToken(st.host, prefs.settings.value.copy(user = user, pass = pass))) {
+            is TokenResult.Ok -> true
+            is TokenResult.AuthFailed -> false
+            null -> null
+        }
+    }
+
     /** Base http URL of the hub the app is talking to, for opening its web page. */
     fun baseUrl(): String? = _status.value.takeIf { !it.cloud }?.host?.takeIf { it.isNotEmpty() }?.let { "http://$it/" }
 
