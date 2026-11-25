@@ -398,11 +398,14 @@ data class ConnStatus(val conn: Conn = Conn.IDLE, val host: String = "", val det
 data class DataAge(val live: Boolean = true, val lastAt: Long = 0, val why: String = "") {
     companion object {
         /** How long without a fresh state before it counts as stale: the hub pushes every second
-         *  direct, the cloud copy every 15 s. */
+         *  direct, the cloud copy every 10-15 s. */
         const val LOCAL_STALE_MS = 10_000L
-        const val CLOUD_STALE_MS = 50_000L
+        /** Through the cloud: one missed update plus a few seconds, from the longest send interval
+         *  seen (15 s hub -> 25 s, 10 s -> 18 s), never under 15 s or over 30 s. 25 s until known. */
+        fun cloudLimitMs(gapMs: Long): Long =
+            if (gapMs <= 0) 25_000L else (gapMs * 3 / 2 + 3_000L).coerceIn(15_000L, 30_000L)
         /** A retained cloud state is only trusted as live if its own timestamp is this recent. */
-        const val RETAINED_MAX_AGE_S = 60L
+        const val RETAINED_MAX_AGE_S = 25L
 
         /** "just now", "5 min ago", "3 h ago", "2 days ago". */
         fun ago(lastAt: Long, now: Long): String {
