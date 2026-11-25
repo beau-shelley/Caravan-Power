@@ -298,6 +298,9 @@ void linkLoop() {
     // Meta from the hub changes rarely; re-ask every reconnect.
   }
   if (up != linkUp) stateDirty = true;
+  // Hub link lost: forget every reading, so no page shows stale numbers as if
+  // they were live. Each card shows "--" / offline until fresh data arrives.
+  if (!up && linkUp) state = cv::State();
   cloud::onHubLink(up);
   linkUp = up;
 }
