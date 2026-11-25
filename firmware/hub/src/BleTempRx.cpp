@@ -11,10 +11,11 @@ namespace hub {
 BleTempRx gBleTemps;
 
 namespace {
-// Thermometers advertise every few seconds; temperatures change slowly, so
-// only call a sensor offline after 10 minutes of silence (a fridge's metal
-// cabinet can block many packets).
-constexpr uint32_t STALE_MS = 10UL * 60 * 1000;
+// Thermometers advertise every few seconds. Call a sensor offline after 2
+// minutes of silence: long enough to ride out packets a fridge's metal cabinet
+// blocks, short enough that the screens don't keep showing an old reading
+// (2026-11-25: was 10 min).
+constexpr uint32_t STALE_MS = 2UL * 60 * 1000;
 
 struct Dev {
   char addr[18];
