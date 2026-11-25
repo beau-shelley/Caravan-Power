@@ -455,6 +455,7 @@ function checkLive() {
   $("#tab-overview").classList.toggle("stale", stale);
   $("#noLink").classList.toggle("hidden", !stale);
   if (stale) {
+    avgA = NaN; $("#ttg").textContent = "--";  // no time left worked out from old numbers
     $("#noLinkWhy").textContent = why;
     const at = S && S.ts ? S.ts * 1000 : 0;
     $("#noLinkAge").textContent = at ? `Greyed-out values are from ${agoText(at)} and may be wrong.` : "Greyed-out values are old and may be wrong.";
@@ -463,7 +464,34 @@ function checkLive() {
 setInterval(checkLive, 1000);
 
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200); }
-function fmtDur(m) { if (m < 0) return "idle"; if (m >= 5940) return "99h+"; return m >= 60 ? `${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m` : `${m}m`; }
+// Battery time, same as the phone app (Usage.kt): battery current averaged over ~15 min so
+// the fridge cycling doesn't make it jump, against what's left in the bank. Live states only.
+let avgA = NaN, avgAt = 0;
+function trackBattery(b, fresh) {
+  if (!fresh) return;
+  const now = Date.now(), dt = avgAt ? (now - avgAt) / 1000 : -1;
+  avgAt = now;
+  if (!b || !b.on) { avgA = NaN; return; }
+  avgA = isNaN(avgA) || dt < 0 || dt > 300 ? b.a : avgA + (b.a - avgA) * Math.min(1, dt / 900);
+}
+function hm(m) { return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; }
+function aboutDur(m) {
+  if (m < 180) return hm(m);
+  if (m < 36 * 60) return `About ${Math.round(m / 60)} h`;
+  if (m > 14 * 1440) return "Over 2 weeks";
+  const halves = Math.round(m / 720);
+  return `About ${Math.floor(halves / 2)}${halves % 2 ? "½" : ""} days`;
+}
+function batteryText(b) {
+  if (!b || !b.on) return "--";
+  const a = isNaN(avgA) ? b.a : avgA;
+  if (a < -0.3) {
+    const m = META.cap > 0 ? Math.round(b.soc / 100 * META.cap / -a * 60) : b.ttg;
+    return m < 0 ? "Idle" : `${aboutDur(m)} left at this load`;
+  }
+  if (b.a > 0.3) return b.ttg >= 0 ? `Full in ${hm(b.ttg)}` : "Charging";
+  return "Idle";
+}
 // Temperature colour blended between stops (same as the touchscreen). Air: blue at
 // 10 C and below, neutral 17-23, amber 27, strong red 30+. Fridge (i === 2): blue
 // at 0 (freezing), neutral 2-5 (safe), amber 6.5, red 8+. Uses the theme colours.
@@ -522,7 +550,7 @@ function render() {
   $("#volTxt").textContent = b.on ? `${b.v.toFixed(2)} V` : "no data";
   $("#batA").textContent = b.on ? `${b.a > 0 ? "+" : ""}${b.a.toFixed(1)} A` : "-- A";
   $("#batA").style.color = b.a > 0.2 ? "var(--charge)" : b.a < -0.2 ? "var(--load)" : "var(--text)";
-  $("#ttg").textContent = b.on ? (b.ttg < 0 ? "idle" : `${fmtDur(b.ttg)} to ${b.a > 0 ? "full" : "empty"}`) : "";
+  $("#ttg").textContent = batteryText(b);
   $("#batSrc").textContent = b.src === 2 ? "Source: BMPRO" : b.src === 1 ? "Source: shunt" : "";
 
   const solW = S.sol.reduce((a, x) => a + (x.on ? x.w : 0), 0);
@@ -710,7 +738,7 @@ function renderRules() {
 function onMessage(msg) {
   lastMsg = Date.now();
   switch (msg.t) {
-    case "state": S = msg; if (!msg._old) lastFresh = Date.now(); render(); checkLive(); break;
+    case "state": S = msg; if (!msg._old) lastFresh = Date.now(); trackBattery(msg.bat, !msg._old); render(); checkLive(); break;
     case "meta": Object.assign(META, msg); renderMeta(); if (msg.sc !== undefined && S) render(); break;
     case "hello": Object.assign(META, msg.meta); RULES = msg.rules; renderMeta(); renderRules(); break;
     case "rules": RULES = msg.rules; renderRules(); break;

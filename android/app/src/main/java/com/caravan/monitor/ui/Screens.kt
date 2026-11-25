@@ -65,6 +65,7 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
     val age by hub.age.collectAsStateWithLifecycle()
     val updater = CaravanApp.instance.updater
     val update by updater.info.collectAsStateWithLifecycle()
+    val outlook by CaravanApp.instance.usage.outlook.collectAsStateWithLifecycle()
     var askSecure by remember { mutableStateOf<Boolean?>(null) }  // true = arm, false = disarm
     HomeContent(
         state, meta, rules, status,
@@ -77,6 +78,7 @@ fun HomeScreen(onOpenAlerts: () -> Unit, onOpenSetup: () -> Unit) {
         onSecure = { askSecure = it },
         onArm = { hub.send("secure", "arm" to true) },  // uses the sensitivity set in Setup
         age = age,
+        outlook = outlook,
     )
     // Arming is the slide on the Secure card; only disarming asks first.
     if (askSecure == false) {

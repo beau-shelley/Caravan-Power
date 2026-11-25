@@ -43,6 +43,8 @@ import com.caravan.monitor.Solar
 import com.caravan.monitor.Tank
 import com.caravan.monitor.Temp
 import com.caravan.monitor.Weather
+import com.caravan.monitor.UsageLog
+import com.caravan.monitor.Outlook
 import com.caravan.monitor.ui.AlertsContent
 import com.caravan.monitor.ui.CaravanColors
 import com.caravan.monitor.ui.caravanBackground
@@ -326,4 +328,66 @@ fun main() {
                 CONNECTED, nop, nop, { _, _ -> }, nop)
         }
     }
+    // Battery time, gas days and the morning summary, worked out on the phone from a demo day.
+    val demo = demoUsage()
+    shot("22-home-evening-outlook", 840) {
+        AppScaffold(0, {}, 0) {
+            HomeContent(demo.evening, adminMeta, RULES, CONNECTED, nop, { _, _ -> }, nop, nop, outlook = demo.outlook)
+        }
+    }
+    shot("23-morning-summary", 420) {
+        Box(Modifier.fillMaxSize().background(Color(0xFF101418)).padding(16.dp)) {
+            androidx.compose.foundation.layout.Column(
+                Modifier.fillMaxWidth().background(Color(0xFF2A2F36), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).padding(16.dp)
+            ) {
+                androidx.compose.material3.Text("Caravan monitor · 7:00", color = Color(0xFF9AA4AE), style = MaterialTheme.typography.labelMedium)
+                androidx.compose.material3.Text("Caravan this morning", color = Color.White, fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
+                androidx.compose.material3.Text(demo.summary, color = Color(0xFFDDE3E8), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
 }
+
+class DemoUsage(val evening: HubState, val outlook: Outlook, val summary: String)
+
+/** A day and a bit of made-up readings fed through the real UsageLog, one a minute. */
+fun demoUsage(): DemoUsage {
+    val tz = 11 * 3600L  // Sydney, summer time
+    val dayStart = { t: Long -> Math.floorDiv(t + tz, 86400L) * 86400L - tz }
+    val end = dayStart(1764000000L) + 86400L + 7 * 3600L + 60  // 7:01 am local
+    val start = end - 34 * 3600L
+    val log = UsageLog()
+    var soc = 92.0; var gas = 64.0; var fresh = 78.0
+    var last: HubState = ALERTING
+    var evening: Pair<HubState, Outlook>? = null
+    var t = start
+    while (t <= end) {
+        val h = ((t + tz) % 86400) / 3600.0
+        val sun = if (h in 6.5..18.5) Math.sin((h - 6.5) / 12 * Math.PI) else 0.0
+        val solarA = 95.0 * sun
+        val load = 3.2 + (if ((t / 60) % 30 < 12) 4.0 else 0.0) + (if (h in 18.0..21.0) 6.0 else 0.0)
+        val net = solarA - load
+        soc = (soc + net / 60 / 405 * 100).coerceIn(0.0, 100.0)
+        gas -= 6.0 / 1440 * (if (h in 6.0..9.0 || h in 17.0..20.0) 3.0 else 0.4)
+        if (h in 7.0..7.3 || h in 19.0..19.2) fresh -= 0.5
+        val ytRoof = 2.9 * (1 - Math.cos(Math.PI * ((h - 6.5) / 12).coerceIn(0.0, 1.0))) / 2
+        val fridge = 3.4 + 0.9 * Math.sin(t / 900.0) - (if (h < 7) 0.4 else 0.0)
+        last = ALERTING.copy(
+            ts = t, alerts = emptyList(),
+            bat = Battery(true, 13.2, net, soc, -1, solarA, 0.0, load),
+            sol = listOf(Solar(true, solarA * 13.6 * 0.45, ytRoof * 0.45, 540.0, 0), Solar(true, solarA * 13.6 * 0.55, ytRoof * 0.55, 690.0, 0)),
+            tmp = listOf(Temp(true, 19.0, 14.0, 24.0, 80), Temp(true, 13.0, 9.0, 27.0, 75), Temp(true, fridge, 2.1, 4.6, 90)),
+            tank = listOf(Tank(true, Math.round(fresh).toDouble()), Tank(true, 40.0), Tank(true, 35.0)),
+            gas = Gas(true, Math.round(gas * 10) / 10.0),
+        )
+        log.add(last, t * 1000)
+        val meta = META.copy(batteryAh = 405)
+        if (evening == null && t - start > 20 * 3600 && ((t + tz) % 86400) / 3600 == 21L) evening = last to log.outlook(last, meta, t)
+        t += 60
+    }
+    val summary = UsageLog.summary(log.all(), end, dayStart, META.copy(batteryAh = 405), last, log.avgA) ?: "(no summary)"
+    val (st, ol) = evening!!
+    return DemoUsage(st.copy(ts = st.ts), ol, summary)
+}
+

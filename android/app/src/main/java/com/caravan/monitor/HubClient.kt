@@ -46,6 +46,7 @@ class HubClient(
     private val context: Context,
     private val prefs: Prefs,
     private val notifier: AlertNotifier,
+    private val usage: UsageTracker? = null,
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -101,6 +102,7 @@ class HubClient(
             lastFreshMs = now
             dataAtWall = System.currentTimeMillis()
             notifier.onLocalState(st, _rules.value, _meta.value)
+            usage?.onLive(st, _meta.value)
         } else {
             dataAtWall = if (st.ts > 0) st.ts * 1000 else 0L
         }
@@ -119,6 +121,7 @@ class HubClient(
             else -> ""
         }
         val next = DataAge(live = why.isEmpty(), lastAt = dataAtWall, why = why)
+        if (!next.live) usage?.onNotLive()
         if (next != _age.value) _age.value = next
     }
 
