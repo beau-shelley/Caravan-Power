@@ -545,6 +545,8 @@ void addSysStats(JsonObject o) {
   s["hl"] = ESP.getMaxAllocHeap();
   s["hlmin"] = gLargestLow == 0xFFFFFFFF ? 0 : gLargestLow;
   s["cc"] = gCloudConnects;
+  s["pf"] = ESP.getFreePsram();   // PSRAM free / total: shows whether it's in use
+  s["ps"] = ESP.getPsramSize();
 }
 
 static bool cloudConfigured() {
