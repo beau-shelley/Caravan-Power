@@ -9,6 +9,9 @@ tests/sim/obj/
 firmware/hub/data/
 firmware/display/.dummy/
 firmware/display/managed_components/
+# Written by the ESP-IDF component manager on each build. A committed copy went stale
+# when the platform was pinned to 55.03.39 and broke CI ("fb_gfx is corrupted").
+firmware/display/dependencies.lock
 firmware/display/sdkconfig.defaults
 firmware/display/sdkconfig.display-demo
 __pycache__/
