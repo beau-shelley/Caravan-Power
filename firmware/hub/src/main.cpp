@@ -110,6 +110,9 @@ static void startSolar(int i) {
 #endif
     }
   }
+  // Not Bluetooth any more: forget its key, or its readings keep landing in
+  // this slot until the next restart.
+  if (v.src != SOLAR_BLE && gVictronBleOn) gVictronBle.setDevice(i, "", "");
   if (v.src == SOLAR_BLE) {
     if (!gVictronBleOn) {
       gVictronBle.begin();
