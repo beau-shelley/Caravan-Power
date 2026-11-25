@@ -3,7 +3,29 @@ package com.caravan.monitor.ui
 // Android glue: wires the shared *Content composables to the hub connection,
 // the phone settings and Android intents.
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.SystemClock
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.core.content.ContextCompat
+import com.caravan.monitor.Found
+import com.caravan.monitor.Geo
+import com.caravan.monitor.Place
+import kotlinx.coroutines.launch
 import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
@@ -124,14 +146,14 @@ fun AlertsScreen() {
 }
 
 @Composable
-fun SetupScreen() {
+fun SetupScreen(onOpenAdmin: () -> Unit) {
     val app = CaravanApp.instance
     val ctx = LocalContext.current
     val saved by app.prefs.settings.collectAsStateWithLifecycle()
     val status by app.hub.status.collectAsStateWithLifecycle()
     val meta by app.hub.meta.collectAsStateWithLifecycle()
     val update by app.updater.info.collectAsStateWithLifecycle()
-    val state by app.hub.state.collectAsStateWithLifecycle()
+    var askLogin by remember { mutableStateOf(false) }
     SetupContent(
         saved = saved,
         status = status,
@@ -145,14 +167,8 @@ fun SetupScreen() {
             if (bgChanged) MonitorService.sync(ctx)
         },
         onBatteryExempt = { askBatteryExemption(ctx) },
-        onScreenSleep = { app.hub.send("display_set", "sleep" to it); app.hub.send("hello") },
-        onRemoteControl = { app.hub.send("remote_control", "on" to it); app.hub.send("hello") },
-        onBatteryAh = { app.hub.send("battery_set", "cap" to it); app.hub.send("hello") },
-        onBatteryFull = { app.hub.send("soc_set", "soc" to 100) },
-        onSecureCode = { app.hub.send("secure_code", "code" to it); app.hub.send("hello") },
-        secSens = state?.sec?.sens ?: 1,
-        onSecureSens = { app.hub.send("secure", "sens" to it) },
-        onOpenWebPage = { app.hub.baseUrl()?.let { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) } },
+        onOpenAdmin = { if (AdminSession.unlocked()) onOpenAdmin() else askLogin = true },
+        adminUnlocked = AdminSession.unlocked(),
         update = update,
         updateTokenSet = update.state != UpdState.NO_TOKEN,
         onSaveUpdateToken = { app.updater.setToken(it) },
@@ -164,6 +180,202 @@ fun SetupScreen() {
                     "&description=Lets%20the%20Caravan%20Android%20app%20download%20its%20updates&contents=read&target_name=beau-shelley&expires_in=none")))
         },
     )
+    if (askLogin) AdminLoginDialog(onDismiss = { askLogin = false }, onOk = { askLogin = false; onOpenAdmin() })
+}
+
+/**
+ * Admin login, held in memory only: it ends when the app is closed, when
+ * "Log out" is pressed, or 30 minutes after the last admin change.
+ */
+object AdminSession {
+    private const val IDLE_MS = 30 * 60_000L
+    private var until by mutableStateOf(0L)
+    fun unlocked() = SystemClock.elapsedRealtime() < until
+    fun touch() { until = SystemClock.elapsedRealtime() + IDLE_MS }
+    fun logout() { until = 0L }
+}
+
+/**
+ * The admin password is the hub's own web login (WEB_USER / WEB_PASS in
+ * secrets.h). On the caravan's Wi-Fi the hub checks it. Away from the van the
+ * hub can't be asked directly, so the password has to match the hub password
+ * or the cloud password already saved in this app's Setup.
+ */
+@Composable
+private fun AdminLoginDialog(onDismiss: () -> Unit, onOk: () -> Unit) {
+    val app = CaravanApp.instance
+    val saved by app.prefs.settings.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var user by remember { mutableStateOf(saved.user.ifBlank { "admin" }) }
+    var pass by remember { mutableStateOf("") }
+    var err by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    fun tryLogin() {
+        if (busy) return
+        busy = true
+        err = ""
+        scope.launch {
+            val direct = app.hub.checkLogin(user, pass)
+            val ok = direct ?: (pass.isNotEmpty() && (pass == saved.pass || pass == saved.cloudPass))
+            busy = false
+            if (ok) {
+                AdminSession.touch()
+                if (direct == true && (user != saved.user || pass != saved.pass)) app.prefs.update(saved.copy(user = user, pass = pass))
+                onOk()
+            } else {
+                err = if (direct == false) "The hub says that's the wrong username or password."
+                else "Wrong password. Away from the van, use the hub password or the cloud password saved in Setup."
+            }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Admin login") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("The same login as the hub's web page.")
+                OutlinedTextField(user, { user = it.trim() }, label = { Text("Username") }, singleLine = true)
+                OutlinedTextField(pass, { pass = it }, label = { Text("Password") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { tryLogin() }))
+                if (err.isNotEmpty()) Text(err, color = Accent.warn)
+            }
+        },
+        confirmButton = { TextButton(onClick = { tryLogin() }, enabled = !busy) { Text(if (busy) "Checking..." else "Log in") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Commands whose answer changes the names/settings in "meta": ask for a fresh copy after them. */
+private val META_CMDS = setOf("battery_set", "display_set", "remote_control", "secure_code", "location_set", "heater_set", "victron_set", "temp_set", "sensor_assign")
+
+@Composable
+fun AdminScreen(snack: SnackbarHostState, onBack: () -> Unit, onOpenAlerts: () -> Unit, onOpenLevel: () -> Unit) {
+    val hub = CaravanApp.instance.hub
+    val ctx = LocalContext.current
+    val state by hub.state.collectAsStateWithLifecycle()
+    val meta by hub.meta.collectAsStateWithLifecycle()
+    val status by hub.status.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var finds by remember { mutableStateOf(AdminFinds()) }
+    BackHandler(onBack = onBack)
+
+    LaunchedEffect(Unit) {
+        hub.replies.collect { r ->
+            val list = Found.parseList(r.optJSONArray("list"))
+            when (r.optString("t")) {
+                "victron_seen" -> finds = finds.copy(victron = list)
+                "ble_sensors" -> finds = finds.copy(bleTemps = list)
+                "sensors" -> finds = finds.copy(wiredTemps = list)
+                "heater_seen" -> finds = finds.copy(heaters = list)
+                "heater_log" -> finds = finds.copy(heaterLog = r.optString("log"))
+                "bmpro_log" -> finds = finds.copy(bmproLog = r.optString("log"))
+                "ok", "meta" -> scope.launch { snack.showSnackbar("Saved") }
+                "tank_cal" -> scope.launch { snack.showSnackbar("Stored") }
+            }
+        }
+    }
+
+    fun send(c: String, kv: Map<String, Any>) {
+        if (!AdminSession.unlocked()) {
+            scope.launch { snack.showSnackbar("Logged out after 30 minutes. Log in again.") }
+            onBack()
+            return
+        }
+        AdminSession.touch()
+        val o = JSONObject().put("c", c)
+        kv.forEach { (k, v) -> o.put(k, v) }
+        if (!hub.send(o)) { scope.launch { snack.showSnackbar("Not connected to the hub") }; return }
+        if (c in META_CMDS) hub.send("hello")
+    }
+
+    fun pick(p: Place) {
+        send("location_set", mapOf("lat" to p.lat, "lon" to p.lon, "name" to p.hubName, "src" to p.src))
+        finds = finds.copy(places = null, locMsg = "")
+    }
+
+    val usePhone = rememberPhoneLocation(
+        onBusy = { finds = finds.copy(locBusy = it, locMsg = if (it) "" else finds.locMsg) },
+        onPlace = { pick(it) },
+        onError = { finds = finds.copy(locMsg = it) },
+    )
+
+    AdminContent(
+        state, meta, status, finds,
+        send = ::send,
+        onBack = onBack,
+        onLogout = { AdminSession.logout(); onBack() },
+        onUsePhoneLocation = usePhone,
+        onSearchTown = { q ->
+            finds = finds.copy(locBusy = true, locMsg = "")
+            scope.launch {
+                finds = try {
+                    finds.copy(places = Geo.search(q), locBusy = false)
+                } catch (e: Exception) {
+                    finds.copy(locBusy = false, locMsg = e.message ?: "Search failed")
+                }
+            }
+        },
+        onPickPlace = ::pick,
+        onOpenAlerts = onOpenAlerts,
+        onOpenLevel = onOpenLevel,
+        onOpenWebPage = hub.baseUrl()?.let { url -> { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } },
+    )
+}
+
+@Composable
+fun LevelScreen(snack: SnackbarHostState) {
+    val hub = CaravanApp.instance.hub
+    val state by hub.state.collectAsStateWithLifecycle()
+    val status by hub.status.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        hub.replies.collect { r -> if (r.optString("t") == "level" && r.optString("msg").isNotBlank()) scope.launch { snack.showSnackbar(r.optString("msg")) } }
+    }
+    val usePhone = rememberPhoneLocation(
+        onBusy = {},
+        onPlace = { p ->
+            hub.send(JSONObject().put("c", "location_set").put("lat", p.lat).put("lon", p.lon).put("name", p.hubName).put("src", p.src))
+            hub.send("hello")
+            scope.launch { snack.showSnackbar("Weather location set to ${p.name}") }
+        },
+        onError = { scope.launch { snack.showSnackbar(it) } },
+    )
+    LevelContent(
+        state, status,
+        onZero = { hub.send("level_zero") },
+        onFront = { hub.send("level_front") },
+        onDims = { t, j -> hub.send("level_dims", "track" to t, "jockey" to j) },
+        onSetLocationHere = usePhone,
+    )
+}
+
+/** Returns an action that asks for the location permission if needed, then finds where the phone is. */
+@Composable
+private fun rememberPhoneLocation(onBusy: (Boolean) -> Unit, onPlace: (Place) -> Unit, onError: (String) -> Unit): () -> Unit {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val run = {
+        onBusy(true)
+        scope.launch {
+            try {
+                onPlace(Geo.here(ctx))
+            } catch (e: Exception) {
+                onError(e.message ?: "Couldn't get the phone's location")
+            } finally {
+                onBusy(false)
+            }
+        }
+        Unit
+    }
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        if (res.values.any { it }) run() else onError("Location permission was refused. Use the town search instead.")
+    }
+    return {
+        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (granted) run() else ask.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+    }
 }
 
 private fun ignoringBatteryOptimisation(ctx: Context): Boolean {

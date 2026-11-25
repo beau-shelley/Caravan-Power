@@ -196,6 +196,8 @@ fun fmt2(v: Double) = String.format(Locale.US, "%.2f", v)
 // Temperatures are shown as whole degrees (rounded; never "-0").
 fun fmtDeg(v: Double) = Math.round(v).toInt().toString()
 fun signed(v: Double) = (if (v > 0) "+" else "") + fmt1(v)
+/** Temperature for the sensor at [index]: the fridge (index 2) to one decimal, the rest as whole degrees. */
+fun fmtTemp(index: Int, v: Double) = if (index == 2) fmt1(v) else fmtDeg(v)
 
 /**
  * Shown instead of [ConnectionStrip] whenever the data isn't live: a clear "No connection"

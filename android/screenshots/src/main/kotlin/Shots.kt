@@ -29,6 +29,9 @@ import com.caravan.monitor.Gas
 import com.caravan.monitor.Heater
 import com.caravan.monitor.HubState
 import com.caravan.monitor.Level
+import com.caravan.monitor.LevelData
+import com.caravan.monitor.Found
+import com.caravan.monitor.Place
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Net
 import com.caravan.monitor.Pump
@@ -45,6 +48,9 @@ import com.caravan.monitor.ui.CaravanColors
 import com.caravan.monitor.ui.caravanBackground
 import com.caravan.monitor.ui.ClimateContent
 import com.caravan.monitor.ui.AppScaffold
+import com.caravan.monitor.ui.AdminContent
+import com.caravan.monitor.ui.AdminFinds
+import com.caravan.monitor.ui.LevelContent
 import com.caravan.monitor.ui.HomeContent
 import com.caravan.monitor.ui.RuleEditorCard
 import com.caravan.monitor.ui.SetupContent
@@ -216,7 +222,7 @@ fun main() {
     shot("5-setup", 1900) {
         AppScaffold(2, {}, 0) {
             SetupContent(SETTINGS, CONNECTED, META, "0.2.0", batteryExempt = false,
-                onSaveSettings = { _, _ -> }, onBatteryExempt = nop, onScreenSleep = {}, onRemoteControl = {}, onOpenWebPage = nop)
+                onSaveSettings = { _, _ -> }, onBatteryExempt = nop)
         }
     }
     // Diesel heater: running on the thermostat on a cold evening (Bluetooth status)
@@ -288,6 +294,36 @@ fun main() {
         AppScaffold(0, {}, 0) {
             HomeContent(null, META, emptyList(), ConnStatus(Conn.OFFLINE, "", "Hub not found. Are you on the caravan's Wi-Fi?"),
                 nop, { _, _ -> }, nop, nop)
+        }
+    }
+    // Admin settings (behind the admin login) and the Level page
+    val adminMeta = META.copy(locSrc = 3, locName = "Yellow Rock NSW", batteryAh = 405, screenSleepSec = 300, secCodeSet = true, tankCal = true)
+    val adminFinds = AdminFinds(
+        places = listOf(Place("Yellow Rock NSW", "2777, Blue Mountains", -33.69, 150.63), Place("Yellow Rock QLD", "4825", -21.5, 140.8)),
+        victron = listOf(Found("d4:3a:2c:91:0e:7b", type = "SmartSolar MPPT 100/30", rssi = -64, slot = 0), Found("c8:11:5e:02:aa:13", type = "SmartSolar MPPT 75/15", rssi = -77)),
+        bleTemps = listOf(Found("a4:c1:38:12:34:56", name = "TP357 (3456)", type = "ThermoPro", rssi = -58, c = 21.4, role = 0, batt = 90)),
+    )
+    shot("18-admin", 4200) {
+        AppScaffold(2, {}, 0) {
+            AdminContent(CHARGING, adminMeta, CONNECTED, adminFinds, { _, _ -> }, nop, nop, nop, {}, {}, nop, nop)
+        }
+    }
+    shot("19-admin-away-blocked", 900) {
+        AppScaffold(2, {}, 0) {
+            AdminContent(CHARGING, adminMeta.copy(remoteControl = false), ConnStatus(Conn.CONNECTED, "cloud", "Through the cloud", cloud = true),
+                AdminFinds(), { _, _ -> }, nop, nop, nop, {}, {}, nop, nop)
+        }
+    }
+    shot("20-level", 1400) {
+        AppScaffold(4, {}, 0) {
+            LevelContent(CHARGING.copy(lvl = LevelData(online = true, zeroed = true, frontLearned = true, pitch = 1.2, roll = -0.8)),
+                CONNECTED, nop, nop, { _, _ -> }, nop)
+        }
+    }
+    shot("21-level-done", 1400) {
+        AppScaffold(4, {}, 0) {
+            LevelContent(CHARGING.copy(lvl = LevelData(online = true, zeroed = true, frontLearned = true, pitch = 0.1, roll = -0.2)),
+                CONNECTED, nop, nop, { _, _ -> }, nop)
         }
     }
 }
