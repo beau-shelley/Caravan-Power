@@ -29,12 +29,12 @@ void WeatherClient::runSearch() {
   JsonArray list = out["list"].to<JsonArray>();
   char path[200];
   cv::geocodePath(path, sizeof(path), q);
-  WiFiClientSecure tls;
-  tls.setCACert(WEB_ROOTS_PEM);
+  // Plain HTTP (see loop()): a town search isn't secret, and TLS costs ~40 KB.
+  WiFiClient tcp;
   HTTPClient http;
   http.setTimeout(15000);
   int code = -1;
-  if (WiFi.status() == WL_CONNECTED && http.begin(tls, String("https://geocoding-api.open-meteo.com") + path)) {
+  if (WiFi.status() == WL_CONNECTED && http.begin(tcp, String("http://geocoding-api.open-meteo.com") + path)) {
     code = http.GET();
     if (code == 200) {
       JsonDocument in;
@@ -102,21 +102,22 @@ void WeatherClient::loop(cv::State &s) {
     Serial.printf("[weather] asked the display for the forecast (%.3f, %.3f)\n", lat, lon);
     return;
   }
-  // HTTPS needs a big free block; with both Bluetooth links open the classic
-  // ESP32 can be short of one. Skip rather than fail (and fragment) the heap.
-  if (ESP.getMaxAllocHeap() < 32000) {
-    Serial.printf("[weather] skipped: largest free block %u bytes, need ~32 KB - retry in 5 min\n",
+  // Plain HTTP, not HTTPS: a second TLS session next to the cloud link needs
+  // ~40 KB more internal RAM, and on 2026-11-25 a forecast fetch took the hub
+  // down to 864 bytes free. The forecast is public data, and Open-Meteo serves
+  // it on port 80 too. Still skip when RAM is tight.
+  if (ESP.getMaxAllocHeap() < 12000) {
+    Serial.printf("[weather] skipped: largest free block %u bytes - retry in 5 min\n",
                   (unsigned)ESP.getMaxAllocHeap());
     return;
   }
 
   char path[400];
   cv::openMeteoPath(path, sizeof(path), lat, lon);
-  WiFiClientSecure tls;
-  tls.setCACert(WEB_ROOTS_PEM);
+  WiFiClient tcp;
   HTTPClient http;
   http.setTimeout(15000);
-  if (!http.begin(tls, String("https://api.open-meteo.com") + path)) return;
+  if (!http.begin(tcp, String("http://api.open-meteo.com") + path)) return;
   int code = http.GET();
   if (code != 200) {
     Serial.printf("[weather] HTTP %d\n", code);

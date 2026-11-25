@@ -72,7 +72,7 @@
 #define PIN_LINK_RX 44
 #define PIN_LINK_TX 43
 #define PIN_LINK_DE 42   // set to -1 for auto-direction RS485 modules
-#define PIN_LINK_RE -1   // DE and /RE bridged on the S3 hub
+#define PIN_LINK_RE 41   // driven with DE, so no DE-/RE bridge is needed (a bridged module also works)
 
 // Victron VE.Direct (only the Victron TX -> ESP RX is needed; 5 V -> use divider)
 #define PIN_VE1_RX 17
@@ -110,5 +110,11 @@
 
 // Piezo buzzer (active buzzer via transistor) for un-acknowledged alarms
 #define PIN_BUZZER 7
+
+// On-board RGB LED (WS2812) used as a status light. DevKitC-1 v1.0 boards
+// wire it to GPIO48, v1.1 boards to GPIO38; both are driven, so either works
+// (and neither pin is used for anything else).
+#define PIN_STATUS_LED 48
+#define PIN_STATUS_LED2 38
 
 #endif

@@ -24,6 +24,7 @@ import com.caravan.monitor.ActiveAlert
 import com.caravan.monitor.Battery
 import com.caravan.monitor.Conn
 import com.caravan.monitor.ConnStatus
+import com.caravan.monitor.DataAge
 import com.caravan.monitor.Gas
 import com.caravan.monitor.Heater
 import com.caravan.monitor.HubState
@@ -265,6 +266,28 @@ fun main() {
     shot("13-home-away-cloud", 840) {
         AppScaffold(0, {}, 0) {
             HomeContent(calm, META, RULES, ConnStatus(Conn.CONNECTED, "cloud", "Through the cloud", cloud = true), nop, { _, _ -> }, nop, nop)
+        }
+    }
+    // Lost the link (or the van stopped sending): everything greyed, "No connection" on top.
+    val threeHoursAgo = System.currentTimeMillis() - 3 * 3600_000L
+    shot("18-home-no-connection", 915) {
+        AppScaffold(0, {}, 0) {
+            HomeContent(CHARGING, META, RULES, ConnStatus(Conn.OFFLINE, "", "Hub not found. Are you on the caravan's Wi-Fi?"),
+                nop, { _, _ -> }, nop, nop,
+                age = DataAge(live = false, lastAt = threeHoursAgo, why = "Hub not found. Are you on the caravan's Wi-Fi?"))
+        }
+    }
+    shot("19-home-cloud-van-offline", 915) {
+        AppScaffold(0, {}, 0) {
+            HomeContent(calm, META, RULES, ConnStatus(Conn.CONNECTED, "cloud", "Through the cloud, but the caravan is offline", cloud = true),
+                nop, { _, _ -> }, nop, nop,
+                age = DataAge(live = false, lastAt = threeHoursAgo, why = "The cloud is reachable, but the caravan isn't sending anything"))
+        }
+    }
+    shot("20-climate-no-connection", 915) {
+        AppScaffold(3, {}, 0) {
+            ClimateContent(cold, META, ConnStatus(Conn.OFFLINE, "", "Lost connection, retrying"), { _, _ -> }, nop,
+                age = DataAge(live = false, lastAt = System.currentTimeMillis() - 20 * 60_000L, why = "Lost connection, retrying"))
         }
     }
     shot("6-home-not-connected", 915) {

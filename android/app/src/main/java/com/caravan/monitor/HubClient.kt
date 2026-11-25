@@ -63,6 +63,9 @@ class HubClient(
     val meta: StateFlow<Meta> = _meta
     private val _rules = MutableStateFlow<List<Rule>>(emptyList())
     val rules: StateFlow<List<Rule>> = _rules
+    private val _age = MutableStateFlow(DataAge(live = false))
+    /** Whether [state] is live; the UI greys everything out when it isn't. */
+    val age: StateFlow<DataAge> = _age
     /** Replies that aren't state/rules/meta, e.g. {"t":"err","msg":...}. */
     private val _replies = MutableSharedFlow<JSONObject>(extraBufferCapacity = 32)
     val replies: SharedFlow<JSONObject> = _replies
@@ -71,8 +74,49 @@ class HubClient(
     @Volatile private var mqtt: MqttWs? = null
     @Volatile private var cloudBase = ""
     @Volatile private var lastMsgMs = 0L
+    /** When the last *fresh* state arrived (elapsedRealtime), and the wall-clock time it's from. */
+    @Volatile private var lastFreshMs = 0L
+    @Volatile private var dataAtWall = 0L
+    /** The cloud's "online" flag: false = the van isn't sending (display or hub down). */
+    @Volatile private var cloudHubOnline: Boolean? = null
     private val users = AtomicInteger(0)
     private var loop: Job? = null
+
+    init {
+        // Re-check every second, so the screen greys out when the data stops even if the link stays up.
+        scope.launch { while (isActive) { updateAge(); delay(1_000) } }
+    }
+
+    /**
+     * A new state from the hub. [fresh] = it's current (not the cloud's stored copy from
+     * some time ago). Only fresh states count as live and feed the phone notifications.
+     */
+    private fun onState(st: HubState, fresh: Boolean) {
+        _state.value = st
+        if (fresh) {
+            lastFreshMs = SystemClock.elapsedRealtime()
+            dataAtWall = System.currentTimeMillis()
+            notifier.onLocalState(st, _rules.value, _meta.value)
+        } else {
+            dataAtWall = if (st.ts > 0) st.ts * 1000 else 0L
+        }
+        updateAge()
+    }
+
+    private fun updateAge() {
+        val st = _status.value
+        val sinceFresh = SystemClock.elapsedRealtime() - lastFreshMs
+        val limit = if (st.cloud) DataAge.CLOUD_STALE_MS else DataAge.LOCAL_STALE_MS
+        val why = when {
+            st.conn != Conn.CONNECTED -> st.detail.ifBlank { "Not connected to the hub" }
+            st.cloud && cloudHubOnline == false -> "The cloud is reachable, but the caravan isn't sending anything"
+            lastFreshMs == 0L || sinceFresh > limit ->
+                if (st.cloud) "The caravan hasn't sent anything new through the cloud" else "The hub has stopped sending data"
+            else -> ""
+        }
+        val next = DataAge(live = why.isEmpty(), lastAt = dataAtWall, why = why)
+        if (next != _age.value) _age.value = next
+    }
 
     /** True if the hub was heard from in the last [withinMs]. */
     fun recentlyConnected(withinMs: Long = 15_000) =
@@ -138,6 +182,8 @@ class HubClient(
         mqtt?.close()
         mqtt = null
         _status.value = ConnStatus(Conn.IDLE)
+        lastFreshMs = 0L
+        updateAge()
     }
 
     private suspend fun runLoop() {
@@ -260,19 +306,21 @@ class HubClient(
         val base = "caravan/${s.cloudDevice.ifBlank { "caravan" }}/"
         val closed = CompletableDeferred<String>()
         val acked = CompletableDeferred<Int>()
-        var hubOnline: Boolean? = null
+        cloudHubOnline = null
+        lastFreshMs = 0L  // whatever came direct is no longer current
         fun connected() = ConnStatus(Conn.CONNECTED, "cloud",
-            if (hubOnline == false) "Through the cloud, but the caravan is offline" else "Through the cloud", cloud = true)
+            if (cloudHubOnline == false) "Through the cloud, but the caravan is offline" else "Through the cloud", cloud = true)
         _status.value = ConnStatus(Conn.CONNECTING, "cloud", "Away from the van: connecting through the cloud", cloud = true)
         val client = MqttWs(http, object : MqttWs.Listener {
             override fun onConnAck(rc: Int) { acked.complete(rc) }
             override fun onClosed(why: String) { closed.complete(why) }
-            override fun onMessage(topic: String, payload: String) {
+            override fun onMessage(topic: String, payload: String, retained: Boolean) {
                 if (!topic.startsWith(base)) return
                 val sub = topic.substring(base.length)
                 if (sub == "online") {
-                    hubOnline = payload.trim() == "1"
+                    cloudHubOnline = payload.trim() == "1"
                     if (acked.isCompleted) _status.value = connected()
+                    updateAge()
                     return
                 }
                 if (sub == "cmd" || sub == "event") return
@@ -280,9 +328,11 @@ class HubClient(
                 lastMsgMs = SystemClock.elapsedRealtime()
                 when (sub) {
                     "state" -> {
+                        // The broker's stored copy can be hours old (e.g. the van lost power):
+                        // only trust it as live if its own clock says it's recent.
                         val st = HubState.parse(o)
-                        _state.value = st
-                        notifier.onLocalState(st, _rules.value, _meta.value)
+                        val ageS = System.currentTimeMillis() / 1000 - st.ts
+                        onState(st, fresh = !retained || (st.ts > 0 && ageS in -120..DataAge.RETAINED_MAX_AGE_S))
                     }
                     "meta" -> _meta.value = Meta.parse(o)
                     "rules" -> _rules.value = Rule.parseList(o.optJSONArray("rules"))
@@ -291,7 +341,7 @@ class HubClient(
                             o.optJSONObject("meta")?.let { _meta.value = Meta.parse(it) }
                             _rules.value = Rule.parseList(o.optJSONArray("rules"))
                         }
-                        "state" -> _state.value = HubState.parse(o)
+                        "state" -> onState(HubState.parse(o), fresh = true)
                         else -> _replies.tryEmit(o)
                     }
                 }
@@ -353,9 +403,7 @@ class HubClient(
                     _status.value = ConnStatus(Conn.CONNECTED, host, "Connected")
                     socket.send("{\"c\":\"hello\"}")
                 }
-                val st = HubState.parse(o)
-                _state.value = st
-                notifier.onLocalState(st, _rules.value, _meta.value)
+                onState(HubState.parse(o), fresh = true)
             }
             "hello" -> {
                 o.optJSONObject("meta")?.let { _meta.value = Meta.parse(it) }

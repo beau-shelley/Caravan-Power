@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
 private fun App() {
     val hub = CaravanApp.instance.hub
     val state by hub.state.collectAsStateWithLifecycle()
+    val age by hub.age.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var admin by rememberSaveable { mutableStateOf(false) }  // Setup tab showing the admin settings
     val snack = remember { SnackbarHostState() }
@@ -59,7 +60,7 @@ private fun App() {
         }
     }
 
-    AppScaffold(tab, { if (it == tab && it == 2) admin = false; tab = it }, state?.alerts?.count { !it.ack } ?: 0, snackbarHost = { SnackbarHost(snack) }) {
+    AppScaffold(tab, { if (it == tab && it == 2) admin = false; tab = it }, if (age.live) state?.alerts?.count { !it.ack } ?: 0 else 0, snackbarHost = { SnackbarHost(snack) }) {
         when (tab) {
             0 -> HomeScreen(onOpenAlerts = { tab = 1 }, onOpenSetup = { tab = 2 })
             1 -> AlertsScreen()

@@ -118,6 +118,11 @@ dialog { background:var(--card); color:var(--text); border:1px solid var(--borde
 dialog::backdrop { background:rgba(0,0,0,.55); }
 pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px; border-radius:10px; max-height:360px; overflow:auto; }
 .hidden { display:none !important; }
+/* No live data: grey out every value (and block taps) under a clear "No connection" banner. */
+.stale { filter:grayscale(1); opacity:.4; pointer-events:none; user-select:none; }
+.nolink { display:flex; gap:12px; align-items:center; border-radius:12px; padding:10px 14px; margin-bottom:12px;
+  background:color-mix(in srgb, var(--warn) 18%, var(--bg)); }
+.nolink b { color:var(--warn); font-size:17px; display:block; }
 .wx { display:grid; grid-template-columns:1.3fr repeat(4, 1fr); gap:10px; align-items:center; }
 .wx .now { display:flex; align-items:center; gap:10px; }
 .wx .ico { font-size:34px; line-height:1; }
@@ -198,6 +203,8 @@ pre { white-space:pre-wrap; font-size:12px; background:var(--tile); padding:10px
 </nav>
 <main>
   <!-- ======================= OVERVIEW ======================= -->
+  <div id="noLink" class="nolink hidden" role="alert"><div><b>No connection</b>
+    <div id="noLinkWhy"></div><div class="muted small" id="noLinkAge"></div></div></div>
   <section id="tab-overview">
     <div id="alertBox" class="alerts" style="margin-bottom:12px"></div>
     <!-- Secure mode (anti-theft): uses the hub's level sensor -->
@@ -430,6 +437,30 @@ const FEATURES = { inverter:false, aircon:false };
 let S = null, META = { sol:["Roof","Portable"], tmp:["Inside","Outside","Fridge"], tank:["Tank 1","Tank 2","Grey"],
   pump:["Internal","External"], acp:[], rc:true, cap:405 }, RULES = [];
 let transport = null, lastMsg = 0;
+// Freshness: when the last *current* state arrived. The cloud's stored (retained) copy can be
+// hours old, so it doesn't count unless its own clock says it's recent. Not live = greyed out.
+let lastFresh = 0, hubOnline = null, connOk = false;
+const STALE_MS = { local: 10000, cloud: 50000, demo: 10000 };
+function agoText(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  return s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)} min ago` : s < 172800 ? `${Math.floor(s / 3600)} h ago` : `${Math.floor(s / 86400)} days ago`;
+}
+function checkLive() {
+  const kind = transport ? transport.kind : "local";
+  let why = "";
+  if (!transport || !connOk) why = $("#conn").textContent || "Not connected to the hub";
+  else if (kind === "cloud" && hubOnline === false) why = "The cloud is reachable, but the caravan isn't sending anything";
+  else if (!lastFresh || Date.now() - lastFresh > STALE_MS[kind]) why = kind === "cloud" ? "The caravan hasn't sent anything new through the cloud" : "The hub has stopped sending data";
+  const stale = !!why && !!S;
+  $("#tab-overview").classList.toggle("stale", stale);
+  $("#noLink").classList.toggle("hidden", !stale);
+  if (stale) {
+    $("#noLinkWhy").textContent = why;
+    const at = S && S.ts ? S.ts * 1000 : 0;
+    $("#noLinkAge").textContent = at ? `Greyed-out values are from ${agoText(at)} and may be wrong.` : "Greyed-out values are old and may be wrong.";
+  }
+}
+setInterval(checkLive, 1000);
 
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3200); }
 function fmtDur(m) { if (m < 0) return "idle"; if (m >= 5940) return "99h+"; return m >= 60 ? `${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m` : `${m}m`; }
@@ -510,7 +541,7 @@ function render() {
       <div class="bar"><i style="width:${Math.min(100, (b.aca || 0) / 1.2)}%; background:var(--mains)"></i></div>
       <div style="width:150px; text-align:right"><b style="color:var(--mains)">${Math.round(b.aca || 0)} A</b><br>
         <span class="muted small">${Math.round((b.aca || 0) * (b.v || 13.6))} W · estimated</span></div>
-    </div>` : "") + S.sol.map((m, i) => `
+    </div>` : "") + S.sol.map((m, i) => !(m.on && (m.w > 5 || m.ba > 0.3)) ? "" : `
     <div class="row mppt between" style="padding:6px 0">
       <div style="width:110px"><b>${esc(META.sol[i])}</b><br><span class="chip" style="color:${m.err ? "var(--alarm)" : "var(--solar)"}">${m.on ? (m.err ? "Error " + m.err : CS[m.cs] || "Unknown") : "Offline"}</span></div>
       <div class="bar"><i style="width:${m.on ? Math.min(100, m.w / 7) : 0}%"></i></div>
@@ -518,10 +549,12 @@ function render() {
         <span class="muted small">${m.on ? `${m.pv >= 0 ? m.pv.toFixed(1) + " V PV" : m.bv.toFixed(2) + " V"} · ${m.ba.toFixed(1)} A · ${m.yt.toFixed(2)} kWh today` : ""}</span></div>
     </div>`).join("");
 
+  // The fridge gets one decimal (a degree matters there); the rest whole degrees.
+  const fmtTemp = (i, v) => i === 2 ? (+v).toFixed(1) : Math.round(v);
   $("#temps").innerHTML = S.tmp.map((t, i) => `
     <div class="t"><span class="muted">${esc(META.tmp[i])}</span>
-      <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? Math.round(t.c) + "°" : "--"}</span>
-      <span class="muted small">${t.on ? `&nbsp;↓${Math.round(t.lo)}° ↑${Math.round(t.hi)}°` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
+      <span><span class="mid" style="color:${t.on ? tempColor(i, t.c) : "var(--dim)"}">${t.on ? fmtTemp(i, t.c) + "°" : "--"}</span>
+      <span class="muted small">${t.on ? `&nbsp;↓${fmtTemp(i, t.lo)}° ↑${fmtTemp(i, t.hi)}°` : ""}${t.b >= 0 && t.b <= 20 ? ` <span style="color:var(--warn)">batt ${t.b}%</span>` : ""}</span></span></div>`).join("");
 
   renderHeater();
   renderSecure();
@@ -677,7 +710,7 @@ function renderRules() {
 function onMessage(msg) {
   lastMsg = Date.now();
   switch (msg.t) {
-    case "state": S = msg; render(); break;
+    case "state": S = msg; if (!msg._old) lastFresh = Date.now(); render(); checkLive(); break;
     case "meta": Object.assign(META, msg); renderMeta(); if (msg.sc !== undefined && S) render(); break;
     case "hello": Object.assign(META, msg.meta); RULES = msg.rules; renderMeta(); renderRules(); break;
     case "rules": RULES = msg.rules; renderRules(); break;
@@ -718,10 +751,11 @@ function localTransport() {
       ws = new WebSocket(`ws://${location.hostname}:${tok.wsPort}/`);
       ws.onopen = () => { ws.send(JSON.stringify({ c: "auth", tok: tok.tok })); };
       ws.onmessage = (e) => { const m = JSON.parse(e.data);
-        if (m.t === "auth") { setConn(m.ok ? "Local · live" : "Auth failed", m.ok ? "ok" : "bad"); if (m.ok) send({ c: "hello" }); return; }
+        if (m.t === "auth") { connOk = !!m.ok; setConn(m.ok ? "Local · live" : "Auth failed", m.ok ? "ok" : "bad"); if (m.ok) send({ c: "hello" }); return; }
+        if (m.t === "state") connOk = true;  // a hub with no login never sends "auth"
         onMessage(m); };
-      ws.onclose = () => { setConn("Reconnecting…", "warnc"); setTimeout(connect, 3000); };
-    } catch (e) { setConn("Hub unreachable", "bad"); setTimeout(connect, 5000); }
+      ws.onclose = () => { connOk = false; setConn("Reconnecting…", "warnc"); checkLive(); setTimeout(connect, 3000); };
+    } catch (e) { connOk = false; setConn("Hub unreachable", "bad"); checkLive(); setTimeout(connect, 5000); }
   }
   connect();
   return t;
@@ -744,21 +778,24 @@ async function cloudTransport(cfg) {
   const base = `caravan/${cfg.dev || "caravan"}/`;
   const client = mqtt.connect(brokerUrl(cfg.url), { username: cfg.user, password: cfg.pass, reconnectPeriod: 4000, connectTimeout: 15000,
     clientId: "dash-" + Math.random().toString(16).slice(2, 10) });
-  let hubOnline = null;
+  hubOnline = null;
   const t = { kind: "cloud", ready: () => client.connected,
     send: (c) => client.publish(base + "cmd", JSON.stringify({ ...c, rid: Math.random().toString(16).slice(2, 8) }), { qos: 1 }) };
-  client.on("connect", () => { client.subscribe(base + "#"); setConn("Cloud · connected", "ok"); });
-  client.on("reconnect", () => setConn("Reconnecting…", "warnc"));
+  client.on("connect", () => { connOk = true; client.subscribe(base + "#"); setConn("Cloud · connected", "ok"); });
+  client.on("reconnect", () => { connOk = false; setConn("Reconnecting…", "warnc"); });
+  client.on("close", () => { connOk = false; checkLive(); });
   client.on("error", (e) => {
     // 4 / 5 = the broker refused the username or password: retrying won't help.
     if (e.code === 4 || e.code === 5) { setConn("Cloud: wrong username or password", "bad"); client.end(true); }
     else setConn("Cloud error: " + e.message, "bad");
   });
-  client.on("message", (topic, payload) => {
+  client.on("message", (topic, payload, packet) => {
     const sub = topic.slice(base.length), txt = payload.toString();
     if (sub === "online") { hubOnline = txt === "1"; setConn(hubOnline ? "Cloud · caravan online" : "Caravan offline", hubOnline ? "ok" : "bad"); return; }
     if (sub === "cmd") return;
     try { const m = JSON.parse(txt);
+      // The broker's stored copy (sent on subscribe) can be hours old: only live if its timestamp is recent.
+      if (sub === "state" && packet && packet.retain && !(m.ts && Math.abs(Date.now() / 1000 - m.ts) <= 60)) m._old = true;
       if (sub === "rules") { RULES = m.rules; renderRules(); } else onMessage(m); } catch (e) {}
   });
   return t;
@@ -768,6 +805,7 @@ function setConn(txt, cls) { const c = $("#conn"); c.textContent = txt; c.classN
 
 function demoTransport() {
   setConn("Demo data", "warnc");
+  connOk = true;
   const st = { t:"state", ts: Math.floor(Date.now() / 1000), bat:{ on:true, src:1, v:13.31, a:18.8, soc:78, ttg:52, sa:31.4, ca:0, aca:0, acon:false, chg:31.4, load:12.6 },
     sol:[{ on:true, pv:-1, w:312, bv:13.31, ba:22.6, cs:3, err:0, yt:1.42, mx:498 }, { on:true, pv:-1, w:118, bv:13.3, ba:8.8, cs:4, err:0, yt:0.61, mx:205 }],
     tmp:[{ on:true, c:24.6, lo:16.2, hi:27.9 }, { on:true, c:31.2, lo:14.8, hi:33.4 }, { on:true, c:7.4, lo:2.1, hi:7.4 }],

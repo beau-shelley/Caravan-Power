@@ -389,6 +389,35 @@ enum class Conn { IDLE, SEARCHING, CONNECTING, CONNECTED, AUTH_FAILED, OFFLINE }
 /** [cloud]: going through the cloud broker (away from the van) rather than straight to the hub. */
 data class ConnStatus(val conn: Conn = Conn.IDLE, val host: String = "", val detail: String = "", val cloud: Boolean = false)
 
+/**
+ * Whether the numbers on screen are live. When they aren't (no link, the link is up but
+ * no fresh data is arriving, or the cloud only has an old copy) the app greys everything
+ * out and says "No connection" instead of showing old values as if they were current.
+ * [lastAt]: wall-clock ms the data on screen is from, 0 if unknown. [why]: one line on the cause.
+ */
+data class DataAge(val live: Boolean = true, val lastAt: Long = 0, val why: String = "") {
+    companion object {
+        /** How long without a fresh state before it counts as stale: the hub pushes every second
+         *  direct, the cloud copy every 15 s. */
+        const val LOCAL_STALE_MS = 10_000L
+        const val CLOUD_STALE_MS = 50_000L
+        /** A retained cloud state is only trusted as live if its own timestamp is this recent. */
+        const val RETAINED_MAX_AGE_S = 60L
+
+        /** "just now", "5 min ago", "3 h ago", "2 days ago". */
+        fun ago(lastAt: Long, now: Long): String {
+            if (lastAt <= 0) return ""
+            val s = ((now - lastAt) / 1000).coerceAtLeast(0)
+            return when {
+                s < 60 -> "just now"
+                s < 3600 -> "${s / 60} min ago"
+                s < 2 * 86400 -> "${s / 3600} h ago"
+                else -> "${s / 86400} days ago"
+            }
+        }
+    }
+}
+
 /** The phone-side settings. Everything about the van itself lives on the hub. */
 data class Settings(
     val host: String = "",          // blank = find the hub automatically

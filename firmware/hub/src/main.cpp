@@ -110,6 +110,9 @@ static void startSolar(int i) {
 #endif
     }
   }
+  // Not Bluetooth any more: forget its key, or its readings keep landing in
+  // this slot until the next restart.
+  if (v.src != SOLAR_BLE && gVictronBleOn) gVictronBle.setDevice(i, "", "");
   if (v.src == SOLAR_BLE) {
     if (!gVictronBleOn) {
       gVictronBle.begin();
@@ -585,10 +588,12 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     reply["t"] = "ble_sensors";
     reply["list"] = serialized(gBleTemps.seen());
   } else if (!strcmp(c, "temp_set")) {
-    // {"c":"temp_set","role":2,"src":1,"addr":"aa:bb:.."}  src 0 = wired DS18B20
+    // {"c":"temp_set","role":2,"src":1,"addr":"aa:bb:.."}  src 0 = wired DS18B20,
+    // 1 = Bluetooth thermometer, 2 = the diesel heater's room sensor
     int role = cmd["role"] | -1;
     if (role < 0 || role >= cv::NUM_TEMPS) return replyErr(reply, "bad role");
     uint8_t src = cmd["src"] | (uint8_t)TEMP_BLE;
+    if (src > TEMP_HEATER) return replyErr(reply, "bad source");
     const char *addr = cmd["addr"] | "";
     if (src == TEMP_BLE && strlen(addr) != 17) return replyErr(reply, "address must look like aa:bb:cc:dd:ee:ff");
     gConfig.tempSrc[role] = src;
@@ -725,6 +730,36 @@ static void buzzerLoop(uint32_t now) {
   // Secure mode entry delay: a short chirp every second until it's disarmed.
   bool entry = gState.sec.mode == cv::SEC_ENTRY;
   digitalWrite(PIN_BUZZER, (alarm && (now % 2000) < 200) || (entry && (now % 1000) < 40) ? HIGH : LOW);
+}
+
+// On-board RGB LED (WS2812) as a status light, S3 hub only:
+//   red flashing = an unacknowledged alarm or the theft alarm (fast in the
+//   entry delay), green = cloud connected, orange = Wi-Fi only, blue = no Wi-Fi.
+static void statusLedLoop(uint32_t now) {
+#ifdef PIN_STATUS_LED
+  uint8_t r = 0, g = 0, b = 0;
+  uint8_t sec = gState.sec.mode;
+  if (sec == cv::SEC_ENTRY || sec == cv::SEC_TRIGGERED || gAlerts.anyUnackedAlarm()) {
+    bool on = sec == cv::SEC_ENTRY ? (now % 500) < 250 : (now % 1000) < 500;
+    r = on ? 40 : 0;
+  } else if (gState.cloud) {
+    g = 25;
+  } else if (gState.wifi) {
+    r = 35, g = 12;
+  } else {
+    b = 30;
+  }
+  static uint32_t last = 0xFFFFFFFF;
+  uint32_t rgb = (uint32_t)r << 16 | (uint32_t)g << 8 | b;
+  if (rgb == last) return;
+  last = rgb;
+  neopixelWrite(PIN_STATUS_LED, r, g, b);
+#ifdef PIN_STATUS_LED2
+  neopixelWrite(PIN_STATUS_LED2, r, g, b);
+#endif
+#else
+  (void)now;
+#endif
 }
 
 static void midnightReset() {
@@ -894,6 +929,51 @@ void loop() {
     }
     gpsLoop(now);
     if (gBleTempsOn) gBleTemps.poll(gState);
+    // A Bluetooth thermometer that goes quiet, or keeps repeating exactly the
+    // same broadcast (stuck - 2026-11-25 the fridge ThermoPro froze twice), must
+    // never be silent: its "too warm" rule can't fire without a live reading.
+    // Push a warning once when it goes wrong and once when it recovers.
+    {
+      constexpr uint32_t FROZEN_MS = 45UL * 60 * 1000;
+      static bool warned[cv::NUM_TEMPS] = {};
+      static bool seenOk[cv::NUM_TEMPS] = {};
+      for (int role = 0; role < cv::NUM_TEMPS; role++) {
+        if (!gBleTempsOn || gConfig.tempSrc[role] != TEMP_BLE) {
+          warned[role] = seenOk[role] = false;
+          continue;
+        }
+        const cv::Temp &t = gState.temp[role];
+        bool frozen = t.online && gBleTemps.unchangedMs(gConfig.tempBle[role]) > FROZEN_MS;
+        bool bad = !t.online || frozen;
+        if (!bad) seenOk[role] = true;
+        if (bad && !warned[role] && seenOk[role]) {
+          char msg[96];
+          snprintf(msg, sizeof(msg), frozen ? "Sensor reading hasn't changed for 45 min - it may be stuck"
+                                            : "No reading from the sensor for 2 min");
+          gNotify.push(gConfig.meta.tempName[role], msg, cv::SEV_WARN);
+          warned[role] = true;
+        } else if (!bad && warned[role]) {
+          gNotify.push(gConfig.meta.tempName[role], "Sensor reading again", cv::SEV_WARN, true);
+          warned[role] = false;
+        }
+      }
+    }
+    // Roles fed by the diesel heater's room sensor: live only while the hub
+    // has its Bluetooth status (otherwise offline, never a stale number).
+    for (int role = 0; role < cv::NUM_TEMPS; role++) {
+      if (gConfig.tempSrc[role] != TEMP_HEATER) continue;
+      cv::Temp &t = gState.temp[role];
+      if (!gState.htr.hasStatus()) {
+        t.online = false;
+        continue;
+      }
+      float c = gState.htr.cabinC;
+      if (!t.online && t.minC == 0 && t.maxC == 0) t.minC = t.maxC = c;
+      t.online = true;
+      t.c = c;
+      if (c < t.minC) t.minC = c;
+      if (c > t.maxC) t.maxC = c;
+    }
     if (gConfig.tankSource == TANK_ADC) gTanks.poll(gState);
     gShunt.poll(gState, now);
     if (gBmproOn) {
@@ -947,6 +1027,7 @@ void loop() {
     gLink.loop(gState);
   }
   buzzerLoop(now);
+  statusLedLoop(now);
   if (survey::kOn) survey::loop();
   if (gRestartAtMs && millis() - gRestartAtMs > 1000) ESP.restart();
   delay(2);

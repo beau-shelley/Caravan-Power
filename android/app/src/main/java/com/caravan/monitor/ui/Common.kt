@@ -46,6 +46,17 @@ import androidx.compose.ui.unit.dp
 import com.caravan.monitor.ActiveAlert
 import com.caravan.monitor.Conn
 import com.caravan.monitor.ConnStatus
+import com.caravan.monitor.DataAge
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import com.caravan.monitor.Severity
 import java.util.Locale
 
@@ -187,3 +198,54 @@ fun fmtDeg(v: Double) = Math.round(v).toInt().toString()
 fun signed(v: Double) = (if (v > 0) "+" else "") + fmt1(v)
 /** Temperature for the sensor at [index]: the fridge (index 2) to one decimal, the rest as whole degrees. */
 fun fmtTemp(index: Int, v: Double) = if (index == 2) fmt1(v) else fmtDeg(v)
+
+/**
+ * Shown instead of [ConnectionStrip] whenever the data isn't live: a clear "No connection"
+ * banner saying why and how old the greyed-out values below it are.
+ */
+@Composable
+fun NoConnectionBanner(age: DataAge, status: ConnStatus, onOpenSetup: (() -> Unit)? = null, now: Long = System.currentTimeMillis()) {
+    val color = if (status.conn == Conn.AUTH_FAILED) Accent.alarm else Accent.warn
+    val ago = DataAge.ago(age.lastAt, now)
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = 0.18f))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.CloudOff, null, Modifier.size(22.dp), tint = color)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("No connection", color = color, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            val why = if (status.conn == Conn.AUTH_FAILED) "${age.why}. Check the login in Setup." else age.why
+            if (why.isNotBlank()) Text(why, color = Surfaces.text, style = MaterialTheme.typography.bodySmall)
+            Text(
+                if (ago.isNotEmpty()) "Greyed-out values are from $ago and may be wrong." else "Greyed-out values are old and may be wrong.",
+                color = Accent.muted, style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (onOpenSetup != null && status.conn != Conn.CONNECTING && status.conn != Conn.SEARCHING && status.conn != Conn.CONNECTED) {
+            TextButton(onClick = onOpenSetup) { Text("Setup") }
+        }
+    }
+}
+
+private val greyPaint = Paint().apply {
+    colorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+    alpha = 0.38f
+}
+
+/** Greys out (no colour, faded) and blocks taps on everything inside, while the data isn't live. */
+fun Modifier.greyedOut(on: Boolean): Modifier = if (!on) this else this
+    .drawWithContent {
+        drawIntoCanvas { c ->
+            c.saveLayer(Rect(Offset.Zero, size), greyPaint)
+            drawContent()
+            c.restore()
+        }
+    }
+    .pointerInput(Unit) {
+        // Swallow every touch: the controls would act on old values.
+        awaitPointerEventScope {
+            while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+        }
+    }
