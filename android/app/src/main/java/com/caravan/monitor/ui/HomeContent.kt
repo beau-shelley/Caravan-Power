@@ -254,11 +254,12 @@ private fun SolarCard(s: HubState, meta: Meta, modifier: Modifier) {
     val total = s.sol.filter { it.on }.sumOf { it.w }
     SectionCard("Solar", Accent.solar, modifier, compact = true) {
         Text("${total.toInt()} W", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Accent.solar)
+        // Only sources making power get a row (a panel at 0 W is hidden, like the touchscreen).
         s.sol.forEachIndexed { i, p ->
+            if (!p.on || p.w < 1) return@forEachIndexed
             Row(Modifier.fillMaxWidth().padding(top = 3.dp)) {
                 Text(meta.solarNames.getOrElse(i) { "Solar ${i + 1}" }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                Text(if (p.on) "${p.w.toInt()} W" else "off", style = MaterialTheme.typography.bodyMedium,
-                    color = if (p.on) Surfaces.text else Accent.muted)
+                Text("${p.w.toInt()} W", style = MaterialTheme.typography.bodyMedium)
             }
         }
         Hint("${fmt1(s.sol.filter { it.on }.sumOf { it.yieldKwh })} kWh today")
