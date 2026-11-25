@@ -22,7 +22,8 @@ class MqttWs(
     interface Listener {
         /** rc 0 = accepted; 4 / 5 = wrong username or password. */
         fun onConnAck(rc: Int)
-        fun onMessage(topic: String, payload: String)
+        /** [retained]: the broker's stored copy, sent on subscribe; it can be hours old. */
+        fun onMessage(topic: String, payload: String, retained: Boolean)
         fun onClosed(why: String)
     }
 
@@ -112,7 +113,7 @@ class MqttWs(
                     p += 2
                     ws?.send(byteArrayOf(0x40, 2, id0.toByte(), id1.toByte()).toByteString())  // PUBACK
                 }
-                listener.onMessage(topic, String(body, p, body.size - p))
+                listener.onMessage(topic, String(body, p, body.size - p), (h and 1) == 1)
             }
             // 9 SUBACK, 13 PINGRESP: nothing to do
         }
