@@ -727,6 +727,36 @@ static void buzzerLoop(uint32_t now) {
   digitalWrite(PIN_BUZZER, (alarm && (now % 2000) < 200) || (entry && (now % 1000) < 40) ? HIGH : LOW);
 }
 
+// On-board RGB LED (WS2812) as a status light, S3 hub only:
+//   red flashing = an unacknowledged alarm or the theft alarm (fast in the
+//   entry delay), green = cloud connected, orange = Wi-Fi only, blue = no Wi-Fi.
+static void statusLedLoop(uint32_t now) {
+#ifdef PIN_STATUS_LED
+  uint8_t r = 0, g = 0, b = 0;
+  uint8_t sec = gState.sec.mode;
+  if (sec == cv::SEC_ENTRY || sec == cv::SEC_TRIGGERED || gAlerts.anyUnackedAlarm()) {
+    bool on = sec == cv::SEC_ENTRY ? (now % 500) < 250 : (now % 1000) < 500;
+    r = on ? 40 : 0;
+  } else if (gState.cloud) {
+    g = 25;
+  } else if (gState.wifi) {
+    r = 35, g = 12;
+  } else {
+    b = 30;
+  }
+  static uint32_t last = 0xFFFFFFFF;
+  uint32_t rgb = (uint32_t)r << 16 | (uint32_t)g << 8 | b;
+  if (rgb == last) return;
+  last = rgb;
+  neopixelWrite(PIN_STATUS_LED, r, g, b);
+#ifdef PIN_STATUS_LED2
+  neopixelWrite(PIN_STATUS_LED2, r, g, b);
+#endif
+#else
+  (void)now;
+#endif
+}
+
 static void midnightReset() {
   static int lastDay = -1;
   if (!gNet.timeValid()) return;
@@ -947,6 +977,7 @@ void loop() {
     gLink.loop(gState);
   }
   buzzerLoop(now);
+  statusLedLoop(now);
   if (survey::kOn) survey::loop();
   if (gRestartAtMs && millis() - gRestartAtMs > 1000) ESP.restart();
   delay(2);
