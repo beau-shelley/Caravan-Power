@@ -91,6 +91,39 @@ data class Secure(
         }
     }
 }
+/**
+ * Caravan level from the hub's tilt sensor ("lvl" in the state), same maths as
+ * the touchscreen's Level page (cv::levelAdvice in Leveling.cpp).
+ * pitch + = front (hitch) high, roll + = left (door side) high.
+ */
+data class LevelData(
+    val online: Boolean = false,
+    val zeroed: Boolean = false,
+    val frontLearned: Boolean = false,
+    val pitch: Double = 0.0,
+    val roll: Double = 0.0,
+    val trackMm: Int = 1900,
+    val jockeyMm: Int = 4500,
+) {
+    val rollOk get() = Math.abs(roll) <= TOL
+    val pitchOk get() = Math.abs(pitch) <= TOL
+    val level get() = zeroed && rollOk && pitchOk
+    /** Raise the left wheel (else the right one). */
+    val raiseLeft get() = roll < 0
+    val wheelMm get() = Math.round(trackMm * Math.abs(Math.tan(Math.toRadians(roll)))).toInt()
+    /** + wind the jockey wheel up, - down. */
+    val jockeyAdj get() = Math.round(-jockeyMm * Math.tan(Math.toRadians(pitch))).toInt()
+
+    companion object {
+        const val TOL = 0.3  // degrees counted as level, same as the touchscreen
+        fun parse(o: JSONObject?): LevelData = if (o == null) LevelData() else LevelData(
+            online = o.optBoolean("on"), zeroed = o.optBoolean("z"), frontLearned = o.optBoolean("f"),
+            pitch = o.optDouble("p", 0.0), roll = o.optDouble("r", 0.0),
+            trackMm = o.optInt("tr", 1900), jockeyMm = o.optInt("jk", 4500),
+        )
+    }
+}
+
 data class ActiveAlert(val id: Int, val sev: Int, val ack: Boolean, val since: Long, val value: Double, val msg: String)
 data class Weather(val ok: Boolean, val place: String, val tempC: Double, val windKmh: Double, val gustKmh: Double, val code: Int)
 data class Net(val wifi: Boolean, val cloud: Boolean, val ip: String)
@@ -108,6 +141,7 @@ data class HubState(
     val gas: Gas = Gas(),
     val htr: Heater? = null,
     val sec: Secure = Secure(),
+    val lvl: LevelData = LevelData(),
 ) {
     companion object {
         fun parse(o: JSONObject): HubState {
@@ -142,6 +176,7 @@ data class HubState(
                 gas = Gas(g.optBoolean("on"), g.optDouble("p", 0.0)),
                 htr = Heater.parse(o.optJSONObject("htr")),
                 sec = Secure.parse(o.optJSONObject("sec")),
+                lvl = LevelData.parse(o.optJSONObject("lvl")),
             )
         }
     }
@@ -160,6 +195,11 @@ data class Meta(
     val secCodeSet: Boolean = false,
     /** Battery bank size in Ah; the hub works out % and time left from it. 0 = not known yet. */
     val batteryAh: Int = 0,
+    /** Weather location: how it was set (0 none, 1 GPS, 2 phone, 3 town search) and its name. */
+    val locSrc: Int = 0,
+    val locName: String = "",
+    /** Tank senders can be calibrated on the hub (false when the levels come from the BMPRO). */
+    val tankCal: Boolean = false,
 ) {
     companion object {
         fun parse(o: JSONObject): Meta {
@@ -174,6 +214,9 @@ data class Meta(
                 screenSleepSec = o.optInt("ss", -1),
                 secCodeSet = o.optBoolean("sc"),
                 batteryAh = Math.round(o.optDouble("cap", 0.0)).toInt(),
+                locSrc = o.optInt("ls"),
+                locName = o.optString("ln"),
+                tankCal = o.optBoolean("tcal"),
             )
         }
     }
@@ -346,6 +389,35 @@ enum class Conn { IDLE, SEARCHING, CONNECTING, CONNECTED, AUTH_FAILED, OFFLINE }
 /** [cloud]: going through the cloud broker (away from the van) rather than straight to the hub. */
 data class ConnStatus(val conn: Conn = Conn.IDLE, val host: String = "", val detail: String = "", val cloud: Boolean = false)
 
+/**
+ * Whether the numbers on screen are live. When they aren't (no link, the link is up but
+ * no fresh data is arriving, or the cloud only has an old copy) the app greys everything
+ * out and says "No connection" instead of showing old values as if they were current.
+ * [lastAt]: wall-clock ms the data on screen is from, 0 if unknown. [why]: one line on the cause.
+ */
+data class DataAge(val live: Boolean = true, val lastAt: Long = 0, val why: String = "") {
+    companion object {
+        /** How long without a fresh state before it counts as stale: the hub pushes every second
+         *  direct, the cloud copy every 15 s. */
+        const val LOCAL_STALE_MS = 10_000L
+        const val CLOUD_STALE_MS = 50_000L
+        /** A retained cloud state is only trusted as live if its own timestamp is this recent. */
+        const val RETAINED_MAX_AGE_S = 60L
+
+        /** "just now", "5 min ago", "3 h ago", "2 days ago". */
+        fun ago(lastAt: Long, now: Long): String {
+            if (lastAt <= 0) return ""
+            val s = ((now - lastAt) / 1000).coerceAtLeast(0)
+            return when {
+                s < 60 -> "just now"
+                s < 3600 -> "${s / 60} min ago"
+                s < 2 * 86400 -> "${s / 3600} h ago"
+                else -> "${s / 86400} days ago"
+            }
+        }
+    }
+}
+
 /** The phone-side settings. Everything about the van itself lives on the hub. */
 data class Settings(
     val host: String = "",          // blank = find the hub automatically
@@ -367,6 +439,47 @@ data class Settings(
             val host = h.removePrefix("https://").trimEnd('/')
             // Secure-WebSocket port: EMQX Serverless uses 8084, HiveMQ Cloud 8884.
             if (host.contains(':')) "wss://$host/mqtt" else "wss://$host:${if (host.contains("emqx")) 8084 else 8884}/mqtt"
+        }
+    }
+}
+
+/** A weather location: from the phone's GPS, a town search, or a quick pick. src as the hub's LocationSource. */
+data class Place(val name: String, val detail: String, val lat: Double, val lon: Double, val src: Int = 3) {
+    /** The hub keeps 23 characters of the name. */
+    val hubName get() = name.take(23)
+
+    companion object {
+        const val SRC_PHONE = 2
+        const val SRC_SEARCH = 3
+        val SRC_LABEL = listOf("", "GPS", "this phone", "town search")
+        /** Beau's home spot, offered as a one-tap pick. */
+        val HOME = Place("Yellow Rock NSW", "2777, Blue Mountains", -33.6955, 150.6288, SRC_SEARCH)
+    }
+}
+
+/**
+ * Something the hub can hear or has found, from victron_seen, ble_sensors,
+ * sensors (wired probes) and heater_seen. Fields a list doesn't have stay at
+ * their defaults.
+ */
+data class Found(
+    val addr: String,
+    val name: String = "",
+    val type: String = "",
+    val rssi: Int = 0,
+    val c: Double? = null,
+    val role: Int = -1,
+    val slot: Int = -1,
+    val batt: Int = -1,
+) {
+    companion object {
+        fun parseList(a: JSONArray?): List<Found> = a.objects().map {
+            Found(
+                addr = it.optString("addr"), name = it.optString("name"),
+                type = it.optString("type").ifBlank { it.optString("model") },
+                rssi = it.optInt("rssi"), c = if (it.has("c")) it.optDouble("c") else null,
+                role = it.optInt("role", -1), slot = it.optInt("slot", -1), batt = it.optInt("batt", -1),
+            )
         }
     }
 }

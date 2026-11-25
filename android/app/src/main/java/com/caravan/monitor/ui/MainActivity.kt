@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -47,7 +48,9 @@ class MainActivity : ComponentActivity() {
 private fun App() {
     val hub = CaravanApp.instance.hub
     val state by hub.state.collectAsStateWithLifecycle()
+    val age by hub.age.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var admin by rememberSaveable { mutableStateOf(false) }  // Setup tab showing the admin settings
     val snack = remember { SnackbarHostState() }
 
     // Show hub errors (e.g. "invalid rule") as a snackbar.
@@ -57,12 +60,15 @@ private fun App() {
         }
     }
 
-    AppScaffold(tab, { tab = it }, state?.alerts?.count { !it.ack } ?: 0, snackbarHost = { SnackbarHost(snack) }) {
+    AppScaffold(tab, { if (it == tab && it == 2) admin = false; tab = it }, if (age.live) state?.alerts?.count { !it.ack } ?: 0 else 0, snackbarHost = { SnackbarHost(snack) }) {
         when (tab) {
             0 -> HomeScreen(onOpenAlerts = { tab = 1 }, onOpenSetup = { tab = 2 })
             1 -> AlertsScreen()
             3 -> ClimateScreen(onOpenSetup = { tab = 2 })
-            else -> SetupScreen()
+            4 -> LevelScreen(snack)
+            else -> if (admin && AdminSession.unlocked()) {
+                AdminScreen(snack, onBack = { admin = false }, onOpenAlerts = { tab = 1 }, onOpenLevel = { tab = 4 })
+            } else SetupScreen(onOpenAdmin = { admin = true })
         }
     }
 }

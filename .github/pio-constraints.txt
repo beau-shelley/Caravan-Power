@@ -1,3 +1,6 @@
 # Python packages pinned for PlatformIO builds in CI (see build.yml).
-# pioarduino 6.2.0.post1 fails the pioarduino platform's ">=6.2.0" engine check.
-pioarduino==6.2.0
+# The pioarduino platform (display) installs the "pioarduino" core into ~/.platformio/penv
+# and links with it. pioarduino 6.2.x brings SCons 4.11.1, which dropped
+# SCons.Tool.FortranCommon and fails the link ("No module named ..."). 6.1.19 uses SCons 4.8.1
+# and meets platform 55.03.39's ">=6.1.19" requirement.
+pioarduino==6.1.19

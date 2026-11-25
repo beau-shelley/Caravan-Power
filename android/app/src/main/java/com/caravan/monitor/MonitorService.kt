@@ -35,9 +35,11 @@ class MonitorService : Service() {
         app.hub.acquire()
         scope.launch { NtfyClient(app.prefs, app.hub, app.notifier).run() }
         scope.launch {
-            combine(app.hub.status, app.hub.state.map { it?.bat?.soc?.toInt() }) { st, soc ->
-                when (st.conn) {
-                    Conn.CONNECTED -> "Connected to the hub" + (soc?.let { " · battery $it%" } ?: "")
+            combine(app.hub.status, app.hub.age, app.hub.state.map { it?.bat?.soc?.let { s -> Math.round(s).toInt() } }) { st, age, soc ->
+                when {
+                    // Never show an old battery % as if it were current.
+                    st.conn == Conn.CONNECTED && !age.live -> "No connection: " + age.why.replaceFirstChar { it.lowercase() }
+                    st.conn == Conn.CONNECTED -> "Connected to the hub" + (soc?.let { " · battery $it%" } ?: "")
                     else -> if (app.prefs.settings.value.ntfyTopic.isNotBlank())
                         "Away from the van: alerts come through ntfy" else "Not connected to the hub"
                 }

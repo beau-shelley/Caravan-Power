@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.caravan.monitor.ConnStatus
+import com.caravan.monitor.DataAge
 import com.caravan.monitor.HubState
 import com.caravan.monitor.Meta
 import com.caravan.monitor.Rule
@@ -79,16 +80,28 @@ fun HomeContent(
     /** Arm (true) or disarm (false) secure mode; the Android wrapper asks first. */
     onSecure: (Boolean) -> Unit = {},
     onArm: () -> Unit = {},
+    /** Not live: the banner says "No connection" and every value below is greyed out. */
+    age: DataAge = DataAge(),
 ) {
+    val stale = !age.live && state != null
+    Column(Modifier.fillMaxSize()) {
+    if (stale) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp)) {
+            NoConnectionBanner(age, status, onOpenSetup)
+            UpdateBanner(update, onUpdate)
+        }
+    }
     // Fills the screen on any phone: the main cards grow to use spare height, and it scrolls if it doesn't fit.
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
     val fill = maxHeight - 20.dp
     FillColumn(
         fill,
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().greyedOut(stale).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        ConnectionStrip(status, onOpenSetup)
-        UpdateBanner(update, onUpdate)
+        if (!stale) {
+            ConnectionStrip(status, onOpenSetup)
+            UpdateBanner(update, onUpdate)
+        }
         val s = state
         if (s == null) {
             Text("Caravan", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -120,6 +133,7 @@ fun HomeContent(
         }
         TempsCard(s, meta, Modifier.grow())
         GasAndPumpsCard(s, meta, onPump, Modifier.grow())
+    }
     }
     }
 }
@@ -229,7 +243,7 @@ private fun BatteryCard(s: HubState, modifier: Modifier = Modifier) {
     SectionCard("Battery", Accent.battery, modifier, compact = true) {
         if (!b.on) { Text("Offline", color = Accent.muted); return@SectionCard }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("${b.soc.toInt()}%", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = socColor(b.soc))
+            Text("${Math.round(b.soc)}%", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = socColor(b.soc))
             Spacer(Modifier.width(12.dp))
             Column {
                 Text("${fmt2(b.v)} V  ·  ${signed(b.a)} A", style = MaterialTheme.typography.bodyLarge)
@@ -254,11 +268,12 @@ private fun SolarCard(s: HubState, meta: Meta, modifier: Modifier) {
     val total = s.sol.filter { it.on }.sumOf { it.w }
     SectionCard("Solar", Accent.solar, modifier, compact = true) {
         Text("${total.toInt()} W", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Accent.solar)
+        // Only sources making power get a row (a panel at 0 W is hidden, like the touchscreen).
         s.sol.forEachIndexed { i, p ->
+            if (!p.on || p.w < 1) return@forEachIndexed
             Row(Modifier.fillMaxWidth().padding(top = 3.dp)) {
                 Text(meta.solarNames.getOrElse(i) { "Solar ${i + 1}" }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                Text(if (p.on) "${p.w.toInt()} W" else "off", style = MaterialTheme.typography.bodyMedium,
-                    color = if (p.on) Surfaces.text else Accent.muted)
+                Text("${p.w.toInt()} W", style = MaterialTheme.typography.bodyMedium)
             }
         }
         Hint("${fmt1(s.sol.filter { it.on }.sumOf { it.yieldKwh })} kWh today")
@@ -298,9 +313,9 @@ private fun TempsCard(s: HubState, meta: Meta, modifier: Modifier = Modifier) {
                 Column(Modifier.weight(1f)) {
                     Text(meta.tempNames.getOrElse(i) { "Temp ${i + 1}" }, style = MaterialTheme.typography.labelSmall, color = Accent.muted)
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text(if (t.on) "${fmtDeg(t.c)}°" else "–", fontSize = 24.sp, fontWeight = FontWeight.SemiBold,
+                        Text(if (t.on) "${fmtTemp(i, t.c)}°" else "–", fontSize = 24.sp, fontWeight = FontWeight.SemiBold,
                             color = if (t.on) tempColor(i, t.c) else Accent.muted)
-                        if (t.on) Text("  ${fmtDeg(t.lo)}/${fmtDeg(t.hi)}°", style = MaterialTheme.typography.bodySmall,
+                        if (t.on) Text("  ${fmtTemp(i, t.lo)}/${fmtTemp(i, t.hi)}°", style = MaterialTheme.typography.bodySmall,
                             color = Accent.muted, modifier = Modifier.padding(bottom = 4.dp))
                     }
                 }

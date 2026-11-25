@@ -37,8 +37,6 @@ import com.caravan.monitor.Secure
 import com.caravan.monitor.Settings
 import com.caravan.monitor.UpdateInfo
 
-private val SLEEP_OPTIONS = listOf(10, 20, 30, 60, 300, 900, 1800, 3600, 0)
-
 @OptIn(ExperimentalMaterial3Api::class) // FilterChip is still experimental in older Material 3
 @Composable
 fun SetupContent(
@@ -49,18 +47,9 @@ fun SetupContent(
     batteryExempt: Boolean,
     onSaveSettings: (Settings, reconnect: Boolean) -> Unit,
     onBatteryExempt: () -> Unit,
-    onScreenSleep: (Int) -> Unit,
-    onRemoteControl: (Boolean) -> Unit,
-    /** Battery bank size in Ah (20-2000). */
-    onBatteryAh: (Int) -> Unit = {},
-    /** Tell the hub the battery is full now (sets its % to 100). */
-    onBatteryFull: () -> Unit = {},
-    onOpenWebPage: () -> Unit,
-    /** Disarm code for the touchscreen: 4-8 digits, "" removes it. */
-    onSecureCode: (String) -> Unit = {},
-    /** Secure mode sensitivity (0 low, 1 medium, 2 high), used every time it is armed. */
-    secSens: Int = 1,
-    onSecureSens: (Int) -> Unit = {},
+    /** Opens the admin settings (asks for the admin login first if needed). */
+    onOpenAdmin: () -> Unit = {},
+    adminUnlocked: Boolean = false,
     update: UpdateInfo = UpdateInfo(),
     updateTokenSet: Boolean = false,
     onSaveUpdateToken: (String) -> Unit = {},
@@ -162,104 +151,15 @@ fun SetupContent(
             }) { Text("Save") }
         }
 
-        SectionCard("Battery", Accent.battery) {
-            Text("The hub works out the battery % and time left itself, by counting the amps in and out " +
-                "against this size. (The BMPRO's own % stops at 600 Ah.) It resets to 100% each time the " +
-                "charger shows the bank is full.",
+        SectionCard("Admin: van settings", Accent.lime, icon = CaravanIcons.Lock) {
+            Text("Weather location, battery size, Victron keys, thermometers, diesel heater, tank calibration, " +
+                "touchscreen, secure mode code and BMPRO. Works at the van and from away (through the cloud).",
                 style = MaterialTheme.typography.bodySmall, color = Accent.muted)
             Spacer(Modifier.height(8.dp))
-            if (!connected) {
-                Text("Connect to the hub to change these.", color = Accent.muted)
-            } else {
-                var ah by remember(meta.batteryAh) { mutableStateOf(if (meta.batteryAh > 0) meta.batteryAh.toString() else "") }
-                var confirmFull by remember { mutableStateOf(false) }
-                val ahNum = ah.toIntOrNull()
-                val ahOk = ahNum != null && ahNum in 20..2000
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(ah, { v -> ah = v.filter { it.isDigit() }.take(4) }, label = { Text("Battery size") },
-                        suffix = { Text("Ah") }, singleLine = true, isError = ah.isNotEmpty() && !ahOk,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f))
-                    Button(onClick = { ahNum?.let(onBatteryAh) }, enabled = ahOk && ahNum != meta.batteryAh) { Text("Save") }
-                }
-                Text(when {
-                    ah.isNotEmpty() && !ahOk -> "20 to 2000 Ah"
-                    (ahNum ?: 0) > 600 -> "Bigger than the BMPRO can handle (600 Ah), so the hub's own count is the one to trust."
-                    else -> "3 x 135 Ah lithium = 405 Ah"
-                }, style = MaterialTheme.typography.bodySmall, color = if (ah.isNotEmpty() && !ahOk) Accent.warn else Accent.muted)
-                Spacer(Modifier.height(8.dp))
-                if (!confirmFull) {
-                    OutlinedButton(onClick = { confirmFull = true }) { Text("Battery is full: set to 100%") }
-                } else {
-                    Text("Only do this when the battery really is full.", color = Accent.warn, style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { onBatteryFull(); confirmFull = false }) { Text("Set to 100%") }
-                        OutlinedButton(onClick = { confirmFull = false }) { Text("Cancel") }
-                    }
-                }
-            }
-        }
-
-        SectionCard("Touchscreen", Accent.climate) {
-            if (!connected) {
-                Text("Connect to the hub to change these.", color = Accent.muted)
-            } else {
-                if (meta.screenSleepSec >= 0) {
-                    Text("Screen dims after", style = MaterialTheme.typography.labelMedium, color = Accent.muted)
-                    Picker(sleepLabel(meta.screenSleepSec), (SLEEP_OPTIONS + meta.screenSleepSec).distinct().sortedBy { if (it == 0) Int.MAX_VALUE else it }.map { it to sleepLabel(it) }) {
-                        onScreenSleep(it)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                SwitchRow("Allow control from the internet", meta.remoteControl) {
-                    onRemoteControl(it)
-                }
-                Text("When off, the remote dashboard can look but not switch pumps or change settings.",
-                    style = MaterialTheme.typography.bodySmall, color = Accent.muted)
-            }
-        }
-
-        SectionCard("Secure mode", Accent.secure, icon = CaravanIcons.Lock) {
-            Text("Arm it from Home. If the van is moved, you get 5 minutes to disarm before the full alarm. " +
-                "Disarming on the touchscreen needs this code; this phone doesn't (it has its own lock screen).",
-                style = MaterialTheme.typography.bodySmall, color = Accent.muted)
-            Spacer(Modifier.height(8.dp))
-            if (!connected) Text("Connect to the hub to change these.", color = Accent.muted)
-            else {
-                Text("Sensitivity", style = MaterialTheme.typography.labelLarge)
-                Text("Used every time it's armed. Low ignores more wind rocking.",
-                    style = MaterialTheme.typography.bodySmall, color = Accent.muted)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Secure.SENS.forEachIndexed { i, n ->
-                        FilterChip(selected = secSens == i, onClick = { onSecureSens(i) }, label = { Text(n) })
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                var code by remember { mutableStateOf("") }
-                Text(if (meta.secCodeSet) "A code is set." else "No code yet: anyone at the touchscreen can disarm.",
-                    color = if (meta.secCodeSet) Accent.secure else Accent.warn, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(code, { v -> code = v.filter { it.isDigit() }.take(8) }, label = { Text("New code (4-8 digits)") },
-                    singleLine = true, visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onSecureCode(code); code = "" }, enabled = code.length >= 4) { Text("Save code") }
-                    if (meta.secCodeSet) OutlinedButton(onClick = { onSecureCode("") }) { Text("Remove code") }
-                }
-            }
+            Button(onClick = onOpenAdmin) { Text(if (adminUnlocked) "Open admin settings" else "Admin login") }
         }
 
         UpdateSection(update, updateTokenSet, onSaveUpdateToken, onCheckUpdate, onUpdate, onOpenTokenPage)
-
-        SectionCard("More setup", Accent.muted) {
-            Text("Victron keys, thermometers, tank calibration, BMPRO and weather location are coming to the app next. " +
-                "Until then, set them on the hub's web page.", style = MaterialTheme.typography.bodySmall, color = Accent.muted)
-            Spacer(Modifier.height(8.dp))
-            FilledTonalButton(enabled = connected, onClick = onOpenWebPage) { Text("Open hub web page") }
-        }
 
         Row {
             Text("App $appVersion" + if (meta.fw.isNotBlank()) " · hub firmware ${meta.fw}" else "",
@@ -268,11 +168,3 @@ fun SetupContent(
         Spacer(Modifier.height(8.dp))
     }
 }
-
-private fun sleepLabel(sec: Int) = when {
-    sec == 0 -> "Never"
-    sec >= 3600 && sec % 3600 == 0 -> "${sec / 3600} h"
-    sec >= 60 && sec % 60 == 0 -> "${sec / 60} min"
-    else -> "$sec s"
-}
-
