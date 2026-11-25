@@ -49,6 +49,9 @@ Notifier gNotify;
 Net gNet;
 SemaphoreHandle_t gStateMux = nullptr;  // created in setup()
 
+static uint32_t gCloudConnects = 0;
+static uint32_t gLargestLow = 0xFFFFFFFF;  // lowest largest-free-block seen (sampled every 30 s)
+
 // ================================================================ Net
 // Up to three Wi-Fi networks (e.g. home, phone hotspot, Starlink), the same
 // list as the display. Define WIFI_SSID2 / WIFI_PASS2 and WIFI_SSID3 /
@@ -161,6 +164,7 @@ void Net::loop(cv::State &s) {
   static uint32_t nextHeapLog = 0;
   if ((int32_t)(millis() - nextHeapLog) >= 0) {
     nextHeapLog = millis() + 30000;
+    if (ESP.getMaxAllocHeap() < gLargestLow) gLargestLow = ESP.getMaxAllocHeap();
     Serial.printf("[sys] heap %u free, min %u, largest %u; PSRAM %u free of %u\n", (unsigned)ESP.getFreeHeap(),
                   (unsigned)ESP.getMinFreeHeap(), (unsigned)ESP.getMaxAllocHeap(), (unsigned)ESP.getFreePsram(),
                   (unsigned)ESP.getPsramSize());
@@ -532,6 +536,17 @@ void DisplayLink::queueOut(JsonDocument &doc) {
 
 static uint8_t gMemSkips = 0;  // cloud reconnects skipped for lack of RAM, in a row
 
+void addSysStats(JsonObject o) {
+  JsonObject s = o["sys"].to<JsonObject>();
+  s["up"] = millis() / 1000;
+  s["rr"] = (int)esp_reset_reason();
+  s["hf"] = ESP.getFreeHeap();
+  s["hmin"] = ESP.getMinFreeHeap();
+  s["hl"] = ESP.getMaxAllocHeap();
+  s["hlmin"] = gLargestLow == 0xFFFFFFFF ? 0 : gLargestLow;
+  s["cc"] = gCloudConnects;
+}
+
 static bool cloudConfigured() {
   return !CLOUD_ON_DISPLAY && strlen(MQTT_HOST) && !strstr(MQTT_HOST, "xxxxxxxx");
 }
@@ -613,6 +628,7 @@ void Cloud::loop(const cv::State &s) {
     if (gMqtt.connect(cid.c_str(), MQTT_USER, MQTT_PASS, will.c_str(), 1, true, "0")) {
       Serial.println("[cloud] connected");
       gMemSkips = 0;
+      gCloudConnects++;
       backoffMs_ = 2000;
       gMqtt.publish(will.c_str(), "1", true);
       gMqtt.subscribe((gBase + "cmd").c_str(), 1);
@@ -649,6 +665,7 @@ void Cloud::loop(const cv::State &s) {
       StateLock l;
       cv::stateToJson(s, doc.to<JsonObject>());
     }
+    addSysStats(doc.as<JsonObject>());
     publish("state", doc, true);
   }
 }

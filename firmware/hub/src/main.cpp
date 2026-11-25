@@ -300,6 +300,7 @@ void hub::handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply) {
     reply.clear();
   } else if (!strcmp(c, "state")) {
     cv::stateToJson(gState, reply.to<JsonObject>());
+    addSysStats(reply.as<JsonObject>());
   } else if (!strcmp(c, "hello")) {
     JsonObject o = reply.to<JsonObject>();
     o["t"] = "hello";
