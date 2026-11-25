@@ -76,6 +76,8 @@ class HubClient(
     @Volatile private var lastMsgMs = 0L
     /** When the last *fresh* state arrived (elapsedRealtime), and the wall-clock time it's from. */
     @Volatile private var lastFreshMs = 0L
+    /** Gap between the last two fresh states (the hub's send interval as seen here), 0 = unknown. */
+    @Volatile private var freshGapMs = 0L
     @Volatile private var dataAtWall = 0L
     /** The cloud's "online" flag: false = the van isn't sending (display or hub down). */
     @Volatile private var cloudHubOnline: Boolean? = null
@@ -94,7 +96,9 @@ class HubClient(
     private fun onState(st: HubState, fresh: Boolean) {
         _state.value = st
         if (fresh) {
-            lastFreshMs = SystemClock.elapsedRealtime()
+            val now = SystemClock.elapsedRealtime()
+            if (lastFreshMs > 0) freshGapMs = maxOf(freshGapMs, now - lastFreshMs)
+            lastFreshMs = now
             dataAtWall = System.currentTimeMillis()
             notifier.onLocalState(st, _rules.value, _meta.value)
         } else {
@@ -106,7 +110,7 @@ class HubClient(
     private fun updateAge() {
         val st = _status.value
         val sinceFresh = SystemClock.elapsedRealtime() - lastFreshMs
-        val limit = if (st.cloud) DataAge.CLOUD_STALE_MS else DataAge.LOCAL_STALE_MS
+        val limit = if (st.cloud) DataAge.cloudLimitMs(freshGapMs) else DataAge.LOCAL_STALE_MS
         val why = when {
             st.conn != Conn.CONNECTED -> st.detail.ifBlank { "Not connected to the hub" }
             st.cloud && cloudHubOnline == false -> "The cloud is reachable, but the caravan isn't sending anything"
@@ -308,6 +312,7 @@ class HubClient(
         val acked = CompletableDeferred<Int>()
         cloudHubOnline = null
         lastFreshMs = 0L  // whatever came direct is no longer current
+        freshGapMs = 0L
         fun connected() = ConnStatus(Conn.CONNECTED, "cloud",
             if (cloudHubOnline == false) "Through the cloud, but the caravan is offline" else "Through the cloud", cloud = true)
         _status.value = ConnStatus(Conn.CONNECTING, "cloud", "Away from the van: connecting through the cloud", cloud = true)
@@ -332,7 +337,11 @@ class HubClient(
                         // only trust it as live if its own clock says it's recent.
                         val st = HubState.parse(o)
                         val ageS = System.currentTimeMillis() / 1000 - st.ts
-                        onState(st, fresh = !retained || (st.ts > 0 && ageS in -120..DataAge.RETAINED_MAX_AGE_S))
+                        val fresh = !retained || (st.ts > 0 && ageS in -120..DataAge.RETAINED_MAX_AGE_S)
+                        // A live (not stored) state proves the van is sending, even if a late
+                        // "offline" from its last dropped connection is still sitting on the broker.
+                        if (!retained) cloudHubOnline = true
+                        onState(st, fresh)
                     }
                     "meta" -> _meta.value = Meta.parse(o)
                     "rules" -> _rules.value = Rule.parseList(o.optJSONArray("rules"))

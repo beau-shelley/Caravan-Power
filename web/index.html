@@ -440,7 +440,7 @@ let transport = null, lastMsg = 0;
 // Freshness: when the last *current* state arrived. The cloud's stored (retained) copy can be
 // hours old, so it doesn't count unless its own clock says it's recent. Not live = greyed out.
 let lastFresh = 0, hubOnline = null, connOk = false;
-const STALE_MS = { local: 10000, cloud: 50000, demo: 10000 };
+const STALE_MS = { local: 10000, cloud: 25000, demo: 10000 };  // cloud: hub sends every 10-15 s, so one missed update
 function agoText(ms) {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
   return s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)} min ago` : s < 172800 ? `${Math.floor(s / 3600)} h ago` : `${Math.floor(s / 86400)} days ago`;
@@ -795,7 +795,9 @@ async function cloudTransport(cfg) {
     if (sub === "cmd") return;
     try { const m = JSON.parse(txt);
       // The broker's stored copy (sent on subscribe) can be hours old: only live if its timestamp is recent.
-      if (sub === "state" && packet && packet.retain && !(m.ts && Math.abs(Date.now() / 1000 - m.ts) <= 60)) m._old = true;
+      if (sub === "state" && packet && packet.retain && !(m.ts && Math.abs(Date.now() / 1000 - m.ts) <= 25)) m._old = true;
+      // A live (not stored) state proves the van is sending, even if a late "offline" is still on the broker.
+      if (sub === "state" && packet && !packet.retain) hubOnline = true;
       if (sub === "rules") { RULES = m.rules; renderRules(); } else onMessage(m); } catch (e) {}
   });
   return t;
