@@ -593,17 +593,18 @@ void Cloud::loop(const cv::State &s) {
     if (ESP.getMaxAllocHeap() < 40000) {
       // Fragmented RAM doesn't heal by itself (2026-11-25: after a push alert
       // the S3 hub sat at a 33 KB largest block and the cloud stayed down for
-      // hours). After three tries (~10 min) restart: Bluetooth, the display
-      // link and the cloud are all back within ~30 s with a clean heap.
+      // hours). Phone alerts need the cloud, so retry every minute and after
+      // three tries (~3 min) restart: Bluetooth, the display link and the
+      // cloud are all back within ~30 s with a clean heap.
       if (++gMemSkips >= 3) {
         Serial.printf("[cloud] still no ~40 KB block after %u tries (largest %u) - restarting to recover the cloud\n",
                       gMemSkips, (unsigned)ESP.getMaxAllocHeap());
         delay(200);
         ESP.restart();
       }
-      Serial.printf("[cloud] skipped: largest free block %u bytes, need ~40 KB - retry in 5 min\n",
+      Serial.printf("[cloud] skipped: largest free block %u bytes, need ~40 KB - retry in 1 min\n",
                     (unsigned)ESP.getMaxAllocHeap());
-      nextTryMs_ = millis() + 300000;
+      nextTryMs_ = millis() + 60000;
       return;
     }
     String will = gBase + "online";
