@@ -19,6 +19,10 @@ enum Source : uint8_t { SRC_DISPLAY = 0, SRC_LOCAL_WEB = 1, SRC_CLOUD = 2 };
 
 // Implemented in main.cpp. Fills `reply` (may stay empty).
 void handleCommand(JsonObjectConst cmd, Source src, JsonDocument &reply);
+// Health figures for a soak test, added to every state message as "sys":
+// uptime, why it last restarted, lowest free / largest-block RAM since boot,
+// and how many times the cloud link has (re)connected.
+void addSysStats(JsonObject o);
 
 // ---------------------------------------------------------------- RS485 link
 class DisplayLink {
