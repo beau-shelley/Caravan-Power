@@ -25,6 +25,7 @@ struct Dev {
   int8_t batt;  // -1 unknown
   int rssi;
   uint32_t lastMs;  // 0 = name cached only, no reading yet
+  uint32_t changedMs;  // when the broadcast bytes last changed (a stuck sensor repeats them)
   char raw[125];    // last advert + scan response payload as hex (first 62 bytes), for checking a decoder
 };
 constexpr int MAX_DEVS = 24;
@@ -97,6 +98,7 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
     if (r.hasBatt) dev->batt = (int8_t)r.battPct;
     dev->rssi = d->getRSSI();
     dev->lastMs = millis();
+    if (strcmp(dev->raw, raw) != 0 || !dev->changedMs) dev->changedMs = millis();
     memcpy(dev->raw, raw, sizeof(dev->raw));
   }
   portEXIT_CRITICAL(&gLock);
@@ -139,6 +141,15 @@ void BleTempRx::poll(cv::State &s) {
     if (c < t.minC) t.minC = c;
     if (c > t.maxC) t.maxC = c;
   }
+}
+
+uint32_t BleTempRx::unchangedMs(const char *addr) const {
+  uint32_t out = 0;
+  portENTER_CRITICAL(&gLock);
+  for (int i = 0; i < gDevCount; i++)
+    if (gDevs[i].changedMs && !strcasecmp(gDevs[i].addr, addr)) out = millis() - gDevs[i].changedMs;
+  portEXIT_CRITICAL(&gLock);
+  return out;
 }
 
 String BleTempRx::seen() const {
