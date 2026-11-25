@@ -530,6 +530,8 @@ void DisplayLink::queueOut(JsonDocument &doc) {
   xQueueSend(outQ_, &m, 0);
 }
 
+static uint8_t gMemSkips = 0;  // cloud reconnects skipped for lack of RAM, in a row
+
 static bool cloudConfigured() {
   return !CLOUD_ON_DISPLAY && strlen(MQTT_HOST) && !strstr(MQTT_HOST, "xxxxxxxx");
 }
@@ -589,6 +591,16 @@ void Cloud::loop(const cv::State &s) {
     // heap further (2026-11-19: largest block shrank ~1 KB a minute). Wait
     // for memory instead of trying; the display board will take over cloud.
     if (ESP.getMaxAllocHeap() < 40000) {
+      // Fragmented RAM doesn't heal by itself (2026-11-25: after a push alert
+      // the S3 hub sat at a 33 KB largest block and the cloud stayed down for
+      // hours). After three tries (~10 min) restart: Bluetooth, the display
+      // link and the cloud are all back within ~30 s with a clean heap.
+      if (++gMemSkips >= 3) {
+        Serial.printf("[cloud] still no ~40 KB block after %u tries (largest %u) - restarting to recover the cloud\n",
+                      gMemSkips, (unsigned)ESP.getMaxAllocHeap());
+        delay(200);
+        ESP.restart();
+      }
       Serial.printf("[cloud] skipped: largest free block %u bytes, need ~40 KB - retry in 5 min\n",
                     (unsigned)ESP.getMaxAllocHeap());
       nextTryMs_ = millis() + 300000;
@@ -599,6 +611,7 @@ void Cloud::loop(const cv::State &s) {
     Serial.printf("[cloud] connecting to %s:%d\n", MQTT_HOST, MQTT_PORT);
     if (gMqtt.connect(cid.c_str(), MQTT_USER, MQTT_PASS, will.c_str(), 1, true, "0")) {
       Serial.println("[cloud] connected");
+      gMemSkips = 0;
       backoffMs_ = 2000;
       gMqtt.publish(will.c_str(), "1", true);
       gMqtt.subscribe((gBase + "cmd").c_str(), 1);
@@ -665,6 +678,12 @@ static void pushTask(void *) {
         gCloud.pauseFor(30000);
         for (int i = 0; i < 50 && ESP.getMaxAllocHeap() < kPushHeapNeed; i++) vTaskDelay(pdMS_TO_TICKS(100));
         Serial.printf("[push] largest free block %u before sending\n", (unsigned)ESP.getMaxAllocHeap());
+        // Still not enough: a TLS handshake now could run the heap dry
+        // (2026-11-25: 792 bytes free). Wait and try again instead.
+        if (ESP.getMaxAllocHeap() < kPushHeapNeed) {
+          vTaskDelay(pdMS_TO_TICKS(20000));
+          continue;
+        }
       }
       WiFiClientSecure tls;
       tls.setCACert(ROOT_CA_PEM);
