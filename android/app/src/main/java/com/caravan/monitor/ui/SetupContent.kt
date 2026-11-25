@@ -129,6 +129,12 @@ fun SetupContent(
             Text("On the caravan's Wi-Fi the app gets alerts straight from the hub, no internet needed. " +
                 "Android shows a small \"Watching caravan\" notification while this is on.",
                 style = MaterialTheme.typography.bodySmall, color = Accent.muted)
+            SwitchRow("Morning summary at 7 am", saved.morningSummary) {
+                onSaveSettings(saved.copy(morningSummary = it), false)
+            }
+            Text("Solar in, power and water used, and the fridge's overnight low, from what this phone heard " +
+                "over the last 24 hours (needs \"Watch for alerts\" on).",
+                style = MaterialTheme.typography.bodySmall, color = Accent.muted)
             if (!batteryExempt) {
                 Spacer(Modifier.height(8.dp))
                 FilledTonalButton(onClick = onBatteryExempt) { Text("Stop Android pausing alerts") }

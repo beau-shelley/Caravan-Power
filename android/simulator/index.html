@@ -462,7 +462,12 @@ function tempColor(i, c) {
   return "#" + st[st.length - 1][1];
 }
 const hm = (m) => m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
-const ttgText = (a, t) => t < 0 ? (a > 0.3 ? "Charging" : "Idle") : a > 0 ? `Full in ${hm(t)}` : `${hm(t)} left at this load`;
+// Same wording as the app (Usage.kt): days once it's over a day and a half.
+const aboutDur = (m) => m < 180 ? hm(m) : m < 2160 ? `About ${Math.round(m / 60)} h` : m > 20160 ? "Over 2 weeks"
+  : (() => { const h = Math.round(m / 720); return `About ${Math.floor(h / 2)}${h % 2 ? "½" : ""} days`; })();
+const ttgText = (a, t) => t < 0 ? (a > 0.3 ? "Charging" : "Idle") : a > 0 ? `Full in ${hm(t)}` : `${aboutDur(t)} left at this load`;
+// Gas days: the app fits a line to the last week of readings; the simulator assumes 6 % a day.
+const gasDays = (p) => { const t = aboutDur(Math.round(p / 6 * 1440)); return t.startsWith("Over") ? t : t.replace("About ", "") + " left"; };
 const ruleName = (id) => (S.rules.find((r) => r.id === id) || {}).name;
 
 function connStrip(withSetup) {
@@ -512,7 +517,7 @@ function homeHTML() {
     <span class="hint">${deg(S.lo[i])}/${deg(S.hi[i])}°</span></div></div>`).join("")}</div>
     <div class="hint">Wind 14 km/h, gusts 31 km/h · Bright</div>`, "compact");
   out += card("Gas & pumps", "var(--gas)", `<div class="gaspumps"><div class="gascol">${gasBottle(S.gas, 40)}
-    <div><div class="big" style="font-size:22px;color:${gasColor(S.gas)}">${Math.floor(S.gas)}%</div><div class="hint">Gas</div></div></div>
+    <div><div class="big" style="font-size:22px;color:${gasColor(S.gas)}">${Math.floor(S.gas)}%</div><div class="hint">Gas</div><div class="hint" style="font-size:11px">${gasDays(S.gas)}</div></div></div>
     <div class="pumps">${S.pump.map((on, i) => `<button class="pump ${on ? "on" : ""}" data-pump="${i}" ${S.lock[i] ? "disabled" : ""}>${ICON.tap}${META.pump[i]}<span>${S.lock[i] ? "Dry" : on ? "On" : "Off"}</span></button>`).join("")}</div></div>`, "compact");
   return out;
 }

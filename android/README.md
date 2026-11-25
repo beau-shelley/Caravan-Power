@@ -20,6 +20,15 @@ touchscreen for setup and sends alerts as phone notifications.
     whenever the van has internet. If the van is offline, nothing can reach the phone.
   - Rules with *Send a phone notification* off are skipped.
   - Critical alerts use their own "Critical alarms" channel with the alarm sound.
+- **Worked out on the phone** (no extra work for the hub), from a small log the app keeps
+  while it's connected (10-minute slices, 8 days, in `usage.csv`):
+  - battery time left at the current load, averaged over ~15 min ("About 2 days left");
+  - gas days left, from a straight-line fit to the last week of bottle readings
+    (since the last refill), shown under the gas %;
+  - a **morning summary** notification at 7 am (Setup switch): solar in yesterday,
+    Ah used and water used in the last 24 h, the fridge's overnight low, battery and gas now.
+    If the app only heard from the van for part of the day it says so.
+  All of it blanks out while the data isn't live.
 
 ## Updates
 

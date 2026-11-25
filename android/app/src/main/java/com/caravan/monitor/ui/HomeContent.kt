@@ -58,6 +58,7 @@ import com.caravan.monitor.ConnStatus
 import com.caravan.monitor.DataAge
 import com.caravan.monitor.HubState
 import com.caravan.monitor.Meta
+import com.caravan.monitor.Outlook
 import com.caravan.monitor.Rule
 import com.caravan.monitor.Secure
 import com.caravan.monitor.fmtNum
@@ -82,6 +83,8 @@ fun HomeContent(
     onArm: () -> Unit = {},
     /** Not live: the banner says "No connection" and every value below is greyed out. */
     age: DataAge = DataAge(),
+    /** Battery time and gas days worked out on the phone (empty while not live). */
+    outlook: Outlook = Outlook(),
 ) {
     val stale = !age.live && state != null
     Column(Modifier.fillMaxSize()) {
@@ -126,13 +129,13 @@ fun HomeContent(
         }
 
         SecureCard(s.sec, onSecure, onArm)
-        BatteryCard(s, Modifier.grow())
+        BatteryCard(s, outlook, Modifier.grow())
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).grow(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SolarCard(s, meta, Modifier.weight(1f).fillMaxHeight())
             TanksCard(s, meta, Modifier.weight(1f).fillMaxHeight())
         }
         TempsCard(s, meta, Modifier.grow())
-        GasAndPumpsCard(s, meta, onPump, Modifier.grow())
+        GasAndPumpsCard(s, meta, outlook, onPump, Modifier.grow())
     }
     }
     }
@@ -238,7 +241,7 @@ fun SlideToArm(enabled: Boolean, onArm: () -> Unit, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun BatteryCard(s: HubState, modifier: Modifier = Modifier) {
+private fun BatteryCard(s: HubState, outlook: Outlook, modifier: Modifier = Modifier) {
     val b = s.bat
     SectionCard("Battery", Accent.battery, modifier, compact = true) {
         if (!b.on) { Text("Offline", color = Accent.muted); return@SectionCard }
@@ -247,7 +250,7 @@ private fun BatteryCard(s: HubState, modifier: Modifier = Modifier) {
             Spacer(Modifier.width(12.dp))
             Column {
                 Text("${fmt2(b.v)} V  ·  ${signed(b.a)} A", style = MaterialTheme.typography.bodyLarge)
-                Hint(ttgText(b.a, b.ttgMin))
+                Hint(outlook.battery ?: ttgText(b.a, b.ttgMin))
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -349,16 +352,18 @@ private fun MiniStat(label: String, value: String, modifier: Modifier, color: an
 
 /** Gas bottle gauge on the left, the two pumps stacked on the right (like the touchscreen). */
 @Composable
-private fun GasAndPumpsCard(s: HubState, meta: Meta, onPump: (Int, Boolean) -> Unit, modifier: Modifier = Modifier) {
+private fun GasAndPumpsCard(s: HubState, meta: Meta, outlook: Outlook, onPump: (Int, Boolean) -> Unit, modifier: Modifier = Modifier) {
     SectionCard("Gas & pumps", Accent.gas, modifier, compact = true) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.width(118.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.width(132.dp), verticalAlignment = Alignment.CenterVertically) {
                 GasBottle(if (s.gas.on) s.gas.pct else null, Modifier.size(width = 40.dp, height = 62.dp))
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text(if (s.gas.on) "${s.gas.pct.toInt()}%" else "--", fontSize = 22.sp, fontWeight = FontWeight.Bold,
                         color = if (s.gas.on) gasColor(s.gas.pct) else Accent.muted)
                     Hint("Gas")
+                    // Days left at the recent rate (worked out on the phone over the last week).
+                    if (s.gas.on && outlook.gas != null) Text(outlook.gas, style = MaterialTheme.typography.labelSmall, color = Accent.muted)
                 }
             }
             Spacer(Modifier.width(8.dp))

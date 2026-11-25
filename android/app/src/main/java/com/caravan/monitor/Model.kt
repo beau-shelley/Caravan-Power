@@ -427,6 +427,8 @@ data class Settings(
     val user: String = "admin",
     val pass: String = "",
     val backgroundAlerts: Boolean = true,
+    /** A notification each morning at 7: solar in, power and water used, fridge low (worked out on the phone). */
+    val morningSummary: Boolean = true,
     val ntfyServer: String = "https://ntfy.sh",
     val ntfyTopic: String = "",
     val ntfyToken: String = "",

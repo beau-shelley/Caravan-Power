@@ -27,11 +27,17 @@ class Prefs(context: Context) {
         get() = sp.getString("ntfyLastId", "") ?: ""
         set(v) { sp.edit().putString("ntfyLastId", v).apply() }
 
+    /** Day (year * 1000 + day of year) the last morning summary went out. */
+    var lastSummaryDay: Int
+        get() = sp.getInt("summaryDay", 0)
+        set(v) { sp.edit().putInt("summaryDay", v).apply() }
+
     private fun load() = Settings(
         host = sp.getString("host", "") ?: "",
         user = sp.getString("user", "admin") ?: "admin",
         pass = sp.getString("pass", "") ?: "",
         backgroundAlerts = sp.getBoolean("bg", true),
+        morningSummary = sp.getBoolean("summary", true),
         ntfyServer = sp.getString("ntfyServer", "https://ntfy.sh") ?: "https://ntfy.sh",
         ntfyTopic = sp.getString("ntfyTopic", "") ?: "",
         ntfyToken = sp.getString("ntfyToken", "") ?: "",
@@ -47,6 +53,7 @@ class Prefs(context: Context) {
             .putString("user", s.user.trim())
             .putString("pass", s.pass)
             .putBoolean("bg", s.backgroundAlerts)
+            .putBoolean("summary", s.morningSummary)
             .putString("ntfyServer", s.ntfyServer.trim().trimEnd('/'))
             .putString("ntfyTopic", s.ntfyTopic.trim())
             .putString("ntfyToken", s.ntfyToken.trim())
