@@ -161,8 +161,8 @@ void buildHome(lv_obj_t *p) {
     lv_label_set_long_mode(mpName[i], LV_LABEL_LONG_DOT);
     mpChip[i] = chip(f);
     mpBar[i] = vbar(f, 100, LARGE ? 12 : 10, cc);
-    lv_bar_set_range(mpBar[i], 0, ac ? 120 : 700);  // 2 x 60 A chargers; 100/50 @ 12 V ~ 700 W
-    mpW[i] = lbl(f, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, cc, "-- W");
+    lv_bar_set_range(mpBar[i], 0, ac ? 120 : 60);  // 2 x 60 A chargers; one solar array ~50-65 A
+    mpW[i] = lbl(f, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, cc, "-- A");
     lv_obj_set_style_text_align(mpW[i], LV_TEXT_ALIGN_RIGHT, 0);
   }
   lv_obj_set_style_text_color(mpName[ROW_AC], c(col::MAINS), 0);
@@ -301,13 +301,13 @@ void updateHome() {
   }
 
   // energy flow
-  float solarW = s.solarW();
-  setText(lSolarW, "%.0f W", solarW);
-  setText(lSolarA, "%s", "");  // total watts only (roof + portable)
+  // Solar in amps (charge current into the battery), roof + portable.
+  setText(lSolarW, "%.1f A", s.solarA());
+  setText(lSolarA, "%s", "");
   setText(lChgA, s.bat.chargeA >= 99.95f ? "%.0f A" : "%.1f A", s.bat.chargeA);
   setText(lChgSub, "%s", "");  // total charge in (solar + BMPRO + mains) only
   // Each solar row only while that array is producing (roof and portable alike:
-  // a row reading 0 W at night is just clutter).
+  // a row reading 0 A at night is just clutter).
   unsigned solarMask = 0;
   for (int i = 0; i < cv::NUM_SOLAR; i++)
     if (s.solar[i].online && (s.solar[i].pvW > 5 || s.solar[i].batA > 0.3f)) solarMask |= 1u << i;
@@ -326,12 +326,12 @@ void updateHome() {
                     : m.cs == 4 ? col::ACCENT
                     : m.cs == 5 ? col::CHARGE : col::MUTED;
       setChip(mpChip[i], m.err ? "Error" : cv::chargeStateName(m.cs), cc);
-      lv_bar_set_value(mpBar[i], (int)m.pvW, LV_ANIM_ON);
-      setText(mpW[i], "%.0f W", m.pvW);
+      lv_bar_set_value(mpBar[i], (int)(m.batA + 0.5f), LV_ANIM_ON);
+      setText(mpW[i], "%.1f A", m.batA);
     } else {
       setChip(mpChip[i], "Offline", col::DIM);
       lv_bar_set_value(mpBar[i], 0, LV_ANIM_OFF);
-      setText(mpW[i], "-- W");
+      setText(mpW[i], "-- A");
     }
   }
 

@@ -297,6 +297,23 @@ static void testJsonRoundTrip() {
   CHECK(rs2.rules[3].levelCount == 2 && rs2.rules[3].levels[1].sev == SEV_CRIT);
   CHECK(strcmp(rs2.rules[0].name, rs.rules[0].name) == 0);
 
+  // Solar rules are in amps now; an old watts rule loads converted (/13.5 V).
+  {
+    JsonDocument od;
+    deserializeJson(od, R"({"m":"solar1_w","cmp":"<","thr":135,"hys":27,"lv":[{"thr":67.5,"sev":3}]})");
+    Rule lr;
+    CHECK(ruleFromJson(lr, od.as<JsonObjectConst>()));
+    CHECK(lr.metric == M_SOLAR1_A && lr.threshold == 10.0f && lr.hysteresis == 2.0f);
+    CHECK(lr.levelCount == 1 && lr.levels[0].threshold == 5.0f);
+    CHECK(strcmp(metricInfo(lr.metric).key, "solar1_a") == 0 && strcmp(metricInfo(lr.metric).unit, "A") == 0);
+    State ss;
+    ss.solar[1].online = true;
+    ss.solar[1].batA = 7.5f;
+    ss.solar[1].pvW = 100;
+    float v = 0;
+    CHECK(metricValue(ss, M_SOLAR_A, v) && v == 7.5f);
+  }
+
   Meta m;
   m.acPresetCount = 2;
   strcpy(m.acPresetName[0], "Cool 22");

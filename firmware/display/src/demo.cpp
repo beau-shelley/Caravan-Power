@@ -133,6 +133,7 @@ void loop() {
   s.ts += elapsed;
   s.solar[0].pvW = 510 + 25 * sinf(phase);
   s.solar[1].pvW = 650 + 35 * sinf(phase * 0.7f);
+  for (auto &x : s.solar) x.batA = x.pvW / x.batV;
   s.bat.solarA = (s.solar[0].pvW + s.solar[1].pvW) / s.bat.v;
   // Mains chargers "plugged in" for 1 minute of every 2.5, so the Home
   // screen's Mains row can be seen appearing and going away.
