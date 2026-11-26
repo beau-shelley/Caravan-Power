@@ -273,15 +273,15 @@ const META = { sol: ["Roof", "Portable"], tmp: ["Inside", "Outside", "Fridge"], 
   pump: ["Internal", "External"], fw: "1.4.0" };
 const METRICS = [
   ["bat_v", "Battery voltage", "V", 0.1], ["bat_soc", "Battery charge", "%", 1], ["bat_a", "Battery current", "A", 1],
-  ["load_a", "Load current", "A", 1], ["charge_a", "Charge current", "A", 1], ["solar_w", "Solar total", "W", 10],
-  ["solar1_w", "Solar 1", "W", 10], ["solar2_w", "Solar 2", "W", 10], ["temp_in", "Inside temp", "°C", 0.5],
+  ["load_a", "Load current", "A", 1], ["charge_a", "Charge current", "A", 1], ["solar_a", "Solar total", "A", 1],
+  ["solar1_a", "Solar 1", "A", 1], ["solar2_a", "Solar 2", "A", 1], ["temp_in", "Inside temp", "°C", 0.5],
   ["temp_out", "Outside temp", "°C", 0.5], ["temp_fridge", "Fridge temp", "°C", 0.5], ["tank1", "Tank 1", "%", 5],
   ["tank2", "Tank 2", "%", 5], ["tank3", "Tank 3", "%", 5], ["wx_gust", "Forecast gusts", "km/h", 5],
   ["wx_rain", "Forecast rain chance", "%", 10], ["gas", "Gas bottle", "%", 5],
 ].map(([key, label, unit, step]) => ({ key, label, unit, step }));
 const metric = (k) => METRICS.find((m) => m.key === k) || METRICS[0];
 function metricLabel(k) {
-  const map = { solar1_w: META.sol[0], solar2_w: META.sol[1], temp_in: META.tmp[0] + " temp", temp_out: META.tmp[1] + " temp",
+  const map = { solar1_a: META.sol[0], solar2_a: META.sol[1], temp_in: META.tmp[0] + " temp", temp_out: META.tmp[1] + " temp",
     temp_fridge: META.tmp[2] + " temp", tank1: META.tank[0], tank2: META.tank[1], tank3: META.tank[2] };
   return map[k] || metric(k).label;
 }
@@ -375,8 +375,8 @@ function step(dtMin) {
 // ======================================================== alert engine (delay + hysteresis, like AlertEngine.cpp)
 function value(m) {
   const b = S.bat;
-  return { bat_v: b.v, bat_soc: b.soc, bat_a: b.a, load_a: b.loadA, charge_a: b.solarA + S.acA, solar_w: S.sol[0] + S.sol[1],
-    solar1_w: S.sol[0], solar2_w: S.sol[1], temp_in: S.inside, temp_out: S.outside, temp_fridge: S.fridge,
+  return { bat_v: b.v, bat_soc: b.soc, bat_a: b.a, load_a: b.loadA, charge_a: b.solarA + S.acA, solar_a: (S.sol[0] + S.sol[1]) / 13.4,
+    solar1_a: S.sol[0] / 13.4, solar2_a: S.sol[1] / 13.4, temp_in: S.inside, temp_out: S.outside, temp_fridge: S.fridge,
     tank1: S.tank[0], tank2: S.tank[1], tank3: S.tank[2], wx_gust: 31, wx_rain: 20, gas: S.gas }[m];
 }
 // Stepped rules: each step fires once; drifting inside a step never re-fires;
@@ -613,7 +613,7 @@ function render(force = false) {
 
 // ---------------- rule editor + dialogs (rendered once, not on every tick)
 const DELAYS = [0, 10, 30, 60, 120, 300, 600, 900, 1800, 3600];
-const DEF_THR = { bat_v: 12, bat_soc: 30, bat_a: 30, load_a: 30, charge_a: 40, solar_w: 50, solar1_w: 50, solar2_w: 50, temp_in: 35, temp_out: 40, temp_fridge: 8, tank1: 20, tank2: 20, tank3: 20, wx_gust: 60, wx_rain: 70, gas: 20 };
+const DEF_THR = { bat_v: 12, bat_soc: 30, bat_a: 30, load_a: 30, charge_a: 40, solar_a: 5, solar1_a: 5, solar2_a: 5, temp_in: 35, temp_out: 40, temp_fridge: 8, tank1: 20, tank2: 20, tank3: 20, wx_gust: 60, wx_rain: 70, gas: 20 };
 function openEditor(r) {
   editing = { ...r, thr: fmtNum(r.thr), hys: fmtNum(r.hys), lv: (r.lv || []).map((l) => ({ thr: fmtNum(l.thr), sev: l.sev })) };
   drawEditor();

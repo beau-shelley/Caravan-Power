@@ -80,7 +80,7 @@ The display transmits only immediately after a hub frame ends, so the half-duple
 
 When remote control is off, every command except the read-only ones is refused from MQTT.
 
-Rule metric keys: `bat_v bat_soc bat_a load_a charge_a solar_w solar1_w solar2_w temp_in temp_out temp_fridge tank1 tank2 tank3 wx_gust wx_rain` (the last two are today's forecast max gust and rain chance).
+Rule metric keys: `bat_v bat_soc bat_a load_a charge_a solar_a solar1_a solar2_a temp_in temp_out temp_fridge tank1 tank2 tank3 wx_gust wx_rain` (the last two are today's forecast max gust and rain chance). Solar rules are in amps; older `solar_w`/`solar1_w`/`solar2_w` rules load as amps with thresholds divided by 13.5 V.
 Actions: `none aircon_off inverter_off pumps_off`.
 
 ## Setting up from a phone or app

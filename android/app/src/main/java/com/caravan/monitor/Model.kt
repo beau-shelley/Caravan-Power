@@ -233,9 +233,9 @@ object Metrics {
         Metric("bat_a", "Battery current", "A", 1.0),
         Metric("load_a", "Load current", "A", 1.0),
         Metric("charge_a", "Charge current", "A", 1.0),
-        Metric("solar_w", "Solar total", "W", 10.0),
-        Metric("solar1_w", "Solar 1", "W", 10.0),
-        Metric("solar2_w", "Solar 2", "W", 10.0),
+        Metric("solar_a", "Solar total", "A", 1.0),
+        Metric("solar1_a", "Solar 1", "A", 1.0),
+        Metric("solar2_a", "Solar 2", "A", 1.0),
         Metric("temp_in", "Inside temp", "°C", 0.5),
         Metric("temp_out", "Outside temp", "°C", 0.5),
         Metric("temp_fridge", "Fridge temp", "°C", 0.5),
@@ -248,12 +248,19 @@ object Metrics {
         Metric("theft", "Theft alarm", "", 1.0),
     )
 
-    fun byKey(key: String): Metric = all.firstOrNull { it.key == key } ?: all[0]
+    /** Solar rules from a hub that hasn't been updated yet (watts). Shown, not offered. */
+    private val legacy = listOf(
+        Metric("solar_w", "Solar total", "W", 10.0),
+        Metric("solar1_w", "Solar 1", "W", 10.0),
+        Metric("solar2_w", "Solar 2", "W", 10.0),
+    )
+
+    fun byKey(key: String): Metric = all.firstOrNull { it.key == key } ?: legacy.firstOrNull { it.key == key } ?: all[0]
 
     /** Label using the names set on the hub (e.g. "Fresh 1" instead of "Tank 1"). */
     fun label(key: String, meta: Meta): String = when (key) {
-        "solar1_w" -> meta.solarNames.getOrNull(0) ?: byKey(key).label
-        "solar2_w" -> meta.solarNames.getOrNull(1) ?: byKey(key).label
+        "solar1_a", "solar1_w" -> meta.solarNames.getOrNull(0) ?: byKey(key).label
+        "solar2_a", "solar2_w" -> meta.solarNames.getOrNull(1) ?: byKey(key).label
         "temp_in" -> "${meta.tempNames.getOrNull(0) ?: "Inside"} temp"
         "temp_out" -> "${meta.tempNames.getOrNull(1) ?: "Outside"} temp"
         "temp_fridge" -> "${meta.tempNames.getOrNull(2) ?: "Fridge"} temp"

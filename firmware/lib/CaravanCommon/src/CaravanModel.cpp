@@ -11,9 +11,9 @@ static const MetricInfo kMetrics[M_COUNT] = {
     {"bat_a", "Battery current", "A", 1.0f},
     {"load_a", "Load current", "A", 1.0f},
     {"charge_a", "Charge current", "A", 1.0f},
-    {"solar_w", "Solar total", "W", 10.0f},
-    {"solar1_w", "Solar 1", "W", 10.0f},
-    {"solar2_w", "Solar 2", "W", 10.0f},
+    {"solar_a", "Solar total", "A", 1.0f},
+    {"solar1_a", "Solar 1", "A", 1.0f},
+    {"solar2_a", "Solar 2", "A", 1.0f},
     {"temp_in", "Inside temp", "\xC2\xB0" "C", 0.5f},
     {"temp_out", "Outside temp", "\xC2\xB0" "C", 0.5f},
     {"temp_fridge", "Fridge temp", "\xC2\xB0" "C", 0.5f},
@@ -35,6 +35,19 @@ Metric metricFromKey(const char *key) {
   return M_COUNT;
 }
 
+// Solar rules used to be in watts (solar_w, solar1_w, solar2_w). Saved rules
+// with those keys load as the amps metric, thresholds converted at a nominal
+// 13.5 V charge voltage. Returns M_COUNT for anything else.
+static constexpr float LEGACY_SOLAR_V = 13.5f;
+static Metric legacySolarMetric(const char *key) {
+  if (!key) return M_COUNT;
+  if (!strcmp(key, "solar_w")) return M_SOLAR_A;
+  if (!strcmp(key, "solar1_w")) return M_SOLAR1_A;
+  if (!strcmp(key, "solar2_w")) return M_SOLAR2_A;
+  return M_COUNT;
+}
+static float wattsToAmps(float w) { return roundf(w / LEGACY_SOLAR_V * 10) / 10; }
+
 bool metricValue(const State &s, Metric m, float &out) {
   switch (m) {
     case M_BAT_V: out = s.bat.v; return s.bat.online;
@@ -42,14 +55,14 @@ bool metricValue(const State &s, Metric m, float &out) {
     case M_BAT_A: out = s.bat.a; return s.bat.online;
     case M_LOAD_A: out = s.bat.loadA; return s.bat.online;
     case M_CHARGE_A: out = s.bat.chargeA; return s.bat.online;
-    case M_SOLAR_W: {
+    case M_SOLAR_A: {
       bool any = false;
       for (auto &x : s.solar) any |= x.online;
-      out = s.solarW();
+      out = s.solarA();
       return any;
     }
-    case M_SOLAR1_W: out = s.solar[0].pvW; return s.solar[0].online;
-    case M_SOLAR2_W: out = s.solar[1].pvW; return s.solar[1].online;
+    case M_SOLAR1_A: out = s.solar[0].batA; return s.solar[0].online;
+    case M_SOLAR2_A: out = s.solar[1].batA; return s.solar[1].online;
     case M_TEMP_IN: out = s.temp[TEMP_INSIDE].c; return s.temp[TEMP_INSIDE].online;
     case M_TEMP_OUT: out = s.temp[TEMP_OUTSIDE].c; return s.temp[TEMP_OUTSIDE].online;
     case M_TEMP_FRIDGE: out = s.temp[TEMP_FRIDGE].c; return s.temp[TEMP_FRIDGE].online;
@@ -484,7 +497,13 @@ void ruleToJson(const Rule &r, JsonObject o) {
 }
 
 bool ruleFromJson(Rule &r, JsonObjectConst o) {
-  Metric m = metricFromKey(o["m"] | "");
+  const char *key = o["m"] | "";
+  Metric m = metricFromKey(key);
+  bool fromWatts = false;
+  if (m == M_COUNT) {
+    m = legacySolarMetric(key);
+    fromWatts = m != M_COUNT;
+  }
   if (m == M_COUNT) return false;
   r.id = o["id"] | 0;
   r.enabled = o["en"] | true;
@@ -494,6 +513,10 @@ bool ruleFromJson(Rule &r, JsonObjectConst o) {
   r.cmp = (cmp[0] == '>') ? CMP_GT : CMP_LT;
   r.threshold = o["thr"] | 0.0f;
   r.hysteresis = o["hys"] | 0.0f;
+  if (fromWatts) {
+    r.threshold = wattsToAmps(r.threshold);
+    r.hysteresis = wattsToAmps(r.hysteresis);
+  }
   if (r.hysteresis < 0) r.hysteresis = 0;
   r.delaySec = o["dly"] | 0;
   uint8_t sev = o["sev"] | (uint8_t)SEV_WARN;
@@ -507,6 +530,7 @@ bool ruleFromJson(Rule &r, JsonObjectConst o) {
     if (r.levelCount >= MAX_LEVELS) break;
     if (!l["thr"].is<float>()) continue;
     float thr = l["thr"].as<float>();
+    if (fromWatts) thr = wattsToAmps(thr);
     float prev = r.levelThreshold(r.levelCount);
     if (r.cmp == CMP_LT ? !(thr < prev) : !(thr > prev)) continue;
     uint8_t ls = l["sev"] | (uint8_t)SEV_ALARM;

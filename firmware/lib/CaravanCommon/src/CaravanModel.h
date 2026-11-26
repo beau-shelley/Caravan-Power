@@ -189,7 +189,7 @@ struct State {
 // ---------------------------------------------------------------- alert rules
 enum Metric : uint8_t {
   M_BAT_V = 0, M_BAT_SOC, M_BAT_A, M_LOAD_A, M_CHARGE_A,
-  M_SOLAR_W, M_SOLAR1_W, M_SOLAR2_W,
+  M_SOLAR_A, M_SOLAR1_A, M_SOLAR2_A,  // solar charge current (were watts: see ruleFromJson)
   M_TEMP_IN, M_TEMP_OUT, M_TEMP_FRIDGE,
   M_TANK1, M_TANK2, M_TANK3,
   M_WX_GUST, M_WX_RAIN,   // today's forecast max wind gust (km/h), rain chance (%)

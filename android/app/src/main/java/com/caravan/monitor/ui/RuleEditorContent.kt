@@ -209,7 +209,7 @@ fun RuleEditorCard(
 
 private fun defaultThreshold(key: String) = when (key) {
     "bat_v" -> 12.0; "bat_soc" -> 30.0; "bat_a", "load_a" -> 30.0; "charge_a" -> 40.0
-    "solar_w", "solar1_w", "solar2_w" -> 50.0
+    "solar_a", "solar1_a", "solar2_a" -> 5.0
     "temp_in" -> 35.0; "temp_out" -> 40.0; "temp_fridge" -> 8.0
     "tank1", "tank2", "tank3" -> 20.0
     "wx_gust" -> 60.0; "wx_rain" -> 70.0
