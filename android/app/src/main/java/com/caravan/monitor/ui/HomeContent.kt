@@ -249,7 +249,7 @@ private fun BatteryCard(s: HubState, outlook: Outlook, modifier: Modifier = Modi
             Text("${Math.round(b.soc)}%", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = socColor(b.soc))
             Spacer(Modifier.width(12.dp))
             Column {
-                Text("${fmt2(b.v)} V  ·  ${signed(b.a)} A", style = MaterialTheme.typography.bodyLarge)
+                Text("${fmt2(b.v)} V", style = MaterialTheme.typography.bodyLarge)
                 Hint(outlook.battery ?: ttgText(b.a, b.ttgMin))
             }
         }
@@ -262,6 +262,8 @@ private fun BatteryCard(s: HubState, outlook: Outlook, modifier: Modifier = Modi
             // Total charge coming in (all solar, BMPRO and mains), as on the display.
             MiniStat("Charging", "${fmt1(b.chargeA)} A", Modifier.weight(1f))
             MiniStat("Load", "${fmt1(b.loadA)} A", Modifier.weight(1f))
+            // Net = everything coming in minus everything going out, as measured at the battery.
+            MiniStat("Net", "${signed(b.a)} A", Modifier.weight(1f), netColor(b.a))
         }
     }
 }
@@ -342,6 +344,9 @@ private fun TempsCard(s: HubState, meta: Meta, modifier: Modifier = Modifier) {
 }
 
 /** Label over value, small enough for four across. */
+/** Net battery current: green while it's going up, amber while it's going down. */
+fun netColor(a: Double) = when { a > 0.3 -> Accent.battery; a < -0.3 -> Accent.warn; else -> Surfaces.text }
+
 @Composable
 private fun MiniStat(label: String, value: String, modifier: Modifier, color: androidx.compose.ui.graphics.Color = Surfaces.text) {
     Column(modifier) {

@@ -27,7 +27,8 @@ class WidgetModelTest {
         assertTrue(v.live)
         assertEquals("78%", v.soc)
         assertEquals(78, v.socPct)
-        assertEquals("Using 4.2 A", v.flow)
+        assertEquals("Net -4.2 A · using", v.flow)
+        assertEquals(WidgetColors.WARN, v.flowColor)
         assertEquals("About 2 days left at this load", v.time)
         assertEquals(WidgetTile("Fresh 1", "65%", WidgetColors.WATER), v.water)
         assertEquals("42%", v.gas.value)
@@ -41,7 +42,7 @@ class WidgetModelTest {
         val al = listOf(ActiveAlert(1, Severity.WARN, false, 0, 0.0, ""), ActiveAlert(2, Severity.ALARM, false, 0, 0.0, ""),
             ActiveAlert(3, Severity.CRIT, true, 0, 0.0, ""))
         val v = WidgetModel.build(state(a = 12.34, alerts = al), meta, live, Outlook(battery = "Charging"), conn.copy(cloud = true), now)
-        assertEquals("Charging 12.3 A", v.flow)
+        assertEquals("Net +12.3 A · charging", v.flow)
         assertEquals("", v.time)  // "Charging" would only repeat the line above
         assertEquals("2 alerts", v.alerts)
         assertEquals(WidgetColors.ALARM, v.alertColor)  // the acknowledged critical one doesn't count

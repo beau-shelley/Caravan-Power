@@ -67,7 +67,7 @@ fun WidgetFull(v: WidgetView, w: Int = 380, h: Int = 170) {
         Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
             Text(v.soc, color = c(v.socColor), fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(v.flow, color = c(if (v.live) WidgetColors.TEXT else WidgetColors.MUTED), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(v.flow, color = c(v.flowColor), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (v.time.isNotEmpty()) Text(v.time, color = Color(0xFFD3D6D9), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
