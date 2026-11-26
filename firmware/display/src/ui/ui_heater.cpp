@@ -158,10 +158,8 @@ lv_obj_t *buildHeater(lv_obj_t *p, int x, int y, int w, int h) {
 }
 
 static void setSeg(lv_obj_t *b, bool on) {
-  // Selected mode: warm gradient pill with dark text (as in the app)
-  lv_obj_set_style_bg_color(b, on ? lv_color_mix(lv_color_white(), c(col::HEAT), 110) : c(col::TILE), 0);
-  lv_obj_set_style_bg_grad_color(b, on ? c(col::HEAT) : c(col::TILE), 0);
-  lv_obj_set_style_bg_grad_dir(b, on ? LV_GRAD_DIR_VER : LV_GRAD_DIR_NONE, 0);
+  // Selected mode: solid warm pill with dark text (as in the app)
+  lv_obj_set_style_bg_color(b, on ? c(col::HEAT) : c(col::TILE), 0);
   lv_obj_set_style_border_width(b, 1, 0);
   lv_obj_set_style_border_color(b, on ? c(col::HEAT) : c(col::BORDER), 0);
   lv_obj_set_style_text_color(lv_obj_get_child(b, 0), on ? c(col::RAIL) : c(col::MUTED), 0);
@@ -197,9 +195,7 @@ void updateHeater() {
   // Round power button lights up while it runs (amber while lighting, blue cooling)
   bool lit = h.running() || h.phase == cv::HTR_COOLING;
   uint32_t pc = h.phase == cv::HTR_COOLING ? col::WATER : h.phase == cv::HTR_STARTING ? col::WARN : col::HEAT;
-  lv_obj_set_style_bg_color(hPower, lit ? lv_color_mix(lv_color_white(), c(pc), 70) : c(col::TILE), 0);
-  lv_obj_set_style_bg_grad_color(hPower, lit ? c(pc) : c(col::TILE), 0);
-  lv_obj_set_style_bg_grad_dir(hPower, lit ? LV_GRAD_DIR_VER : LV_GRAD_DIR_NONE, 0);
+  lv_obj_set_style_bg_color(hPower, lit ? c(pc) : c(col::TILE), 0);
   lv_obj_set_style_border_color(hPower, lit ? c(pc) : c(col::BORDER), 0);
   lv_obj_set_style_text_color(hPowerIco, c(lit ? col::RAIL : col::MUTED), 0);
   // Dial: heater orange while it runs (amber lighting, blue cooling), grey when off
