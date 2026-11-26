@@ -84,7 +84,12 @@ void Net::begin() {
   WiFi.setHostname(HOSTNAME);
   WiFi.setAutoReconnect(true);
   joinNet(0);
-  configTzTime(TZ_INFO, "pool.ntp.org", "time.google.com");
+  // By IP address (Google's anycast time servers), not host name: on Arduino 3 /
+  // IDF 5 an SNTP host-name lookup that fires while the MQTT connect resolves
+  // the broker creates a UDP socket without the lwIP core lock and the hub
+  // panics (2026-11-26 coredump: udp_new_ip_type assert from sntp_dns_found,
+  // every ~40 min). The display hit the same bug (d2d2f6d).
+  configTzTime(TZ_INFO, "216.239.35.0", "216.239.35.4");
 }
 
 // Wi-Fi off build: the display sends the time ({"c":"time"}); keep the
