@@ -5,6 +5,8 @@ package com.caravan.monitor.ui
 // the screenshots in android/screenshots/ on a desktop JVM.
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,30 +62,37 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.caravan.monitor.Severity
 import java.util.Locale
 
+/** Gunmetal card with a soft top-to-bottom gradient and a faint edge (design 2026-11-26). */
+@Composable
+fun GlassCard(modifier: Modifier = Modifier, inner: Modifier = Modifier, radius: Int = 22, content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(radius.dp)
+    Box(modifier.fillMaxWidth().clip(shape).background(Grad.card).border(1.dp, Grad.edge, shape).then(inner)) { content() }
+}
+
 @Composable
 fun SectionCard(
     title: String, color: Color, modifier: Modifier = Modifier, icon: ImageVector? = null,
     compact: Boolean = false,
     trailing: (@Composable () -> Unit)? = null,
+    /** Drawn over the card's background, under its content (glows). */
+    inner: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Surfaces.glass),
-        shape = RoundedCornerShape(16.dp),
-    ) {
+    GlassCard(modifier, inner) {
         // fillMaxHeight only matters when the card is stretched (Home on a tall phone):
         // the rows then spread out evenly instead of leaving a gap at the bottom.
         Column(Modifier.fillMaxHeight().padding(if (compact) 12.dp else 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (icon != null) Icon(icon, null, Modifier.size(16.dp), tint = color)
-                else Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-                Spacer(Modifier.width(if (icon != null) 6.dp else 8.dp))
+                IconBadge(color) {
+                    if (icon != null) Icon(icon, null, Modifier.size(14.dp), tint = color)
+                    else Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+                }
+                Spacer(Modifier.width(9.dp))
                 Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = Accent.muted,
-                    modifier = Modifier.weight(1f))
+                    fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, modifier = Modifier.weight(1f))
                 trailing?.invoke()
             }
-            Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
+            Spacer(Modifier.height(if (compact) 8.dp else 10.dp))
             Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.SpaceEvenly) { content() }
         }
     }
@@ -148,13 +157,9 @@ fun Stat(label: String, value: String, modifier: Modifier = Modifier, valueColor
     }
 }
 
-/** Horizontal level bar, 0..1. */
+/** Horizontal level bar, 0..1 (gradient fill, eases to new values). */
 @Composable
-fun Bar(fraction: Double, color: Color, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(Surfaces.track)) {
-        Box(Modifier.fillMaxHeight().fillMaxWidth(fraction.toFloat().coerceIn(0f, 1f)).clip(RoundedCornerShape(4.dp)).background(color))
-    }
-}
+fun Bar(fraction: Double, color: Color, modifier: Modifier = Modifier) = GradBar(fraction, color, modifier)
 
 @Composable
 fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
