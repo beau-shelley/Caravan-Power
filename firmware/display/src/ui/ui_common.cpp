@@ -25,12 +25,9 @@ lv_obj_t *card(lv_obj_t *parent, int x, int y, int w, int h, const char *title, 
   lv_obj_t *o = lv_obj_create(parent);
   lv_obj_set_pos(o, x, y);
   lv_obj_set_size(o, w, h);
-  // Gunmetal, lighter at the top (static vertical gradient: about as cheap as
-  // a solid fill). No drop shadow: LVGL blurs shadows in software on every
-  // redraw, so dropping it makes the cards cheaper to draw than before.
-  lv_obj_set_style_bg_color(o, c(col::CARD_TOP), 0);
-  lv_obj_set_style_bg_grad_color(o, c(col::CARD_BOT), 0);
-  lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0);
+  // Flat gunmetal (gradients banded on the real 16-bit panel). No drop shadow:
+  // LVGL blurs shadows in software on every redraw.
+  lv_obj_set_style_bg_color(o, c(col::CARD), 0);
   lv_obj_set_style_bg_opa(o, col::CARD_OPA, 0);
   lv_obj_set_style_border_color(o, c(col::BORDER), 0);
   lv_obj_set_style_border_width(o, 1, 0);
@@ -44,7 +41,7 @@ lv_obj_t *card(lv_obj_t *parent, int x, int y, int w, int h, const char *title, 
     lv_obj_set_size(dot, 18, 18);
     lv_obj_set_pos(dot, 0, -2);
     lv_obj_set_style_radius(dot, 6, 0);
-    lv_obj_set_style_bg_color(dot, lv_color_mix(c(accent), c(col::CARD_TOP), 70), 0);
+    lv_obj_set_style_bg_color(dot, lv_color_mix(c(accent), c(col::CARD), 70), 0);
     lv_obj_set_style_border_width(dot, 0, 0);
     lv_obj_set_style_pad_all(dot, 0, 0);
     lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
@@ -121,10 +118,8 @@ lv_obj_t *tile(lv_obj_t *parent, int w, int h, const char *sym, const char *text
 }
 
 void setTile(lv_obj_t *t, bool on, uint32_t onColor, const char *sub) {
-  // On: bright gradient pill with dark text, like the app's running pump.
-  lv_obj_set_style_bg_color(t, on ? lv_color_mix(lv_color_white(), c(onColor), 90) : c(col::TILE), 0);
-  lv_obj_set_style_bg_grad_color(t, on ? c(onColor) : c(col::TILE), 0);
-  lv_obj_set_style_bg_grad_dir(t, on ? LV_GRAD_DIR_VER : LV_GRAD_DIR_NONE, 0);
+  // On: solid bright pill with dark text, like the app's running pump.
+  lv_obj_set_style_bg_color(t, on ? c(onColor) : c(col::TILE), 0);
   lv_obj_set_style_border_color(t, on ? c(onColor) : c(col::BORDER), 0);
   uint32_t fg = on ? col::RAIL : col::MUTED;
   lv_obj_set_style_text_color(lv_obj_get_child(t, 0), c(on ? col::RAIL : col::MUTED), 0);
@@ -157,16 +152,13 @@ lv_obj_t *vbar(lv_obj_t *parent, int w, int h, uint32_t color) {
   lv_obj_set_style_radius(b, w > h ? h / 2 : 14, LV_PART_MAIN);
   lv_obj_set_style_radius(b, w > h ? h / 2 : 14, LV_PART_INDICATOR);
   lv_obj_set_style_bg_color(b, c(color), LV_PART_INDICATOR);
-  // Subtle vertical gradient on the fill
-  lv_obj_set_style_bg_grad_color(b, lv_color_mix(c(color), lv_color_black(), 170), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_dir(b, w > h ? LV_GRAD_DIR_HOR : LV_GRAD_DIR_VER, LV_PART_INDICATOR);
+  // Flat fill: gradients show steps (banding) on the 16-bit panel.
   lv_obj_set_style_anim_time(b, 400, 0);
   return b;
 }
 
 void setBarColor(lv_obj_t *b, uint32_t color) {
   lv_obj_set_style_bg_color(b, c(color), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_color(b, lv_color_mix(c(color), lv_color_black(), 170), LV_PART_INDICATOR);
 }
 
 void toast(const char *msg, uint32_t color) {
@@ -302,9 +294,7 @@ static lv_obj_t *moreTile(lv_obj_t *p, int i, int page, const char *sym, const c
   lv_obj_t *b = lv_btn_create(p);
   lv_obj_set_size(b, w, h);
   lv_obj_set_pos(b, colX(i, 3), (PAGE_H - h) / 2);  // vertically centred in the page
-  lv_obj_set_style_bg_color(b, c(col::CARD_TOP), 0);
-  lv_obj_set_style_bg_grad_color(b, c(col::CARD_BOT), 0);
-  lv_obj_set_style_bg_grad_dir(b, LV_GRAD_DIR_VER, 0);
+  lv_obj_set_style_bg_color(b, c(col::CARD), 0);
   lv_obj_set_style_border_color(b, c(col::BORDER), 0);
   lv_obj_set_style_border_width(b, 1, 0);
   lv_obj_set_style_radius(b, 18, 0);
@@ -448,10 +438,8 @@ static void buildShell() {
     lv_obj_set_style_pad_all(b, 0, 0);
     lv_obj_set_style_radius(b, 14, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
-    // Active page: lime gradient pill with dark icon + caption (as in the app).
-    lv_obj_set_style_bg_color(b, c(col::ACCENT_HI), 0);
-    lv_obj_set_style_bg_grad_color(b, c(col::ACCENT), 0);
-    lv_obj_set_style_bg_grad_dir(b, LV_GRAD_DIR_VER, 0);
+    // Active page: solid lime pill with dark icon + caption (as in the app).
+    lv_obj_set_style_bg_color(b, c(col::ACCENT), 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
     lv_obj_t *ic = lbl(b, isExtraIcon(kPageIcons[pg]) ? &ui_icons_28 : &lv_font_montserrat_28, col::MUTED, kPageIcons[pg]);
     lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, LARGE ? 12 : 8);

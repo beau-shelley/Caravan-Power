@@ -361,7 +361,7 @@ static void buildInverter(lv_obj_t *p, int x, int y, int invW, int botH) {
   lv_obj_align(invAc, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 
-// Low-high bar (blue-to-red like the numbers) with a dot at the current reading.
+// Low-high bar (coloured like the current reading) with a dot at the current reading.
 static void setRange(int i, float lo, float hi, float now, bool live = true) {
   if (!live || hi < lo) {
     lv_bar_set_start_value(cRange[i], rangeLo(i), LV_ANIM_OFF);
@@ -377,8 +377,7 @@ static void setRange(int i, float lo, float hi, float now, bool live = true) {
   if (b - a < 4) b = a + 4;  // keep a sliver visible when the range is tiny
   lv_bar_set_start_value(cRange[i], a, LV_ANIM_OFF);
   lv_bar_set_value(cRange[i], b, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(cRange[i], c(tempColor(i, lo)), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_grad_color(cRange[i], c(tempColor(i, hi)), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(cRange[i], c(tempColor(i, now)), LV_PART_INDICATOR);
   constexpr int w = RANGE_W;
   int x = RANGE_X + (int)((long)(n - rangeLo(i)) * w / (rangeHi(i) - rangeLo(i)));
   lv_obj_set_pos(cDot[i], x - DOT_D / 2, RANGE_Y + RANGE_H / 2 - DOT_D / 2);
