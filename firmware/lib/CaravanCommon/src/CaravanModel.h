@@ -177,6 +177,13 @@ struct State {
     for (auto &s : solar) if (s.online) w += s.pvW;
     return w;
   }
+  // Total solar charge current into the battery (all controllers, roof via the
+  // BMPRO included). bat.solarA leaves the BMPRO's solar out, so not that.
+  float solarA() const {
+    float a = 0;
+    for (auto &s : solar) if (s.online) a += s.batA;
+    return a;
+  }
 };
 
 // ---------------------------------------------------------------- alert rules

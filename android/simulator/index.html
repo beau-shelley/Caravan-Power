@@ -506,8 +506,8 @@ function homeHTML() {
     <div style="height:6px"></div>${bar(b.soc / 100, socColor(b.soc))}<div style="height:6px"></div>
     <div class="minis">${S.acOn ? mini("Mains", Math.floor(S.acA) + " A", "var(--mains)") : ""}${mini("Solar", f1(b.solarA) + " A")}${mini("BMPRO", f1(b.chargerA) + " A")}${mini("Load", f1(b.loadA) + " A")}</div>`, "compact");
   out += `<div class="two">` +
-    card("Solar", "var(--solar)", `<div class="big" style="font-size:24px;color:var(--solar)">${S.sol[0] + S.sol[1]} W</div>` +
-      S.sol.map((w, i) => `<div class="line sm"><span>${META.sol[i]}</span><span>${w} W</span></div>`).join("") +
+    card("Solar", "var(--solar)", `<div class="big" style="font-size:24px;color:var(--solar)">${((S.sol[0] + S.sol[1]) / 13.4).toFixed(1)} A</div>` +
+      S.sol.map((w, i) => `<div class="line sm"><span>${META.sol[i]}</span><span>${(w / 13.4).toFixed(1)} A</span></div>`).join("") +
       `<div class="hint">${f1(S.yieldKwh[0] + S.yieldKwh[1])} kWh today</div>`, "compact") +
     card("Water", "var(--water)", S.tank.map((p, i) => `<div class="line sm" style="padding:0"><span>${META.tank[i]}</span><span>${Math.floor(p)}%</span></div>
       <div style="height:2px"></div>${bar(p / 100, "var(--water)")}<div style="height:4px"></div>`).join(""), "compact", ICON.drop) + `</div>`;

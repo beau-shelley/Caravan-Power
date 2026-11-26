@@ -15,7 +15,8 @@ data class Battery(
     val chargeA: Double = 0.0,  // total charge coming in (solar + BMPRO + mains)
 )
 
-data class Solar(val on: Boolean, val w: Double, val yieldKwh: Double, val peakW: Double, val err: Int)
+// a = charge current into the battery (what the app shows); w = panel watts.
+data class Solar(val on: Boolean, val w: Double, val yieldKwh: Double, val peakW: Double, val err: Int, val a: Double = 0.0)
 data class Temp(val on: Boolean, val c: Double, val lo: Double, val hi: Double, val batt: Int)
 data class Tank(val on: Boolean, val pct: Double)
 data class Pump(val on: Boolean, val lockout: Boolean, val runSec: Int)
@@ -159,7 +160,7 @@ data class HubState(
                     chargeA = b.optDouble("chg", 0.0),
                 ),
                 sol = o.optJSONArray("sol").objects().map {
-                    Solar(it.optBoolean("on"), it.optDouble("w", 0.0), it.optDouble("yt", 0.0), it.optDouble("mx", 0.0), it.optInt("err"))
+                    Solar(it.optBoolean("on"), it.optDouble("w", 0.0), it.optDouble("yt", 0.0), it.optDouble("mx", 0.0), it.optInt("err"), it.optDouble("ba", 0.0))
                 },
                 tmp = o.optJSONArray("tmp").objects().map {
                     Temp(it.optBoolean("on"), it.optDouble("c", 0.0), it.optDouble("lo", 0.0), it.optDouble("hi", 0.0), it.optInt("b", -1))

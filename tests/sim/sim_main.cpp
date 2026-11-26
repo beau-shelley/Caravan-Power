@@ -164,6 +164,7 @@ int main() {
   for (int i = 0; i < 180; i++) {
     app::state.solar[0].pvW = 250 + 80 * sinf(i / 18.0f) + (i % 7) * 4;
     app::state.solar[1].pvW = 100 + 30 * sinf(i / 11.0f);
+    for (auto &x : app::state.solar) x.batA = x.pvW / 13.8f;
     app::state.bat.loadA = i > 120 && i < 140 ? 95 : 10 + (i % 5);
     app::stateDirty = true;
     app::linkUp = true;

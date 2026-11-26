@@ -553,9 +553,10 @@ function render() {
   $("#ttg").textContent = batteryText(b);
   $("#batSrc").textContent = b.src === 2 ? "Source: BMPRO" : b.src === 1 ? "Source: shunt" : "";
 
-  const solW = S.sol.reduce((a, x) => a + (x.on ? x.w : 0), 0);
-  $("#solW").textContent = `${Math.round(solW)} W`;
-  $("#solA").textContent = "";  // total watts only (roof + portable)
+  // Solar in amps (charge current into the battery), roof + portable.
+  const solA = S.sol.reduce((a, x) => a + (x.on ? x.ba : 0), 0);
+  $("#solW").textContent = `${solA.toFixed(1)} A`;
+  $("#solA").textContent = "";
   $("#chgA").textContent = `${b.chg >= 99.95 ? Math.round(b.chg) : b.chg.toFixed(1)} A`;
   // Mains (2 x 60 A chargers) has no sensor: the hub infers it from what the
   // BMPRO + Victrons don't explain, and sets acon only while bulk charging.
@@ -572,9 +573,9 @@ function render() {
     </div>` : "") + S.sol.map((m, i) => !(m.on && (m.w > 5 || m.ba > 0.3)) ? "" : `
     <div class="row mppt between" style="padding:6px 0">
       <div style="width:110px"><b>${esc(META.sol[i])}</b><br><span class="chip" style="color:${m.err ? "var(--alarm)" : "var(--solar)"}">${m.on ? (m.err ? "Error " + m.err : CS[m.cs] || "Unknown") : "Offline"}</span></div>
-      <div class="bar"><i style="width:${m.on ? Math.min(100, m.w / 7) : 0}%"></i></div>
-      <div style="width:150px; text-align:right"><b style="color:var(--solar)">${m.on ? Math.round(m.w) + " W" : "--"}</b><br>
-        <span class="muted small">${m.on ? `${m.pv >= 0 ? m.pv.toFixed(1) + " V PV" : m.bv.toFixed(2) + " V"} · ${m.ba.toFixed(1)} A · ${m.yt.toFixed(2)} kWh today` : ""}</span></div>
+      <div class="bar"><i style="width:${m.on ? Math.min(100, m.ba / 0.6) : 0}%"></i></div>
+      <div style="width:150px; text-align:right"><b style="color:var(--solar)">${m.on ? m.ba.toFixed(1) + " A" : "--"}</b><br>
+        <span class="muted small">${m.on ? `${m.pv >= 0 ? m.pv.toFixed(1) + " V PV" : m.bv.toFixed(2) + " V"} · ${Math.round(m.w)} W · ${m.yt.toFixed(2)} kWh today` : ""}</span></div>
     </div>`).join("");
 
   // The fridge gets one decimal (a degree matters there); the rest whole degrees.
