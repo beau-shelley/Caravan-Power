@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -53,9 +54,10 @@ fun AppScaffold(
         contentColor = Surfaces.text,  // not derived from a transparent container
         snackbarHost = snackbarHost,
         bottomBar = {
-            // Plain dark bar with a thin lime pinstripe on top, like the van.
-            Column(Modifier.background(Surfaces.plate)) {
-                Box(Modifier.fillMaxWidth().height(2.dp).background(Accent.lime.copy(alpha = 0.6f)))
+            // Dark bar fading down to black, with a thin lime pinstripe on top, like the van.
+            Column(Modifier.background(Brush.verticalGradient(listOf(Color(0xFF15171A), Surfaces.plate)))) {
+                Box(Modifier.fillMaxWidth().height(1.5.dp).background(Brush.horizontalGradient(listOf(
+                    Accent.lime.copy(alpha = 0.15f), Accent.lime.copy(alpha = 0.6f), Accent.lime.copy(alpha = 0.15f)))))
             NavigationBar(containerColor = Color.Transparent, windowInsets = WindowInsets(0, 0, 0, 0)) {
                 NavigationBarItem(colors = itemColors, selected = tab == 0, onClick = { onTab(0) },
                     icon = { Icon(Icons.Filled.Home, null) }, label = { Text("Home") })

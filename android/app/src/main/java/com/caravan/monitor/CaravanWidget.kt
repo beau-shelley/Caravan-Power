@@ -79,6 +79,12 @@ class CaravanWidget : AppWidgetProvider() {
 
         private fun full(context: Context, v: WidgetView) = RemoteViews(context.packageName, R.layout.widget_caravan).apply {
             setOnClickPendingIntent(R.id.w_root, openApp(context))
+            // Unacknowledged alerts tint the whole widget (amber for warnings, red for alarms).
+            setInt(R.id.w_root, "setBackgroundResource", when {
+                v.alerts.isEmpty() -> R.drawable.widget_bg
+                v.alertColor == WidgetColors.WARN -> R.drawable.widget_bg_warn
+                else -> R.drawable.widget_bg_alarm
+            })
             if (v.alerts.isNotEmpty()) {
                 setTextViewText(R.id.w_title, "⚠ " + v.alerts)
                 setTextColor(R.id.w_title, v.alertColor.toInt())
@@ -94,7 +100,7 @@ class CaravanWidget : AppWidgetProvider() {
             setTextColor(R.id.w_flow, v.flowColor.toInt())
             setTextViewText(R.id.w_time, v.time)
             setViewVisibility(R.id.w_time, if (v.time.isEmpty()) View.GONE else View.VISIBLE)
-            bar(this, v)
+            setImageViewBitmap(R.id.w_ring, WidgetRing.bitmap(context, 56, v.socPct, v.socColor, v.live))
             tile(this, R.id.w_water_l, R.id.w_water_v, v.water, WidgetColors.WATER)
             tile(this, R.id.w_gas_l, R.id.w_gas_v, v.gas, WidgetColors.GAS)
             tile(this, R.id.w_in_l, R.id.w_in_v, v.inside, WidgetColors.TEXT)
@@ -111,21 +117,7 @@ class CaravanWidget : AppWidgetProvider() {
                 v.live -> WidgetColors.MUTED
                 else -> WidgetColors.WARN
             }.toInt())
-            bar(this, v)
-        }
-
-        /** One bar per colour (RemoteViews can't tint a bar before Android 12); only the right one shows. */
-        private fun bar(rv: RemoteViews, v: WidgetView) {
-            val show = when {
-                !v.live -> R.id.w_bar_ok
-                v.socColor == WidgetColors.ALARM -> R.id.w_bar_low
-                v.socColor == WidgetColors.WARN -> R.id.w_bar_warn
-                else -> R.id.w_bar_ok
-            }
-            for (id in intArrayOf(R.id.w_bar_ok, R.id.w_bar_warn, R.id.w_bar_low)) {
-                rv.setViewVisibility(id, if (id == show) View.VISIBLE else View.GONE)
-                rv.setProgressBar(id, 100, if (id == show) v.socPct else 0, false)
-            }
+            setImageViewBitmap(R.id.w_ring, WidgetRing.bitmap(context, 40, v.socPct, v.socColor, v.live))
         }
 
         private fun tile(rv: RemoteViews, label: Int, value: Int, t: WidgetTile, labelColor: Long) {
