@@ -18,7 +18,7 @@ sourceSets.main {
 }
 val copyShared by tasks.registering(Copy::class) {
     from(app) {
-        include("Model.kt", "Usage.kt")
+        include("Model.kt", "Usage.kt", "WidgetModel.kt")
         include("ui/Colors.kt", "ui/Common.kt", "ui/HomeContent.kt", "ui/AlertsContent.kt",
             "ui/RuleEditorContent.kt", "ui/ClimateContent.kt", "ui/SetupContent.kt", "ui/Icons.kt", "ui/UpdateContent.kt", "ui/AppScaffold.kt",
             "ui/CamoPaths.kt", "ui/Texture.kt", "ui/Fit.kt", "ui/AdminContent.kt", "ui/LevelContent.kt")

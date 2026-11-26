@@ -13,6 +13,8 @@ class CaravanApp : Application() {
         private set
     lateinit var usage: UsageTracker
         private set
+    lateinit var widget: WidgetFeed
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -22,6 +24,7 @@ class CaravanApp : Application() {
         usage = UsageTracker(this)
         hub = HubClient(this, prefs, notifier, usage)
         updater = Updater(this, prefs)
+        widget = WidgetFeed(this, hub, usage).also { it.start() }
         MonitorService.sync(this)
     }
 

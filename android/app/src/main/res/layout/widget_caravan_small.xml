@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Small widget (2 x 1): battery % and whether it's live. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView android:id="@+id/w_soc"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="--" android:textColor="#FF9A9FA5" android:textSize="24sp" android:textStyle="bold"
+            android:includeFontPadding="false" android:maxLines="1" />
+        <TextView android:id="@+id/w_status"
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="8dp" android:gravity="end"
+            android:text="Not connected" android:textColor="#FFFFB020" android:textSize="11sp"
+            android:maxLines="2" android:ellipsize="end" />
+    </LinearLayout>
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="4dp">
+        <ProgressBar android:id="@+id/w_bar_ok" style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent" android:layout_height="6dp"
+            android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_bar_ok" />
+        <ProgressBar android:id="@+id/w_bar_warn" style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent" android:layout_height="6dp" android:visibility="gone"
+            android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_bar_warn" />
+        <ProgressBar android:id="@+id/w_bar_low" style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent" android:layout_height="6dp" android:visibility="gone"
+            android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_bar_low" />
+    </FrameLayout>
+</LinearLayout>

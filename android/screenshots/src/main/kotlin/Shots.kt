@@ -185,6 +185,8 @@ fun shot(name: String, heightDp: Int, widthDp: Int = WIDTH_DP, content: @Composa
 }
 
 fun main() {
+    widgetShots()
+    if (System.getenv("ONLY_WIDGET") != null) return
     val nop: () -> Unit = {}
     shot("1-home-mains-charging", 840) {
         AppScaffold(0, {}, 0) {
