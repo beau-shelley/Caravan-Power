@@ -10,7 +10,7 @@
 namespace ui {
 
 static lv_obj_t *hCard, *hChip, *hPower, *hPowerIco, *hStatus, *hSub;
-static lv_obj_t *hMinus, *hPlus, *hSet, *hSetUnit, *hModeT, *hModeL;
+static lv_obj_t *hMinus, *hPlus, *hSet, *hSetUnit, *hSetCap, *hModeT, *hModeL, *hDial;
 static lv_obj_t *hStats, *hStatVal[3], *hNoStatus;
 
 // A tap shows its new set point straight away; the hub's status catches up
@@ -68,38 +68,71 @@ lv_obj_t *buildHeater(lv_obj_t *p, int x, int y, int w, int h) {
   hChip = chip(hCard);
   lv_obj_align(hChip, LV_ALIGN_TOP_RIGHT, 0, -3);
 
-  constexpr int D = LARGE ? 88 : 72;  // round on/off button
-  hPower = lv_btn_create(hCard);
-  lv_obj_set_size(hPower, D, D);
-  lv_obj_set_pos(hPower, 0, 26);
-  lv_obj_set_style_radius(hPower, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_shadow_width(hPower, 0, 0);
-  lv_obj_set_style_border_width(hPower, 2, 0);
-  lv_obj_add_event_cb(hPower, powerCb, LV_EVENT_CLICKED, nullptr);
-  hPowerIco = lbl(hPower, LARGE ? &lv_font_montserrat_40 : &lv_font_montserrat_28, col::MUTED, LV_SYMBOL_POWER);
-  lv_obj_center(hPowerIco);
+  // Dial: a 270 degree arc showing the set point (or power level), with the
+  // number in the middle and - / + either side. Display only (not draggable),
+  // so a stray touch can't change the heater; drawn like the battery ring.
+  const int rh = LARGE ? 44 : 38;                       // readings row at the bottom
+  const int mh = LARGE ? 40 : 34;                       // mode row above it
+  const int D = H - 24 - rh - mh - (LARGE ? 18 : 12);   // dial diameter: whatever is left
+  const int dy = 22;
+  hDial = lv_arc_create(hCard);
+  lv_obj_set_size(hDial, D, D);
+  lv_obj_align(hDial, LV_ALIGN_TOP_MID, 0, dy);
+  lv_arc_set_rotation(hDial, 135);
+  lv_arc_set_bg_angles(hDial, 0, 270);
+  lv_arc_set_range(hDial, cv::HEATER_MIN_C, cv::HEATER_MAX_C);
+  lv_obj_clear_flag(hDial, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_arc_width(hDial, D / 13, LV_PART_MAIN);
+  lv_obj_set_style_arc_width(hDial, D / 13, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_color(hDial, c(col::TILE), LV_PART_MAIN);
+  lv_obj_set_style_arc_color(hDial, c(col::HEAT), LV_PART_INDICATOR);
+  // Knob: white dot with a heater-orange ring at the end of the arc.
+  lv_obj_set_style_bg_color(hDial, lv_color_white(), LV_PART_KNOB);
+  lv_obj_set_style_border_color(hDial, c(col::HEAT), LV_PART_KNOB);
+  lv_obj_set_style_border_width(hDial, 4, LV_PART_KNOB);
+  lv_obj_set_style_pad_all(hDial, 3, LV_PART_KNOB);
+  lv_obj_set_style_shadow_width(hDial, 0, LV_PART_KNOB);
 
-  const int tx = D + 16;
-  hStatus = lbl(hCard, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::TEXT, "Off");
-  lv_obj_set_pos(hStatus, tx, 26 + D / 2 - (LARGE ? 30 : 26));
-  hSub = lbl(hCard, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
-  lv_obj_set_width(hSub, W - tx);
-  lv_label_set_long_mode(hSub, LV_LABEL_LONG_WRAP);
-  lv_obj_set_pos(hSub, tx, 26 + D / 2 + 2);
-
-  // Set point: [-]  24°  [+]
-  const int sy = 26 + D + (LARGE ? 14 : 8), bw = LARGE ? 64 : 54, bh = LARGE ? 56 : 46;
-  hMinus = roundBtn(hCard, bw, bh, LV_SYMBOL_MINUS, stepCb, (void *)(intptr_t)-1);
-  lv_obj_set_pos(hMinus, 0, sy);
-  hPlus = roundBtn(hCard, bw, bh, LV_SYMBOL_PLUS, stepCb, (void *)(intptr_t)1);
-  lv_obj_set_pos(hPlus, W - bw, sy);
+  lv_obj_t *cap = lbl(hCard, &lv_font_montserrat_12, col::MUTED, "SET TO");
+  lv_obj_set_style_text_letter_space(cap, 2, 0);
+  lv_obj_align_to(cap, hDial, LV_ALIGN_CENTER, 0, -(D / 4) - 4);
+  hSetCap = cap;
   hSet = lbl(hCard, LARGE ? &lv_font_montserrat_48 : &lv_font_montserrat_40, col::TEXT, "--");
-  lv_obj_align(hSet, LV_ALIGN_TOP_MID, 0, sy + bh / 2 - (LARGE ? 28 : 24));
-  hSetUnit = lbl(hCard, &lv_font_montserrat_14, col::MUTED, "");
-  lv_obj_align_to(hSetUnit, hSet, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -8);
+  lv_obj_set_width(hSet, D - 40);
+  lv_obj_set_style_text_align(hSet, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align_to(hSet, hDial, LV_ALIGN_CENTER, 0, -6);
+  hSetUnit = lbl(hCard, &lv_font_montserrat_14, col::MUTED, "");  // "/ 10" in power-level mode
+  lv_obj_set_width(hSetUnit, D - 40);
+  lv_obj_set_style_text_align(hSetUnit, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align_to(hSetUnit, hDial, LV_ALIGN_CENTER, 0, D / 6 + 2);
+  hSub = lbl(hCard, &lv_font_montserrat_12, col::MUTED, "");
+  lv_obj_set_width(hSub, D * 62 / 100);
+  lv_label_set_long_mode(hSub, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(hSub, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align_to(hSub, hDial, LV_ALIGN_CENTER, 0, D / 4 + 10);
+  hStatus = lbl(hCard, &lv_font_montserrat_12, col::TEXT, "");  // kept for updateHeater(); the chip says it
+  lv_obj_add_flag(hStatus, LV_OBJ_FLAG_HIDDEN);
 
-  // Thermostat | Power level
-  const int my = sy + bh + (LARGE ? 12 : 8), mh = LARGE ? 40 : 34, mw = (W - 8) / 2;
+  // - / + : round, either side of the bottom of the dial
+  const int bd = LARGE ? 58 : 48;
+  const int sy = dy + D - bd;
+  hMinus = roundBtn(hCard, bd, bd, LV_SYMBOL_MINUS, stepCb, (void *)(intptr_t)-1);
+  lv_obj_set_pos(hMinus, 0, sy);
+  hPlus = roundBtn(hCard, bd, bd, LV_SYMBOL_PLUS, stepCb, (void *)(intptr_t)1);
+  lv_obj_set_pos(hPlus, W - bd, sy);
+  for (lv_obj_t *b : {hMinus, hPlus}) lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+
+  // [ Thermostat | Power level ]  [ power ]
+  const int my = dy + D + (LARGE ? 10 : 6), pw = LARGE ? 64 : 54, mw = (W - pw - 8 - 8) / 2;
+  hPower = lv_btn_create(hCard);
+  lv_obj_set_size(hPower, pw, mh);
+  lv_obj_set_pos(hPower, W - pw, my);
+  lv_obj_set_style_radius(hPower, 12, 0);
+  lv_obj_set_style_shadow_width(hPower, 0, 0);
+  lv_obj_set_style_border_width(hPower, 1, 0);
+  lv_obj_add_event_cb(hPower, powerCb, LV_EVENT_CLICKED, nullptr);
+  hPowerIco = lbl(hPower, LARGE ? &lv_font_montserrat_24 : &lv_font_montserrat_20, col::MUTED, LV_SYMBOL_POWER);
+  lv_obj_center(hPowerIco);
   hModeT = button(hCard, mw, mh, "Thermostat", col::TILE, modeCb, (void *)(intptr_t)0);
   lv_obj_set_pos(hModeT, 0, my);
   hModeL = button(hCard, mw, mh, "Power level", col::TILE, modeCb, (void *)(intptr_t)1);
@@ -107,7 +140,6 @@ lv_obj_t *buildHeater(lv_obj_t *p, int x, int y, int w, int h) {
   for (lv_obj_t *b : {hModeT, hModeL}) lv_obj_set_style_text_font(lv_obj_get_child(b, 0), &lv_font_montserrat_14, 0);
 
   // Readings: cabin | heater | supply (Bluetooth only)
-  const int rh = LARGE ? 44 : 38;
   hStats = panel(hCard, 0, H - rh, W, rh);
   static const char *caps[3] = {"Cabin", "Heater", "Supply"};
   for (int i = 0; i < 3; i++) {
@@ -126,10 +158,13 @@ lv_obj_t *buildHeater(lv_obj_t *p, int x, int y, int w, int h) {
 }
 
 static void setSeg(lv_obj_t *b, bool on) {
-  lv_obj_set_style_bg_color(b, on ? lv_color_mix(c(col::HEAT), c(col::TILE), 80) : c(col::TILE), 0);
+  // Selected mode: warm gradient pill with dark text (as in the app)
+  lv_obj_set_style_bg_color(b, on ? lv_color_mix(lv_color_white(), c(col::HEAT), 110) : c(col::TILE), 0);
+  lv_obj_set_style_bg_grad_color(b, on ? c(col::HEAT) : c(col::TILE), 0);
+  lv_obj_set_style_bg_grad_dir(b, on ? LV_GRAD_DIR_VER : LV_GRAD_DIR_NONE, 0);
   lv_obj_set_style_border_width(b, 1, 0);
   lv_obj_set_style_border_color(b, on ? c(col::HEAT) : c(col::BORDER), 0);
-  lv_obj_set_style_text_color(lv_obj_get_child(b, 0), on ? c(col::HEAT) : c(col::MUTED), 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(b, 0), on ? c(col::RAIL) : c(col::MUTED), 0);
 }
 
 void updateHeater() {
@@ -162,23 +197,34 @@ void updateHeater() {
   // Round power button lights up while it runs (amber while lighting, blue cooling)
   bool lit = h.running() || h.phase == cv::HTR_COOLING;
   uint32_t pc = h.phase == cv::HTR_COOLING ? col::WATER : h.phase == cv::HTR_STARTING ? col::WARN : col::HEAT;
-  lv_obj_set_style_bg_color(hPower, lit ? lv_color_mix(c(pc), c(col::TILE), 90) : c(col::TILE), 0);
+  lv_obj_set_style_bg_color(hPower, lit ? lv_color_mix(lv_color_white(), c(pc), 70) : c(col::TILE), 0);
+  lv_obj_set_style_bg_grad_color(hPower, lit ? c(pc) : c(col::TILE), 0);
+  lv_obj_set_style_bg_grad_dir(hPower, lit ? LV_GRAD_DIR_VER : LV_GRAD_DIR_NONE, 0);
   lv_obj_set_style_border_color(hPower, lit ? c(pc) : c(col::BORDER), 0);
-  lv_obj_set_style_text_color(hPowerIco, c(lit ? pc : col::MUTED), 0);
+  lv_obj_set_style_text_color(hPowerIco, c(lit ? col::RAIL : col::MUTED), 0);
+  // Dial: heater orange while it runs (amber lighting, blue cooling), grey when off
+  uint32_t dc = lost ? col::DIM : fault ? col::ALARM : lit ? pc : col::DIM;
+  lv_obj_set_style_arc_color(hDial, c(dc), LV_PART_INDICATOR);
+  lv_obj_set_style_border_color(hDial, c(dc), LV_PART_KNOB);
   lv_obj_set_style_opa(hPower, lost ? LV_OPA_50 : LV_OPA_COVER, 0);
 
   // Set point, whole degrees, same blue-to-red scale as the thermometers
   bool lvl = h.mode == cv::HTR_MODE_LEVEL;
   if (lvl) {
+    lv_arc_set_range(hDial, 1, cv::HEATER_LEVELS);
+    lv_arc_set_value(hDial, shownLevel());
+    setText(hSetCap, "%s", "LEVEL");
     setText(hSet, "%d", shownLevel());
-    setText(hSetUnit, "/ %d", cv::HEATER_LEVELS);
+    setText(hSetUnit, "of %d", cv::HEATER_LEVELS);
     lv_obj_set_style_text_color(hSet, c(col::HEAT), 0);
   } else {
+    lv_arc_set_range(hDial, cv::HEATER_MIN_C, cv::HEATER_MAX_C);
+    lv_arc_set_value(hDial, shownSet());
+    setText(hSetCap, "%s", "SET TO");
     setText(hSet, "%d\xC2\xB0", shownSet());
-    setText(hSetUnit, "%s", "set");
+    setText(hSetUnit, "%s", "");
     lv_obj_set_style_text_color(hSet, c(tempColor(cv::TEMP_INSIDE, shownSet())), 0);
   }
-  lv_obj_align_to(hSetUnit, hSet, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -8);
   setSeg(hModeT, !lvl);
   setSeg(hModeL, lvl);
   for (lv_obj_t *b : {hMinus, hPlus, hModeT, hModeL}) lv_obj_set_style_opa(b, lost ? LV_OPA_50 : LV_OPA_COVER, 0);

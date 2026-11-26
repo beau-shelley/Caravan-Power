@@ -25,27 +25,38 @@ lv_obj_t *card(lv_obj_t *parent, int x, int y, int w, int h, const char *title, 
   lv_obj_t *o = lv_obj_create(parent);
   lv_obj_set_pos(o, x, y);
   lv_obj_set_size(o, w, h);
-  lv_obj_set_style_bg_color(o, c(col::CARD), 0);
+  // Gunmetal, lighter at the top (static vertical gradient: about as cheap as
+  // a solid fill). No drop shadow: LVGL blurs shadows in software on every
+  // redraw, so dropping it makes the cards cheaper to draw than before.
+  lv_obj_set_style_bg_color(o, c(col::CARD_TOP), 0);
+  lv_obj_set_style_bg_grad_color(o, c(col::CARD_BOT), 0);
+  lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0);
   lv_obj_set_style_bg_opa(o, col::CARD_OPA, 0);
   lv_obj_set_style_border_color(o, c(col::BORDER), 0);
   lv_obj_set_style_border_width(o, 1, 0);
-  lv_obj_set_style_radius(o, 16, 0);
+  lv_obj_set_style_radius(o, 18, 0);
   lv_obj_set_style_pad_all(o, CARD_PAD, 0);
-  lv_obj_set_style_shadow_width(o, 18, 0);
-  lv_obj_set_style_shadow_color(o, lv_color_black(), 0);
-  lv_obj_set_style_shadow_opa(o, LV_OPA_30, 0);
+  lv_obj_set_style_shadow_width(o, 0, 0);
   lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
   if (title) {
-    // Small accent dot + uppercase caption, like a modern dashboard tile.
+    // Accent badge (tinted rounded square with a dot) + spaced uppercase caption.
     lv_obj_t *dot = lv_obj_create(o);
-    lv_obj_set_size(dot, 8, 8);
-    lv_obj_set_pos(dot, 0, 4);
-    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(dot, c(accent), 0);
+    lv_obj_set_size(dot, 18, 18);
+    lv_obj_set_pos(dot, 0, -2);
+    lv_obj_set_style_radius(dot, 6, 0);
+    lv_obj_set_style_bg_color(dot, lv_color_mix(c(accent), c(col::CARD_TOP), 70), 0);
     lv_obj_set_style_border_width(dot, 0, 0);
+    lv_obj_set_style_pad_all(dot, 0, 0);
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *pip = lv_obj_create(dot);
+    lv_obj_set_size(pip, 8, 8);
+    lv_obj_center(pip);
+    lv_obj_set_style_radius(pip, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(pip, c(accent), 0);
+    lv_obj_set_style_border_width(pip, 0, 0);
     lv_obj_t *t = lbl(o, &lv_font_montserrat_12, col::MUTED, title);
-    lv_obj_set_style_text_letter_space(t, 1, 0);
-    lv_obj_set_pos(t, 14, 0);
+    lv_obj_set_style_text_letter_space(t, 2, 0);
+    lv_obj_set_pos(t, 26, 0);
   }
   return o;
 }
@@ -110,9 +121,15 @@ lv_obj_t *tile(lv_obj_t *parent, int w, int h, const char *sym, const char *text
 }
 
 void setTile(lv_obj_t *t, bool on, uint32_t onColor, const char *sub) {
-  lv_obj_set_style_bg_color(t, on ? lv_color_mix(c(onColor), c(col::TILE), 70) : c(col::TILE), 0);
+  // On: bright gradient pill with dark text, like the app's running pump.
+  lv_obj_set_style_bg_color(t, on ? lv_color_mix(lv_color_white(), c(onColor), 90) : c(col::TILE), 0);
+  lv_obj_set_style_bg_grad_color(t, on ? c(onColor) : c(col::TILE), 0);
+  lv_obj_set_style_bg_grad_dir(t, on ? LV_GRAD_DIR_VER : LV_GRAD_DIR_NONE, 0);
   lv_obj_set_style_border_color(t, on ? c(onColor) : c(col::BORDER), 0);
-  lv_obj_set_style_text_color(lv_obj_get_child(t, 0), on ? c(onColor) : c(col::MUTED), 0);
+  uint32_t fg = on ? col::RAIL : col::MUTED;
+  lv_obj_set_style_text_color(lv_obj_get_child(t, 0), c(on ? col::RAIL : col::MUTED), 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(t, 1), c(on ? col::RAIL : col::TEXT), 0);
+  lv_obj_set_style_text_color(lv_obj_get_child(t, 2), c(fg), 0);
   setText(lv_obj_get_child(t, 2), "%s", sub ? sub : (on ? "On" : "Off"));
 }
 
@@ -137,8 +154,8 @@ lv_obj_t *vbar(lv_obj_t *parent, int w, int h, uint32_t color) {
   lv_bar_set_range(b, 0, 100);
   lv_obj_set_style_bg_color(b, c(col::TILE), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_radius(b, w > h ? h / 2 : 10, LV_PART_MAIN);
-  lv_obj_set_style_radius(b, w > h ? h / 2 : 10, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(b, w > h ? h / 2 : 14, LV_PART_MAIN);
+  lv_obj_set_style_radius(b, w > h ? h / 2 : 14, LV_PART_INDICATOR);
   lv_obj_set_style_bg_color(b, c(color), LV_PART_INDICATOR);
   // Subtle vertical gradient on the fill
   lv_obj_set_style_bg_grad_color(b, lv_color_mix(c(color), lv_color_black(), 170), LV_PART_INDICATOR);
@@ -261,8 +278,8 @@ void showPage(int p) {
   for (int i = 0; i < NAV_COUNT; i++) {
     bool on = kRail[i] == railPage;
     lv_obj_set_style_bg_opa(gNavBtns[i], on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-    lv_obj_set_style_text_color(lv_obj_get_child(gNavBtns[i], 0), c(on ? col::ACCENT : col::MUTED), 0);
-    lv_obj_set_style_text_color(lv_obj_get_child(gNavBtns[i], 1), c(on ? col::TEXT : col::MUTED), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(gNavBtns[i], 0), c(on ? col::RAIL : col::MUTED), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(gNavBtns[i], 1), c(on ? col::RAIL : col::MUTED), 0);
   }
   gPage = p;
   // Sub-pages get a back arrow in the title (tap it to return to More).
@@ -285,7 +302,9 @@ static lv_obj_t *moreTile(lv_obj_t *p, int i, int page, const char *sym, const c
   lv_obj_t *b = lv_btn_create(p);
   lv_obj_set_size(b, w, h);
   lv_obj_set_pos(b, colX(i, 3), (PAGE_H - h) / 2);  // vertically centred in the page
-  lv_obj_set_style_bg_color(b, c(col::CARD), 0);
+  lv_obj_set_style_bg_color(b, c(col::CARD_TOP), 0);
+  lv_obj_set_style_bg_grad_color(b, c(col::CARD_BOT), 0);
+  lv_obj_set_style_bg_grad_dir(b, LV_GRAD_DIR_VER, 0);
   lv_obj_set_style_border_color(b, c(col::BORDER), 0);
   lv_obj_set_style_border_width(b, 1, 0);
   lv_obj_set_style_radius(b, 18, 0);
@@ -429,7 +448,10 @@ static void buildShell() {
     lv_obj_set_style_pad_all(b, 0, 0);
     lv_obj_set_style_radius(b, 14, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_set_style_bg_color(b, c(col::TILE), 0);
+    // Active page: lime gradient pill with dark icon + caption (as in the app).
+    lv_obj_set_style_bg_color(b, c(col::ACCENT_HI), 0);
+    lv_obj_set_style_bg_grad_color(b, c(col::ACCENT), 0);
+    lv_obj_set_style_bg_grad_dir(b, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
     lv_obj_t *ic = lbl(b, isExtraIcon(kPageIcons[pg]) ? &ui_icons_28 : &lv_font_montserrat_28, col::MUTED, kPageIcons[pg]);
     lv_obj_align(ic, LV_ALIGN_TOP_MID, 0, LARGE ? 12 : 8);
