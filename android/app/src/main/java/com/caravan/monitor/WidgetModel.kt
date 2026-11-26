@@ -28,8 +28,9 @@ data class WidgetView(
     /** 0-100 for the bar; 0 while not live. */
     val socPct: Int = 0,
     val socColor: Long = WidgetColors.MUTED,
-    /** "Charging 12.3 A", "Using 4.2 A", "Idle", "Battery offline". */
+    /** Net battery current: "Net +12.3 A · charging", "Net -4.2 A · using", "Battery offline". */
     val flow: String = "--",
+    val flowColor: Long = WidgetColors.MUTED,
     /** "About 2 days left at this load", "Full in 1 h 20 min" or "". */
     val time: String = "",
     val water: WidgetTile = WidgetTile("Water"),
@@ -64,7 +65,7 @@ data class WidgetView(
 
     fun toJson(): String = JSONObject().apply {
         put("live", live); put("st", status); put("ss", statusShort); put("al", alerts); put("alc", alertColor)
-        put("soc", soc); put("sp", socPct); put("sc", socColor); put("fl", flow); put("tm", time); put("at", dataAt)
+        put("soc", soc); put("sp", socPct); put("sc", socColor); put("fl", flow); put("fc", flowColor); put("tm", time); put("at", dataAt)
         listOf("w" to water, "g" to gas, "i" to inside, "f" to fridge).forEach { (k, t) ->
             put(k, JSONObject().put("l", t.label).put("v", t.value).put("c", t.color))
         }
@@ -81,7 +82,7 @@ data class WidgetView(
                     live = o.optBoolean("live"), status = o.optString("st", d.status), statusShort = o.optString("ss", d.statusShort),
                     alerts = o.optString("al"), alertColor = o.optLong("alc", WidgetColors.WARN),
                     soc = o.optString("soc", "--"), socPct = o.optInt("sp"), socColor = o.optLong("sc", WidgetColors.MUTED),
-                    flow = o.optString("fl", "--"), time = o.optString("tm"),
+                    flow = o.optString("fl", "--"), flowColor = o.optLong("fc", WidgetColors.MUTED), time = o.optString("tm"),
                     water = tile("w", d.water), gas = tile("g", d.gas), inside = tile("i", d.inside), fridge = tile("f", d.fridge),
                     dataAt = o.optLong("at"),
                 )
@@ -164,12 +165,14 @@ object WidgetModel {
             soc = if (b.on) "${Math.round(b.soc)}%" else "--",
             socPct = if (b.on) Math.round(b.soc).toInt().coerceIn(0, 100) else 0,
             socColor = if (b.on) WidgetColors.soc(b.soc) else WidgetColors.MUTED,
+            // Net current: all charging in minus all loads out, as measured at the battery.
             flow = when {
                 !b.on -> "Battery offline"
-                b.a > 0.3 -> "Charging ${one(b.a)} A"
-                b.a < -0.3 -> "Using ${one(-b.a)} A"
-                else -> "Idle"
+                b.a > 0.3 -> "Net +${one(b.a)} A · charging"
+                b.a < -0.3 -> "Net -${one(-b.a)} A · using"
+                else -> "Net ${one(b.a)} A · idle"
             },
+            flowColor = when { !b.on -> WidgetColors.MUTED; b.a > 0.3 -> WidgetColors.LIME; b.a < -0.3 -> WidgetColors.WARN; else -> WidgetColors.TEXT },
             time = if (b.on) t else "",
             water = if (tank >= 0) WidgetTile(names.water.label, "${Math.round(st.tank[tank].pct)}%", WidgetColors.WATER)
                 else WidgetTile(names.water.label, color = WidgetColors.MUTED),

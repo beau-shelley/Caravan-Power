@@ -79,7 +79,6 @@ class CaravanWidget : AppWidgetProvider() {
 
         private fun full(context: Context, v: WidgetView) = RemoteViews(context.packageName, R.layout.widget_caravan).apply {
             setOnClickPendingIntent(R.id.w_root, openApp(context))
-            val text = if (v.live) WidgetColors.TEXT else WidgetColors.MUTED
             if (v.alerts.isNotEmpty()) {
                 setTextViewText(R.id.w_title, "⚠ " + v.alerts)
                 setTextColor(R.id.w_title, v.alertColor.toInt())
@@ -92,7 +91,7 @@ class CaravanWidget : AppWidgetProvider() {
             setTextViewText(R.id.w_soc, v.soc)
             setTextColor(R.id.w_soc, v.socColor.toInt())
             setTextViewText(R.id.w_flow, v.flow)
-            setTextColor(R.id.w_flow, text.toInt())
+            setTextColor(R.id.w_flow, v.flowColor.toInt())
             setTextViewText(R.id.w_time, v.time)
             setViewVisibility(R.id.w_time, if (v.time.isEmpty()) View.GONE else View.VISIBLE)
             bar(this, v)
