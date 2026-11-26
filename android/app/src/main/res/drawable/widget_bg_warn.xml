@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget background while a warning is unacknowledged: amber wash and outline. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="300" android:startColor="#F5463A22" android:endColor="#F8121214" />
+    <stroke android:width="1.5dp" android:color="#B3FFB020" />
+    <corners android:radius="24dp" />
+</shape>
