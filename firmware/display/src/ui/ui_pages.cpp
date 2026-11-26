@@ -236,6 +236,13 @@ void updateWater() {
 
 // ================================================================ CLIMATE
 static lv_obj_t *cName[cv::NUM_TEMPS], *cVal[cv::NUM_TEMPS], *cMinMax[cv::NUM_TEMPS];
+// Today's low-high range bar beside each reading, with a dot at the current
+// value. Fixed scales (tenths of a degree) so the bar's length means something.
+static lv_obj_t *cRange[cv::NUM_TEMPS], *cDot[cv::NUM_TEMPS];
+static int rangeLo(int i) { return i == cv::TEMP_FRIDGE ? -50 : 0; }
+static int rangeHi(int i) { return i == cv::TEMP_FRIDGE ? 100 : 400; }
+constexpr int DOT_D = LARGE ? 18 : 14, RANGE_H = LARGE ? 10 : 8, RANGE_X = DOT_D / 2;
+constexpr int RANGE_Y = LARGE ? 108 : 88, RANGE_W = innerOf(colW(cv::NUM_TEMPS)) - DOT_D;
 static lv_obj_t *acGrid, *acStatus, *acOff;
 static lv_obj_t *acBtns[cv::MAX_AC_PRESETS];
 static int acGridW, acGridH;
@@ -295,6 +302,20 @@ void buildClimate(lv_obj_t *p) {
     lv_obj_set_pos(cVal[i], 0, 42);
     cMinMax[i] = lbl(cd, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
     lv_obj_align(cMinMax[i], LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    cRange[i] = vbar(cd, RANGE_W, RANGE_H, col::CLIMATE);
+    lv_bar_set_mode(cRange[i], LV_BAR_MODE_RANGE);
+    lv_bar_set_range(cRange[i], rangeLo(i), rangeHi(i));
+    lv_obj_set_style_anim_time(cRange[i], 0, 0);
+    lv_obj_set_pos(cRange[i], RANGE_X, RANGE_Y);
+    lv_obj_clear_flag(cRange[i], LV_OBJ_FLAG_CLICKABLE);
+    cDot[i] = lv_obj_create(cd);
+    lv_obj_set_size(cDot[i], DOT_D, DOT_D);
+    lv_obj_set_style_radius(cDot[i], LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(cDot[i], lv_color_white(), 0);
+    lv_obj_set_style_border_color(cDot[i], c(col::CARD), 0);
+    lv_obj_set_style_border_width(cDot[i], 3, 0);
+    lv_obj_clear_flag(cDot[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(cDot[i], LV_OBJ_FLAG_HIDDEN);
   }
 
   if (!HAS_AIRCON && !HAS_INVERTER) {
@@ -340,6 +361,30 @@ static void buildInverter(lv_obj_t *p, int x, int y, int invW, int botH) {
   lv_obj_align(invAc, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 
+// Low-high bar (blue-to-red like the numbers) with a dot at the current reading.
+static void setRange(int i, float lo, float hi, float now, bool live = true) {
+  if (!live || hi < lo) {
+    lv_bar_set_start_value(cRange[i], rangeLo(i), LV_ANIM_OFF);
+    lv_bar_set_value(cRange[i], rangeLo(i), LV_ANIM_OFF);
+    lv_obj_add_flag(cDot[i], LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  auto clampT = [&](float v) {
+    int t = (int)lroundf(v * 10);
+    return t < rangeLo(i) ? rangeLo(i) : t > rangeHi(i) ? rangeHi(i) : t;
+  };
+  int a = clampT(lo), b = clampT(hi), n = clampT(now);
+  if (b - a < 4) b = a + 4;  // keep a sliver visible when the range is tiny
+  lv_bar_set_start_value(cRange[i], a, LV_ANIM_OFF);
+  lv_bar_set_value(cRange[i], b, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(cRange[i], c(tempColor(i, lo)), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_grad_color(cRange[i], c(tempColor(i, hi)), LV_PART_INDICATOR);
+  constexpr int w = RANGE_W;
+  int x = RANGE_X + (int)((long)(n - rangeLo(i)) * w / (rangeHi(i) - rangeLo(i)));
+  lv_obj_set_pos(cDot[i], x - DOT_D / 2, RANGE_Y + RANGE_H / 2 - DOT_D / 2);
+  lv_obj_clear_flag(cDot[i], LV_OBJ_FLAG_HIDDEN);
+}
+
 void updateClimate() {
   const cv::State &s = app::state;
   if (seenMetaClimate != app::metaVer) {
@@ -363,10 +408,12 @@ void updateClimate() {
         setText(cMinMax[i], fr ? LV_SYMBOL_DOWN " %.1f\xC2\xB0   " LV_SYMBOL_UP " %.1f\xC2\xB0  today"
                                : LV_SYMBOL_DOWN " %.0f\xC2\xB0   " LV_SYMBOL_UP " %.0f\xC2\xB0  today",
                 t.minC, t.maxC);
+      setRange(i, t.minC, t.maxC, t.c);
     } else {
       setText(cVal[i], "--");
       lv_obj_set_style_text_color(cVal[i], c(col::DIM), 0);
       setText(cMinMax[i], "sensor offline");
+      setRange(i, 0, 0, 0, false);
     }
   }
   if (heaterCard) {

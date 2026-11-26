@@ -8,7 +8,7 @@
 
 namespace ui {
 
-static lv_obj_t *arcSoc, *lSoc, *lVolt, *lAmps, *lTtg, *lSrc;
+static lv_obj_t *arcSoc, *lSoc, *lVolt, *lAmps, *lNet, *lTtg, *lSrc;
 static lv_obj_t *lSolarW, *lSolarA, *lChgA, *lChgSub, *lLoadA, *lLoadW;
 // Source rows: one per solar controller, plus the mains chargers (last slot),
 // which only appear while the hub detects bulk mains charging.
@@ -137,6 +137,9 @@ void buildHome(lv_obj_t *p) {
   lv_obj_align_to(lVolt, arcSoc, LV_ALIGN_CENTER, 0, LARGE ? 34 : 28);
   lAmps = lbl(b, LARGE ? &lv_font_montserrat_28 : &lv_font_montserrat_24, col::TEXT, "-- A");
   lv_obj_align(lAmps, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+  lNet = lbl(b, &lv_font_montserrat_12, col::MUTED, "NET");
+  lv_obj_set_style_text_letter_space(lNet, 1, 0);
+  lv_obj_align(lNet, LV_ALIGN_BOTTOM_LEFT, 0, LARGE ? -34 : -30);
   lTtg = lbl(b, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
   lv_obj_set_style_text_align(lTtg, LV_TEXT_ALIGN_RIGHT, 0);
   lv_obj_align(lTtg, LV_ALIGN_BOTTOM_RIGHT, 0, -2);
@@ -191,7 +194,7 @@ void buildHome(lv_obj_t *p) {
   lv_obj_t *w = card(p, colX(1, 3), BOT_Y, bw, BOT_H, "WATER", col::WATER);
   lv_obj_add_flag(w, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_event_cb(w, goWater, LV_EVENT_CLICKED, nullptr);
-  constexpr int slot = innerOf(bw) / cv::NUM_TANKS, tankBarW = LARGE ? 46 : 38;
+  constexpr int slot = innerOf(bw) / cv::NUM_TANKS, tankBarW = LARGE ? 60 : 48;
   constexpr int tankBarH = bh - 24 - 46;  // caption above, % and name below
   for (int i = 0; i < cv::NUM_TANKS; i++) {
     int x = i * slot;
@@ -287,6 +290,7 @@ void updateHome() {
     setText(lVolt, "%.2f V", s.bat.v);
     bool chg = s.bat.a > 0.2f;
     setText(lAmps, "%s%.1f A", chg ? "+" : "", s.bat.a);
+    setText(lNet, "%s", chg ? "NET INTO BATTERY" : s.bat.a < -0.2f ? "NET FROM BATTERY" : "NET");
     lv_obj_set_style_text_color(lAmps, c(chg ? col::CHARGE : s.bat.a < -0.2f ? col::LOAD : col::TEXT), 0);
     fmtDuration(buf, sizeof(buf), s.bat.ttgMin);
     if (s.bat.ttgMin < 0) setText(lTtg, "idle");
@@ -297,6 +301,7 @@ void updateHome() {
     setText(lSoc, "--%%");
     setText(lVolt, "no data");
     setText(lAmps, "-- A");
+    setText(lNet, "%s", "NET");
     setText(lTtg, "");
   }
 
