@@ -412,6 +412,10 @@ data class DataAge(val live: Boolean = true, val lastAt: Long = 0, val why: Stri
          *  seen (15 s hub -> 25 s, 10 s -> 18 s), never under 15 s or over 30 s. 25 s until known. */
         fun cloudLimitMs(gapMs: Long): Long =
             if (gapMs <= 0) 25_000L else (gapMs * 3 / 2 + 3_000L).coerceIn(15_000L, 30_000L)
+        /** App closed and away from the van: the cloud's state is taken this often. */
+        const val SAMPLE_MS = 60_000L
+        /** ...so it counts as live for one sample plus the hub's 15 s send interval and some slack. */
+        const val SAMPLED_STALE_MS = SAMPLE_MS + 30_000L
         /** A retained cloud state is only trusted as live if its own timestamp is this recent. */
         const val RETAINED_MAX_AGE_S = 25L
 

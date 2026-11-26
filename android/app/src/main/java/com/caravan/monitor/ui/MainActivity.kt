@@ -33,13 +33,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        CaravanApp.instance.hub.acquire()
+        CaravanApp.instance.hub.acquire(screen = true)
         CaravanApp.instance.updater.check()  // throttled; also resumes a pending install
         MonitorService.sync(this)
     }
 
     override fun onStop() {
-        CaravanApp.instance.hub.release()
+        CaravanApp.instance.hub.release(screen = true)
         super.onStop()
     }
 }

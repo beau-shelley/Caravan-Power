@@ -31,21 +31,35 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
+        android:layout_marginTop="6dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
-        <!-- Battery ring (a bitmap drawn by WidgetRing) with the % in the middle. -->
-        <FrameLayout android:layout_width="56dp" android:layout_height="56dp">
+        <!-- Battery ring (a bitmap drawn by WidgetRing): outer arc = charge %, inner arc = the minute's
+             net current (green charging, red discharging). The % and the net figure sit in the middle. -->
+        <FrameLayout android:layout_width="84dp" android:layout_height="match_parent">
             <ImageView android:id="@+id/w_ring"
                 android:layout_width="match_parent" android:layout_height="match_parent"
                 android:scaleType="fitCenter" android:importantForAccessibility="no" />
-            <TextView android:id="@+id/w_soc"
-                android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center"
-                android:text="--" android:textColor="#FF9A9FA5" android:textSize="16sp" android:textStyle="bold"
-                android:includeFontPadding="false" android:maxLines="1" />
+            <LinearLayout
+                android:layout_width="match_parent" android:layout_height="match_parent"
+                android:gravity="center" android:orientation="vertical">
+                <TextView android:id="@+id/w_soc"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="--" android:textColor="#FF9A9FA5" android:textSize="18sp" android:textStyle="bold"
+                    android:includeFontPadding="false" android:maxLines="1" />
+                <TextView android:id="@+id/w_net"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="--" android:textColor="#FF9A9FA5" android:textSize="10sp" android:textStyle="bold"
+                    android:includeFontPadding="false" android:maxLines="1" />
+            </LinearLayout>
         </FrameLayout>
         <LinearLayout
             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
             android:layout_marginStart="12dp" android:orientation="vertical">
+            <TextView
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="Net, 1 min average" android:textColor="#FF9A9FA5" android:textSize="11sp"
+                android:maxLines="1" />
             <TextView android:id="@+id/w_flow"
                 android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:text="--" android:textColor="#FF9A9FA5" android:textSize="16sp" android:textStyle="bold"
@@ -59,8 +73,8 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginTop="6dp"
+        android:layout_height="50dp"
+        android:layout_marginTop="4dp"
         android:orientation="horizontal">
         <LinearLayout
             android:layout_width="0dp"

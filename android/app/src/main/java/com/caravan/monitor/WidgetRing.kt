@@ -16,11 +16,12 @@ import android.graphics.SweepGradient
  * dashed grey track only, so no old value is shown.
  */
 object WidgetRing {
-    fun bitmap(context: Context, sizeDp: Int, pct: Int, argb: Long, live: Boolean): Bitmap {
-        val px = (sizeDp * context.resources.displayMetrics.density).toInt().coerceIn(32, 240)
+    /** [netFrac] -1..1: inner arc for the net current, clockwise (charging) or anticlockwise (discharging), in [netArgb]. */
+    fun bitmap(context: Context, sizeDp: Int, pct: Int, argb: Long, live: Boolean, netFrac: Double = 0.0, netArgb: Long = 0): Bitmap {
+        val px = (sizeDp * context.resources.displayMetrics.density).toInt().coerceIn(32, 300)
         val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
-        val sw = px * 0.12f
+        val sw = px * (if (sizeDp >= 70) 0.10f else 0.12f)
         val r = RectF(sw / 2 + 1, sw / 2 + 1, px - sw / 2 - 1, px - sw / 2 - 1)
         val track = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; strokeWidth = sw
@@ -42,6 +43,18 @@ object WidgetRing {
             c.drawArc(r, -90f, 360f * f, false, arc)
             // The round start cap would take the sweep's end colour; paint it in the start colour.
             c.drawCircle(cx, r.top, sw / 2, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = deep })
+        }
+        if (live && netFrac != 0.0) {
+            // Inner arc: the minute's net current, green round clockwise for charging, red back the other way for discharging.
+            val nw = sw * 0.38f
+            val inset = sw + nw * 1.6f
+            val ir = RectF(inset, inset, px - inset, px - inset)
+            c.drawArc(ir, 0f, 360f, false, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE; strokeWidth = nw; color = 0xFF1A1C1F.toInt()
+            })
+            c.drawArc(ir, -90f, (360.0 * netFrac.coerceIn(-1.0, 1.0)).toFloat(), false, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE; strokeWidth = nw; strokeCap = Paint.Cap.ROUND; color = netArgb.toInt()
+            })
         }
         return bmp
     }

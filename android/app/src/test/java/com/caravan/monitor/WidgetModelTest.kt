@@ -27,8 +27,10 @@ class WidgetModelTest {
         assertTrue(v.live)
         assertEquals("78%", v.soc)
         assertEquals(78, v.socPct)
-        assertEquals("Net -4.2 A · using", v.flow)
-        assertEquals(WidgetColors.WARN, v.flowColor)
+        assertEquals("Discharging", v.flow)
+        assertEquals("-4.2 A", v.net)
+        assertEquals(WidgetColors.ALARM, v.netColor)  // red while discharging
+        assertEquals(-4.2 / WidgetModel.NET_FULL_A, v.netFrac, 1e-9)
         assertEquals("About 2 days left at this load", v.time)
         assertEquals(WidgetTile("Fresh 1", "65%", WidgetColors.WATER), v.water)
         assertEquals("42%", v.gas.value)
@@ -42,7 +44,9 @@ class WidgetModelTest {
         val al = listOf(ActiveAlert(1, Severity.WARN, false, 0, 0.0, ""), ActiveAlert(2, Severity.ALARM, false, 0, 0.0, ""),
             ActiveAlert(3, Severity.CRIT, true, 0, 0.0, ""))
         val v = WidgetModel.build(state(a = 12.34, alerts = al), meta, live, Outlook(battery = "Charging"), conn.copy(cloud = true), now)
-        assertEquals("Net +12.3 A · charging", v.flow)
+        assertEquals("Charging", v.flow)
+        assertEquals("+12.3 A", v.net)
+        assertEquals(WidgetColors.LIME, v.netColor)  // green while charging
         assertEquals("", v.time)  // "Charging" would only repeat the line above
         assertEquals("2 alerts", v.alerts)
         assertEquals(WidgetColors.ALARM, v.alertColor)  // the acknowledged critical one doesn't count
@@ -87,7 +91,8 @@ class WidgetModelTest {
         assertTrue(WidgetModel.shouldPush(a, null, 0, now))
         val b = WidgetModel.build(state(soc = 77.0), meta, live, Outlook(), conn, now + 5_000)
         assertFalse(WidgetModel.shouldPush(b, a, now, now + 5_000))   // too soon
-        assertTrue(WidgetModel.shouldPush(b, a, now, now + 31_000))
+        assertFalse(WidgetModel.shouldPush(b, a, now, now + 31_000))
+        assertTrue(WidgetModel.shouldPush(b, a, now, now + 56_000))
         val gone = WidgetModel.build(state(), meta, DataAge(live = false, lastAt = now), Outlook(), conn, now + 5_000)
         assertTrue(WidgetModel.shouldPush(gone, a, now, now + 5_000)) // lost: straight away
     }
@@ -95,5 +100,22 @@ class WidgetModelTest {
     @Test fun clockText() {
         assertTrue(WidgetModel.clock(now, now).matches(Regex("\\d{1,2}:\\d{2} (am|pm)")))
         assertTrue(WidgetModel.clock(now - 30 * 86_400_000L, now).matches(Regex("\\d{1,2} [A-Z][a-z]{2}")))
+    }
+
+    @Test fun netIsTheMinuteAverage() {
+        val avg = NetAverage()
+        avg.add(-10.0, now - 70_000)  // older than a minute: dropped
+        avg.add(-6.0, now - 30_000)
+        avg.add(-2.0, now)
+        assertEquals(-4.0, avg.value()!!, 1e-9)
+        val v = WidgetModel.build(state(a = -20.0), meta, live, Outlook(), conn, now, netAvgA = avg.value())
+        assertEquals("-4.0 A", v.net)
+        val big = WidgetModel.build(state(a = 120.0), meta, live, Outlook(), conn, now)
+        assertEquals(1.0, big.netFrac, 1e-9)
+        val off = WidgetModel.build(state(), meta, DataAge(live = false, lastAt = now), Outlook(), conn, now, netAvgA = -4.0)
+        assertEquals("--", off.net)
+        assertEquals(0.0, off.netFrac, 1e-9)
+        avg.clear()
+        assertEquals(null, avg.value())
     }
 }
