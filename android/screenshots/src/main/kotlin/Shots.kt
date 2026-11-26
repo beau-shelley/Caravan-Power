@@ -101,7 +101,7 @@ val CHARGING = HubState(
     // Roof 3 x 230 W (690 W) and portable 880 W, both near 78 % of rated at midday.
     bat = Battery(on = true, v = 13.84, a = 192.6, soc = 64.0, ttgMin = 34, solarA = 86.2, chargerA = 0.4, loadA = 12.6,
         acA = 119.0, acOn = true),
-    sol = listOf(Solar(true, 531.0, 1.92, 538.0, 0), Solar(true, 674.0, 2.41, 686.0, 0)),
+    sol = listOf(Solar(true, 531.0, 1.92, 538.0, 0, 38.4), Solar(true, 674.0, 2.41, 686.0, 0, 48.7)),
     tmp = listOf(Temp(true, 22.6, 17.2, 24.1, 80), Temp(true, 28.4, 14.9, 29.6, 75), Temp(true, 3.4, 2.8, 4.6, 90)),
     tank = listOf(Tank(true, 80.0), Tank(true, 45.0), Tank(true, 30.0)),
     pump = listOf(Pump(true, false, 42), Pump(false, false, 0)),
@@ -185,6 +185,8 @@ fun shot(name: String, heightDp: Int, widthDp: Int = WIDTH_DP, content: @Composa
 }
 
 fun main() {
+    widgetShots()
+    if (System.getenv("ONLY_WIDGET") != null) return
     val nop: () -> Unit = {}
     shot("1-home-mains-charging", 840) {
         AppScaffold(0, {}, 0) {
@@ -364,7 +366,7 @@ fun demoUsage(): DemoUsage {
         last = ALERTING.copy(
             ts = t, alerts = emptyList(),
             bat = Battery(true, 13.2, net, soc, -1, solarA, 0.0, load),
-            sol = listOf(Solar(true, solarA * 13.6 * 0.45, ytRoof * 0.45, 540.0, 0), Solar(true, solarA * 13.6 * 0.55, ytRoof * 0.55, 690.0, 0)),
+            sol = listOf(Solar(true, solarA * 13.6 * 0.45, ytRoof * 0.45, 540.0, 0, solarA * 0.45), Solar(true, solarA * 13.6 * 0.55, ytRoof * 0.55, 690.0, 0, solarA * 0.55)),
             tmp = listOf(Temp(true, 19.0, 14.0, 24.0, 80), Temp(true, 13.0, 9.0, 27.0, 75), Temp(true, fridge, 2.1, 4.6, 90)),
             tank = listOf(Tank(true, Math.round(fresh).toDouble()), Tank(true, 40.0), Tank(true, 35.0)),
             gas = Gas(true, Math.round(gas * 10) / 10.0),

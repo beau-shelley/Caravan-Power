@@ -421,8 +421,8 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const METRICS = [
   ["bat_v","Battery voltage","V"],["bat_soc","Battery charge","%"],["bat_a","Battery current","A"],
-  ["load_a","Load current","A"],["charge_a","Charge current","A"],["solar_w","Solar total","W"],
-  ["solar1_w","Solar 1","W"],["solar2_w","Solar 2","W"],["temp_in","Inside temp","°C"],
+  ["load_a","Load current","A"],["charge_a","Charge current","A"],["solar_a","Solar total","A"],
+  ["solar1_a","Solar 1","A"],["solar2_a","Solar 2","A"],["temp_in","Inside temp","°C"],
   ["temp_out","Outside temp","°C"],["temp_fridge","Fridge temp","°C"],["tank1","Tank 1","%"],
   ["tank2","Tank 2","%"],["tank3","Tank 3","%"],["gas","Gas bottle","%"],["theft","Theft alarm",""]];
 const CS = {0:"Off",2:"Fault",3:"Bulk",4:"Absorption",5:"Float",7:"Equalise",245:"Starting",247:"Auto EQ",252:"Ext control"};
@@ -553,9 +553,10 @@ function render() {
   $("#ttg").textContent = batteryText(b);
   $("#batSrc").textContent = b.src === 2 ? "Source: BMPRO" : b.src === 1 ? "Source: shunt" : "";
 
-  const solW = S.sol.reduce((a, x) => a + (x.on ? x.w : 0), 0);
-  $("#solW").textContent = `${Math.round(solW)} W`;
-  $("#solA").textContent = "";  // total watts only (roof + portable)
+  // Solar in amps (charge current into the battery), roof + portable.
+  const solA = S.sol.reduce((a, x) => a + (x.on ? x.ba : 0), 0);
+  $("#solW").textContent = `${solA.toFixed(1)} A`;
+  $("#solA").textContent = "";
   $("#chgA").textContent = `${b.chg >= 99.95 ? Math.round(b.chg) : b.chg.toFixed(1)} A`;
   // Mains (2 x 60 A chargers) has no sensor: the hub infers it from what the
   // BMPRO + Victrons don't explain, and sets acon only while bulk charging.
@@ -572,9 +573,9 @@ function render() {
     </div>` : "") + S.sol.map((m, i) => !(m.on && (m.w > 5 || m.ba > 0.3)) ? "" : `
     <div class="row mppt between" style="padding:6px 0">
       <div style="width:110px"><b>${esc(META.sol[i])}</b><br><span class="chip" style="color:${m.err ? "var(--alarm)" : "var(--solar)"}">${m.on ? (m.err ? "Error " + m.err : CS[m.cs] || "Unknown") : "Offline"}</span></div>
-      <div class="bar"><i style="width:${m.on ? Math.min(100, m.w / 7) : 0}%"></i></div>
-      <div style="width:150px; text-align:right"><b style="color:var(--solar)">${m.on ? Math.round(m.w) + " W" : "--"}</b><br>
-        <span class="muted small">${m.on ? `${m.pv >= 0 ? m.pv.toFixed(1) + " V PV" : m.bv.toFixed(2) + " V"} · ${m.ba.toFixed(1)} A · ${m.yt.toFixed(2)} kWh today` : ""}</span></div>
+      <div class="bar"><i style="width:${m.on ? Math.min(100, m.ba / 0.6) : 0}%"></i></div>
+      <div style="width:150px; text-align:right"><b style="color:var(--solar)">${m.on ? m.ba.toFixed(1) + " A" : "--"}</b><br>
+        <span class="muted small">${m.on ? `${m.pv >= 0 ? m.pv.toFixed(1) + " V PV" : m.bv.toFixed(2) + " V"} · ${Math.round(m.w)} W · ${m.yt.toFixed(2)} kWh today` : ""}</span></div>
     </div>`).join("");
 
   // The fridge gets one decimal (a degree matters there); the rest whole degrees.
@@ -718,7 +719,9 @@ function renderMeta() {
 }
 
 function ruleText(r) {
-  const m = METRICS.find((x) => x[0] === r.m) || [r.m, r.m, ""];
+  // Solar rules from a hub not yet updated are still in watts.
+  const OLD = { solar_w: ["solar_w", "Solar total", "W"], solar1_w: ["solar1_w", "Solar 1", "W"], solar2_w: ["solar2_w", "Solar 2", "W"] };
+  const m = METRICS.find((x) => x[0] === r.m) || OLD[r.m] || [r.m, r.m, ""];
   const dly = r.dly >= 60 ? ` for ${Math.round(r.dly / 60)} min` : r.dly ? ` for ${r.dly} s` : "";
   const extra = [SEV[r.sev], r.ntf ? "push" : "no push", r.act === "none" ? "" : r.act.replace("_", " ")].filter(Boolean).join(" · ");
   const lv = (r.lv || []).map((l) => `<span style="color:${SEVC[l.sev]}">${l.thr} ${esc(m[2])} ${SEV[l.sev].toLowerCase()}</span>`).join(", ");

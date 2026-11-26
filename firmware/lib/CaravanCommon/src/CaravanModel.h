@@ -177,12 +177,19 @@ struct State {
     for (auto &s : solar) if (s.online) w += s.pvW;
     return w;
   }
+  // Total solar charge current into the battery (all controllers, roof via the
+  // BMPRO included). bat.solarA leaves the BMPRO's solar out, so not that.
+  float solarA() const {
+    float a = 0;
+    for (auto &s : solar) if (s.online) a += s.batA;
+    return a;
+  }
 };
 
 // ---------------------------------------------------------------- alert rules
 enum Metric : uint8_t {
   M_BAT_V = 0, M_BAT_SOC, M_BAT_A, M_LOAD_A, M_CHARGE_A,
-  M_SOLAR_W, M_SOLAR1_W, M_SOLAR2_W,
+  M_SOLAR_A, M_SOLAR1_A, M_SOLAR2_A,  // solar charge current (were watts: see ruleFromJson)
   M_TEMP_IN, M_TEMP_OUT, M_TEMP_FRIDGE,
   M_TANK1, M_TANK2, M_TANK3,
   M_WX_GUST, M_WX_RAIN,   // today's forecast max wind gust (km/h), rain chance (%)

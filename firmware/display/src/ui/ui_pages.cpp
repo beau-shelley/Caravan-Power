@@ -48,11 +48,11 @@ void buildPower(lv_obj_t *p) {
     lv_obj_set_pos(spName[i], 0, 22);
     spChip[i] = chip(cd);
     lv_obj_align(spChip[i], LV_ALIGN_TOP_RIGHT, 0, 24);
-    spW[i] = lbl(cd, LARGE ? &lv_font_montserrat_48 : &lv_font_montserrat_40, col::SOLAR, "-- W");
+    spW[i] = lbl(cd, LARGE ? &lv_font_montserrat_48 : &lv_font_montserrat_40, col::SOLAR, "-- A");
     lv_obj_set_pos(spW[i], 0, 50);
     constexpr int statY = innerOf(PW_TOP_H) - (LARGE ? 42 : 38);  // stats row along the bottom
     spPv[i] = miniStat(cd, 0, statY, "PANEL", &spPvCap[i]);
-    spA[i] = miniStat(cd, statStep - 6, statY, "CHARGE");
+    spA[i] = miniStat(cd, statStep - 6, statY, "POWER");
     spToday[i] = miniStat(cd, 2 * statStep - 12, statY, "TODAY");
     spMax[i] = miniStat(cd, 3 * statStep + 12, statY, "PEAK");
     spErr[i] = lbl(cd, &lv_font_montserrat_12, col::ALARM, "");
@@ -74,7 +74,7 @@ void buildPower(lv_obj_t *p) {
   lv_obj_t *lb = lv_obj_get_child(btn, 0);
   lv_obj_set_style_text_font(lb, &lv_font_montserrat_12, 0);
 
-  lv_obj_t *cc = card(p, GAP + PW_BAT_W + GAP, PW_BOT_Y, PW_CHART_W, PW_BOT_H, "LAST 30 MIN  -  solar W / load W",
+  lv_obj_t *cc = card(p, GAP + PW_BAT_W + GAP, PW_BOT_Y, PW_CHART_W, PW_BOT_H, "LAST 30 MIN  -  solar A / load A",
                      col::SOLAR);
   chart = lv_chart_create(cc);
   lv_obj_set_size(chart, innerOf(PW_CHART_W), innerOf(PW_BOT_H) - 20);
@@ -82,7 +82,7 @@ void buildPower(lv_obj_t *p) {
   lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
   lv_chart_set_point_count(chart, 180);  // one point / 10 s
   lv_chart_set_div_line_count(chart, 4, 0);
-  lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, 0, 800);
+  lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, 0, 60);
   lv_obj_set_style_bg_opa(chart, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(chart, 0, 0);
   lv_obj_set_style_line_color(chart, c(col::BORDER), LV_PART_MAIN);
@@ -100,18 +100,18 @@ void updatePower() {
   static uint32_t lastSample = 0;
   if (app::linkUp && millis() - lastSample >= 10000) {
     lastSample = millis();
-    int sw = (int)s.solarW();
-    int lw = (int)(s.bat.loadA * (s.bat.v > 0 ? s.bat.v : 12.8f));
-    lv_chart_set_next_value(chart, serSolar, sw);
-    lv_chart_set_next_value(chart, serLoad, lw);
-    // Auto-scale: keep the biggest value in view, in 200 W steps.
-    static int ymax = 800;
-    int peak = 200;
+    int sa = (int)lroundf(s.solarA());
+    int la = (int)lroundf(s.bat.loadA);
+    lv_chart_set_next_value(chart, serSolar, sa);
+    lv_chart_set_next_value(chart, serLoad, la);
+    // Auto-scale: keep the biggest value in view, in 20 A steps.
+    static int ymax = 60;
+    int peak = 20;
     for (int i = 0; i < 180; i++) {
       peak = max<int>(peak, serSolar->y_points[i] == LV_CHART_POINT_NONE ? 0 : serSolar->y_points[i]);
       peak = max<int>(peak, serLoad->y_points[i] == LV_CHART_POINT_NONE ? 0 : serLoad->y_points[i]);
     }
-    int want = ((peak * 11 / 10) / 200 + 1) * 200;
+    int want = ((peak * 11 / 10) / 20 + 1) * 20;
     if (want != ymax) {
       ymax = want;
       lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, 0, ymax);
@@ -127,7 +127,7 @@ void updatePower() {
     const cv::Solar &m = s.solar[i];
     if (!m.online) {
       setChip(spChip[i], "Offline", col::DIM);
-      setText(spW[i], "-- W");
+      setText(spW[i], "-- A");
       setText(spPv[i], "--");
       setText(spA[i], "--");
       setText(spToday[i], "--");
@@ -137,7 +137,7 @@ void updatePower() {
     }
     uint32_t cc = m.cs == 3 ? col::SOLAR : m.cs == 4 ? col::ACCENT : m.cs == 5 ? col::CHARGE : col::MUTED;
     setChip(spChip[i], cv::chargeStateName(m.cs), m.err ? col::ALARM : cc);
-    setText(spW[i], "%.0f W", m.pvW);
+    setText(spW[i], "%.1f A", m.batA);
     // Bluetooth Instant Readout has no PV voltage: show battery voltage instead.
     if (m.pvV >= 0) {
       setText(spPvCap[i], "PANEL");
@@ -146,7 +146,7 @@ void updatePower() {
       setText(spPvCap[i], "BATTERY");
       setText(spPv[i], "%.2f V", m.batV);
     }
-    setText(spA[i], "%.1f A", m.batA);
+    setText(spA[i], "%.0f W", m.pvW);
     setText(spToday[i], "%.2f kWh", m.yieldTodayKwh);
     setText(spMax[i], "%u W", m.maxWToday);
     if (m.err) setText(spErr[i], "Error code %u", m.err);
@@ -236,6 +236,13 @@ void updateWater() {
 
 // ================================================================ CLIMATE
 static lv_obj_t *cName[cv::NUM_TEMPS], *cVal[cv::NUM_TEMPS], *cMinMax[cv::NUM_TEMPS];
+// Today's low-high range bar beside each reading, with a dot at the current
+// value. Fixed scales (tenths of a degree) so the bar's length means something.
+static lv_obj_t *cRange[cv::NUM_TEMPS], *cDot[cv::NUM_TEMPS];
+static int rangeLo(int i) { return i == cv::TEMP_FRIDGE ? -50 : 0; }
+static int rangeHi(int i) { return i == cv::TEMP_FRIDGE ? 100 : 400; }
+constexpr int DOT_D = LARGE ? 18 : 14, RANGE_H = LARGE ? 10 : 8, RANGE_X = DOT_D / 2;
+constexpr int RANGE_Y = LARGE ? 108 : 88, RANGE_W = innerOf(colW(cv::NUM_TEMPS)) - DOT_D;
 static lv_obj_t *acGrid, *acStatus, *acOff;
 static lv_obj_t *acBtns[cv::MAX_AC_PRESETS];
 static int acGridW, acGridH;
@@ -295,6 +302,20 @@ void buildClimate(lv_obj_t *p) {
     lv_obj_set_pos(cVal[i], 0, 42);
     cMinMax[i] = lbl(cd, LARGE ? &lv_font_montserrat_14 : &lv_font_montserrat_12, col::MUTED, "");
     lv_obj_align(cMinMax[i], LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    cRange[i] = vbar(cd, RANGE_W, RANGE_H, col::CLIMATE);
+    lv_bar_set_mode(cRange[i], LV_BAR_MODE_RANGE);
+    lv_bar_set_range(cRange[i], rangeLo(i), rangeHi(i));
+    lv_obj_set_style_anim_time(cRange[i], 0, 0);
+    lv_obj_set_pos(cRange[i], RANGE_X, RANGE_Y);
+    lv_obj_clear_flag(cRange[i], LV_OBJ_FLAG_CLICKABLE);
+    cDot[i] = lv_obj_create(cd);
+    lv_obj_set_size(cDot[i], DOT_D, DOT_D);
+    lv_obj_set_style_radius(cDot[i], LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(cDot[i], lv_color_white(), 0);
+    lv_obj_set_style_border_color(cDot[i], c(col::CARD), 0);
+    lv_obj_set_style_border_width(cDot[i], 3, 0);
+    lv_obj_clear_flag(cDot[i], LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(cDot[i], LV_OBJ_FLAG_HIDDEN);
   }
 
   if (!HAS_AIRCON && !HAS_INVERTER) {
@@ -340,6 +361,30 @@ static void buildInverter(lv_obj_t *p, int x, int y, int invW, int botH) {
   lv_obj_align(invAc, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 
+// Low-high bar (blue-to-red like the numbers) with a dot at the current reading.
+static void setRange(int i, float lo, float hi, float now, bool live = true) {
+  if (!live || hi < lo) {
+    lv_bar_set_start_value(cRange[i], rangeLo(i), LV_ANIM_OFF);
+    lv_bar_set_value(cRange[i], rangeLo(i), LV_ANIM_OFF);
+    lv_obj_add_flag(cDot[i], LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+  auto clampT = [&](float v) {
+    int t = (int)lroundf(v * 10);
+    return t < rangeLo(i) ? rangeLo(i) : t > rangeHi(i) ? rangeHi(i) : t;
+  };
+  int a = clampT(lo), b = clampT(hi), n = clampT(now);
+  if (b - a < 4) b = a + 4;  // keep a sliver visible when the range is tiny
+  lv_bar_set_start_value(cRange[i], a, LV_ANIM_OFF);
+  lv_bar_set_value(cRange[i], b, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(cRange[i], c(tempColor(i, lo)), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_grad_color(cRange[i], c(tempColor(i, hi)), LV_PART_INDICATOR);
+  constexpr int w = RANGE_W;
+  int x = RANGE_X + (int)((long)(n - rangeLo(i)) * w / (rangeHi(i) - rangeLo(i)));
+  lv_obj_set_pos(cDot[i], x - DOT_D / 2, RANGE_Y + RANGE_H / 2 - DOT_D / 2);
+  lv_obj_clear_flag(cDot[i], LV_OBJ_FLAG_HIDDEN);
+}
+
 void updateClimate() {
   const cv::State &s = app::state;
   if (seenMetaClimate != app::metaVer) {
@@ -363,10 +408,12 @@ void updateClimate() {
         setText(cMinMax[i], fr ? LV_SYMBOL_DOWN " %.1f\xC2\xB0   " LV_SYMBOL_UP " %.1f\xC2\xB0  today"
                                : LV_SYMBOL_DOWN " %.0f\xC2\xB0   " LV_SYMBOL_UP " %.0f\xC2\xB0  today",
                 t.minC, t.maxC);
+      setRange(i, t.minC, t.maxC, t.c);
     } else {
       setText(cVal[i], "--");
       lv_obj_set_style_text_color(cVal[i], c(col::DIM), 0);
       setText(cMinMax[i], "sensor offline");
+      setRange(i, 0, 0, 0, false);
     }
   }
   if (heaterCard) {

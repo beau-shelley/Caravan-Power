@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Caravan</string>
+    <string name="widget_name">Caravan vitals</string>
+    <string name="widget_description">Battery, water, gas and temperatures at a glance. Shows -- when the readings aren\'t live.</string>
 </resources>
