@@ -16,7 +16,7 @@ import android.graphics.SweepGradient
  * dashed grey track only, so no old value is shown.
  */
 object WidgetRing {
-    fun bitmap(context: Context, sizeDp: Int, pct: Int, color: Long, live: Boolean): Bitmap {
+    fun bitmap(context: Context, sizeDp: Int, pct: Int, argb: Long, live: Boolean): Bitmap {
         val px = (sizeDp * context.resources.displayMetrics.density).toInt().coerceIn(32, 240)
         val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
@@ -24,13 +24,13 @@ object WidgetRing {
         val r = RectF(sw / 2 + 1, sw / 2 + 1, px - sw / 2 - 1, px - sw / 2 - 1)
         val track = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; strokeWidth = sw
-            color = if (live) 0xFF0D0E10.toInt() else 0xFF2E3135.toInt()
+            this.color = if (live) 0xFF0D0E10.toInt() else 0xFF2E3135.toInt()
             if (!live) pathEffect = DashPathEffect(floatArrayOf(sw * 0.45f, sw * 0.65f), 0f)
         }
         c.drawArc(r, 0f, 360f, false, track)
         if (live && pct > 0) {
             val f = (pct / 100f).coerceIn(0.01f, 1f)
-            val base = color.toInt()
+            val base = argb.toInt()
             val deep = blend(base, 0xFF000000.toInt(), 0.3f)
             val light = blend(base, 0xFFFFFFFF.toInt(), 0.45f)
             val cx = px / 2f
