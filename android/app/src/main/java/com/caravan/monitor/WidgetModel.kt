@@ -31,6 +31,12 @@ data class WidgetView(
     /** Net battery current: "Net +12.3 A · charging", "Net -4.2 A · using", "Battery offline". */
     val flow: String = "--",
     val flowColor: Long = WidgetColors.MUTED,
+    /** Net battery current averaged over the last minute, shown inside the ring: "+12.4 A", "-8.1 A", "--". */
+    val net: String = "--",
+    /** Green while charging, red while discharging. */
+    val netColor: Long = WidgetColors.MUTED,
+    /** The inner arc: -1..1 of [WidgetModel.NET_FULL_A]; + clockwise (charging), - anticlockwise. */
+    val netFrac: Double = 0.0,
     /** "About 2 days left at this load", "Full in 1 h 20 min" or "". */
     val time: String = "",
     val water: WidgetTile = WidgetTile("Water"),
@@ -65,7 +71,7 @@ data class WidgetView(
 
     fun toJson(): String = JSONObject().apply {
         put("live", live); put("st", status); put("ss", statusShort); put("al", alerts); put("alc", alertColor)
-        put("soc", soc); put("sp", socPct); put("sc", socColor); put("fl", flow); put("fc", flowColor); put("tm", time); put("at", dataAt)
+        put("soc", soc); put("sp", socPct); put("sc", socColor); put("fl", flow); put("fc", flowColor); put("nt", net); put("nc", netColor); put("nf", netFrac); put("tm", time); put("at", dataAt)
         listOf("w" to water, "g" to gas, "i" to inside, "f" to fridge).forEach { (k, t) ->
             put(k, JSONObject().put("l", t.label).put("v", t.value).put("c", t.color))
         }
@@ -82,7 +88,8 @@ data class WidgetView(
                     live = o.optBoolean("live"), status = o.optString("st", d.status), statusShort = o.optString("ss", d.statusShort),
                     alerts = o.optString("al"), alertColor = o.optLong("alc", WidgetColors.WARN),
                     soc = o.optString("soc", "--"), socPct = o.optInt("sp"), socColor = o.optLong("sc", WidgetColors.MUTED),
-                    flow = o.optString("fl", "--"), flowColor = o.optLong("fc", WidgetColors.MUTED), time = o.optString("tm"),
+                    flow = o.optString("fl", "--"), flowColor = o.optLong("fc", WidgetColors.MUTED),
+                    net = o.optString("nt", "--"), netColor = o.optLong("nc", WidgetColors.MUTED), netFrac = o.optDouble("nf", 0.0), time = o.optString("tm"),
                     water = tile("w", d.water), gas = tile("g", d.gas), inside = tile("i", d.inside), fridge = tile("f", d.fridge),
                     dataAt = o.optLong("at"),
                 )
@@ -134,12 +141,17 @@ object WidgetColors {
 }
 
 object WidgetModel {
-    /** While live, the widget is refreshed at most this often (the app gets a state every second). */
-    const val PUSH_EVERY_MS = 30_000L
-    /** A saved live view older than this is drawn blanked (the app was stopped). */
-    const val STALE_MS = 90_000L
+    /** While live, the widget is redrawn about once a minute (a little under, so a once-a-minute sample isn't skipped). */
+    const val PUSH_EVERY_MS = 55_000L
+    /** A saved live view older than this is drawn blanked (the app was stopped): two missed minutes plus slack. */
+    const val STALE_MS = 150_000L
 
-    fun build(st: HubState?, meta: Meta, age: DataAge, outlook: Outlook, conn: ConnStatus, now: Long, previous: WidgetView? = null): WidgetView {
+    /** Net current for a full inner arc. */
+    const val NET_FULL_A = 50.0
+
+    /** [netAvgA]: net battery current averaged over the last minute ([NetAverage]); the latest reading if null. */
+    fun build(st: HubState?, meta: Meta, age: DataAge, outlook: Outlook, conn: ConnStatus, now: Long, previous: WidgetView? = null,
+              netAvgA: Double? = null): WidgetView {
         val names = WidgetView(
             water = WidgetTile(waterName(st, meta)),
             inside = WidgetTile(meta.tempNames.getOrNull(0) ?: "Inside"),
@@ -151,6 +163,7 @@ object WidgetModel {
             return names.blanked(last, now, why)
         }
         val b = st.bat
+        val net = netAvgA ?: b.a
         val unacked = st.alerts.filter { !it.ack }
         val t = outlook.battery?.takeIf { it != "Idle" && it != "Charging" } ?: ""
         val tank = st.tank.indexOfFirst { it.on }
@@ -165,14 +178,18 @@ object WidgetModel {
             soc = if (b.on) "${Math.round(b.soc)}%" else "--",
             socPct = if (b.on) Math.round(b.soc).toInt().coerceIn(0, 100) else 0,
             socColor = if (b.on) WidgetColors.soc(b.soc) else WidgetColors.MUTED,
-            // Net current: all charging in minus all loads out, as measured at the battery.
+            // Net current: all charging in minus all loads out, as measured at the battery, over the last minute.
             flow = when {
                 !b.on -> "Battery offline"
-                b.a > 0.3 -> "Net +${one(b.a)} A · charging"
-                b.a < -0.3 -> "Net -${one(-b.a)} A · using"
-                else -> "Net ${one(b.a)} A · idle"
+                net > 0.3 -> "Charging"
+                net < -0.3 -> "Discharging"
+                else -> "Resting"
             },
-            flowColor = when { !b.on -> WidgetColors.MUTED; b.a > 0.3 -> WidgetColors.LIME; b.a < -0.3 -> WidgetColors.WARN; else -> WidgetColors.TEXT },
+            flowColor = netArgb(b.on, net),
+            net = if (b.on) (if (net > 0.05) "+" else if (net < -0.05) "-" else "") + one(Math.abs(net)) + " A" else "--",
+            netColor = netArgb(b.on, net),
+            netFrac = if (!b.on || Math.abs(net) <= 0.3) 0.0
+                else Math.signum(net) * (Math.abs(net) / NET_FULL_A).coerceIn(0.04, 1.0),
             time = if (b.on) t else "",
             water = if (tank >= 0) WidgetTile(names.water.label, "${Math.round(st.tank[tank].pct)}%", WidgetColors.WATER)
                 else WidgetTile(names.water.label, color = WidgetColors.MUTED),
@@ -187,13 +204,15 @@ object WidgetModel {
         )
     }
 
-    /** Whether a new view should be drawn now: straight away when it goes live / not live or an alert changes, else every 30 s. */
+    /** Whether a new view should be drawn now: straight away when it goes live / not live or an alert changes, else about once a minute. */
     fun shouldPush(next: WidgetView, last: WidgetView?, lastPushAt: Long, now: Long): Boolean = when {
         last == null -> true
         next.live != last.live || next.alerts != last.alerts || next.alertColor != last.alertColor -> true
         !next.live -> next.status != last.status
         else -> now - lastPushAt >= PUSH_EVERY_MS && next.copy(dataAt = 0) != last.copy(dataAt = 0)
     }
+
+    private fun netArgb(on: Boolean, a: Double) = when { !on -> WidgetColors.MUTED; a > 0.3 -> WidgetColors.LIME; a < -0.3 -> WidgetColors.ALARM; else -> WidgetColors.TEXT }
 
     private fun waterName(st: HubState?, meta: Meta): String {
         val i = st?.tank?.indexOfFirst { it.on } ?: -1
@@ -214,4 +233,19 @@ object WidgetModel {
         }
         return SimpleDateFormat(fmt, Locale.ENGLISH).format(Date(at)).replace("AM", "am").replace("PM", "pm")
     }
+}
+
+/** Net battery current averaged over the last minute of live readings. Pure; fed by the widget feed. */
+class NetAverage(private val windowMs: Long = 60_000L) {
+    private val pts = ArrayDeque<Pair<Long, Double>>()
+
+    fun add(a: Double, at: Long) {
+        pts.addLast(at to a)
+        while (pts.isNotEmpty() && pts.first().first < at - windowMs) pts.removeFirst()
+    }
+
+    fun clear() = pts.clear()
+
+    /** Mean of the readings in the window, null if there are none. */
+    fun value(): Double? = if (pts.isEmpty()) null else pts.sumOf { it.second } / pts.size
 }

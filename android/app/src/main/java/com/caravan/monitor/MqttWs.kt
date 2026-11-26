@@ -60,6 +60,12 @@ class MqttWs(
         ws?.send(packet(0x82, body))
     }
 
+    fun unsubscribe(filter: String) {
+        val id = nextId++ and 0xFFFF
+        val body = ByteArrayOutputStream().apply { write(id shr 8); write(id and 0xFF); str(filter) }.toByteArray()
+        ws?.send(packet(0xA2, body))
+    }
+
     fun publish(topic: String, payload: String): Boolean {
         val body = ByteArrayOutputStream().apply { str(topic); write(payload.toByteArray()) }.toByteArray()
         return ws?.send(packet(0x30, body)) ?: false

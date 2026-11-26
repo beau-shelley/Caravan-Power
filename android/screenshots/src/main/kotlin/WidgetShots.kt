@@ -48,7 +48,7 @@ private val EDGE = Color(0x1FFFFFFF)
 @Composable
 private fun WRing(v: WidgetView, size: Int) {
     Canvas(Modifier.size(size.dp)) {
-        val sw = this.size.width * 0.12f
+        val sw = this.size.width * (if (size >= 70) 0.10f else 0.12f)
         val tl = Offset(sw / 2 + 1, sw / 2 + 1)
         val arc = Size(this.size.width - sw - 2, this.size.height - sw - 2)
         if (v.live) drawArc(Color(0xFF0D0E10), 0f, 360f, false, tl, arc, style = Stroke(sw))
@@ -61,6 +61,14 @@ private fun WRing(v: WidgetView, size: Int) {
             val brush = Brush.sweepGradient(0f to deep, f * 0.55f to base, f to light, 1f to light, center = center)
             rotate(-90f) { drawArc(brush, 0f, 360f * f, false, tl, arc, style = Stroke(sw, cap = StrokeCap.Round)) }
             drawCircle(deep, sw / 2, Offset(center.x, tl.y))
+        }
+        if (size >= 70 && v.live && v.netFrac != 0.0) {
+            val nw = sw * 0.38f
+            val inset = sw + nw * 1.6f
+            val itl = Offset(inset, inset)
+            val isz = Size(this.size.width - 2 * inset, this.size.height - 2 * inset)
+            drawArc(Color(0xFF1A1C1F), 0f, 360f, false, itl, isz, style = Stroke(nw))
+            drawArc(c(v.netColor), -90f, (360.0 * v.netFrac).toFloat(), false, itl, isz, style = Stroke(nw, cap = StrokeCap.Round))
         }
     }
 }
@@ -84,7 +92,7 @@ private fun WTile(t: WidgetTile, labelColor: Long, modifier: Modifier) {
 }
 
 @Composable
-fun WidgetFull(v: WidgetView, w: Int = 380, h: Int = 168) {
+fun WidgetFull(v: WidgetView, w: Int = 380, h: Int = 188) {
     val (bg, edge) = bgFor(v)
     Column(Modifier.size(w.dp, h.dp).clip(RoundedCornerShape(24.dp)).background(bg).border(edge.second.dp, edge.first, RoundedCornerShape(24.dp))
         .padding(horizontal = 14.dp, vertical = 12.dp)) {
@@ -94,17 +102,21 @@ fun WidgetFull(v: WidgetView, w: Int = 380, h: Int = 168) {
             Text(v.status, Modifier.weight(1f).padding(start = 8.dp), color = c(if (v.live) WidgetColors.MUTED else WidgetColors.WARN),
                 fontSize = 11.sp, textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().weight(1f).padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(contentAlignment = Alignment.Center) {
-                WRing(v, 56)
-                Text(v.soc, color = c(v.socColor), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                WRing(v, 84)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(v.soc, color = c(v.socColor), fontSize = 18.sp, fontWeight = FontWeight.Bold, lineHeight = 19.sp)
+                    Text(v.net, color = c(v.netColor), fontSize = 10.sp, fontWeight = FontWeight.Bold, lineHeight = 11.sp)
+                }
             }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text("Net, 1 min average", color = c(WidgetColors.MUTED), fontSize = 11.sp, maxLines = 1)
                 Text(v.flow, color = c(v.flowColor), fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (v.time.isNotEmpty()) Text(v.time, color = Color(0xFFD3D6D9), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        Row(Modifier.fillMaxWidth().padding(top = 6.dp).height(52.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp).height(50.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             WTile(v.water, WidgetColors.WATER, Modifier.weight(1f))
             WTile(v.gas, WidgetColors.GAS, Modifier.weight(1f))
             WTile(v.inside, WidgetColors.TEXT, Modifier.weight(1f))
@@ -142,20 +154,20 @@ fun widgetShots() {
         tmp = listOf(Temp(true, 21.4, 17.2, 24.1, 80), Temp(true, 14.2, 11.0, 26.0, 75), Temp(true, 3.4, 2.8, 4.6, 90)),
         tank = listOf(Tank(true, 72.0), Tank(true, 45.0), Tank(true, 30.0)),
     )
-    val vEvening = WidgetModel.build(evening, META, live, Outlook(battery = "About 2½ days left at this load"), CONNECTED, now)
-    val vCharging = WidgetModel.build(CHARGING, META, live, Outlook(battery = "Full in 34 min"), CONNECTED, now)
+    val vEvening = WidgetModel.build(evening, META, live, Outlook(battery = "About 2½ days left at this load"), CONNECTED, now, netAvgA = -8.1)
+    val vCharging = WidgetModel.build(CHARGING, META, live, Outlook(battery = "Full in 34 min"), CONNECTED, now, netAvgA = 31.6)
     val vAlert = WidgetModel.build(ALERTING, META, live, Outlook(battery = "45 min left at this load"), CONNECTED.copy(cloud = true), now)
     val vStale = vEvening.blanked(now - 47 * 60_000, now)
     val vNever = WidgetModel.build(null, Meta(), DataAge(live = false), Outlook(), ConnStatus(), now)
 
-    shot("widget-1-live", 220, 412) { Wallpaper { WidgetFull(vEvening) } }
-    shot("widget-2-charging", 220, 412) { Wallpaper { WidgetFull(vCharging) } }
-    shot("widget-3-alerts", 220, 412) { Wallpaper { WidgetFull(vAlert) } }
-    shot("widget-4-no-connection", 220, 412) { Wallpaper { WidgetFull(vStale) } }
+    shot("widget-1-live", 230, 412) { Wallpaper { WidgetFull(vEvening) } }
+    shot("widget-2-charging", 230, 412) { Wallpaper { WidgetFull(vCharging) } }
+    shot("widget-3-alerts", 230, 412) { Wallpaper { WidgetFull(vAlert) } }
+    shot("widget-4-no-connection", 230, 412) { Wallpaper { WidgetFull(vStale) } }
     shot("widget-5-small", 130, 412) {
         Wallpaper { Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { WidgetSmall(vEvening); WidgetSmall(vStale) } }
     }
-    shot("widget-all", 920, 412) {
+    shot("widget-all", 980, 412) {
         Wallpaper {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 WidgetFull(vEvening); WidgetFull(vCharging); WidgetFull(vAlert); WidgetFull(vStale)

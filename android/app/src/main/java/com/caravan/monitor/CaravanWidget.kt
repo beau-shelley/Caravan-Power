@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Home-screen widget with the caravan's vitals. It keeps no connection of its own (no extra
- * battery use): the app pushes a new view while it has live data, at most every 30 s
+ * battery use): the app pushes a new view while it has live data, about once a minute
  * ([WidgetFeed]). Tap it to open the app.
  */
 class CaravanWidget : AppWidgetProvider() {
@@ -100,7 +100,9 @@ class CaravanWidget : AppWidgetProvider() {
             setTextColor(R.id.w_flow, v.flowColor.toInt())
             setTextViewText(R.id.w_time, v.time)
             setViewVisibility(R.id.w_time, if (v.time.isEmpty()) View.GONE else View.VISIBLE)
-            setImageViewBitmap(R.id.w_ring, WidgetRing.bitmap(context, 56, v.socPct, v.socColor, v.live))
+            setTextViewText(R.id.w_net, v.net)
+            setTextColor(R.id.w_net, v.netColor.toInt())
+            setImageViewBitmap(R.id.w_ring, WidgetRing.bitmap(context, 84, v.socPct, v.socColor, v.live, v.netFrac, v.netColor))
             tile(this, R.id.w_water_l, R.id.w_water_v, v.water, WidgetColors.WATER)
             tile(this, R.id.w_gas_l, R.id.w_gas_v, v.gas, WidgetColors.GAS)
             tile(this, R.id.w_in_l, R.id.w_in_v, v.inside, WidgetColors.TEXT)
@@ -133,7 +135,7 @@ class CaravanWidget : AppWidgetProvider() {
         )
 
         /**
-         * After drawing a live view, check again in 90 s: if the app was stopped and couldn't
+         * After drawing a live view, check again in 150 s: if the app was stopped and couldn't
          * refresh it, the widget blanks itself. Not a wake-up alarm: it runs when the phone is
          * next awake, which is before anyone can look at the widget.
          */
@@ -155,6 +157,8 @@ class CaravanWidget : AppWidgetProvider() {
 class WidgetFeed(private val context: Context, private val hub: HubClient, private val usage: UsageTracker) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var last: WidgetView? = null
+    private val netAvg = NetAverage()
+    private var lastState: HubState? = null
     private var lastPushAt = 0L
     @Volatile private var idsCheckedAt = 0L
     private var hasWidgets = false
@@ -163,7 +167,11 @@ class WidgetFeed(private val context: Context, private val hub: HubClient, priva
         scope.launch {
             combine(hub.state, hub.age, hub.meta, hub.status, usage.outlook) { st, age, meta, conn, outlook ->
                 val now = System.currentTimeMillis()
-                WidgetModel.build(st, meta, age, outlook, conn, now, last) to now
+                // Average the net current over the last minute of live readings (each new state once).
+                if (st == null || !age.live || !st.bat.on) netAvg.clear()
+                else if (st !== lastState) netAvg.add(st.bat.a, now)
+                lastState = st
+                WidgetModel.build(st, meta, age, outlook, conn, now, last, netAvg.value()) to now
             }.collect { (v, now) ->
                 // Re-check now and then whether any widget is placed (cheap, but not every second).
                 if (now - idsCheckedAt > 60_000 || now < idsCheckedAt) {

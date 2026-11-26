@@ -83,6 +83,13 @@ class HubClient(
     /** The cloud's "online" flag: false = the van isn't sending (display or hub down). */
     @Volatile private var cloudHubOnline: Boolean? = null
     private val users = AtomicInteger(0)
+    /** How many app screens are open. With none (only the background service), the cloud is sampled. */
+    private val screens = AtomicInteger(0)
+    /** Away from the van with the app closed: take the cloud's state once a minute instead of every 15 s. */
+    @Volatile private var sampling = false
+    private val kick = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+    /** Set when [kick] fired: take a state sample now. */
+    @Volatile private var kicked = false
     private var loop: Job? = null
 
     init {
@@ -112,7 +119,11 @@ class HubClient(
     private fun updateAge() {
         val st = _status.value
         val sinceFresh = SystemClock.elapsedRealtime() - lastFreshMs
-        val limit = if (st.cloud) DataAge.cloudLimitMs(freshGapMs) else DataAge.LOCAL_STALE_MS
+        val limit = when {
+            st.cloud && sampling -> DataAge.SAMPLED_STALE_MS
+            st.cloud -> DataAge.cloudLimitMs(freshGapMs)
+            else -> DataAge.LOCAL_STALE_MS
+        }
         val why = when {
             st.conn != Conn.CONNECTED -> st.detail.ifBlank { "Not connected to the hub" }
             st.cloud && cloudHubOnline == false -> "The cloud is reachable, but the caravan isn't sending anything"
@@ -129,11 +140,14 @@ class HubClient(
     fun recentlyConnected(withinMs: Long = 15_000) =
         _status.value.conn == Conn.CONNECTED && SystemClock.elapsedRealtime() - lastMsgMs < withinMs
 
-    @Synchronized fun acquire() {
+    /** [screen]: the app is on screen (full rate); otherwise the background service. */
+    @Synchronized fun acquire(screen: Boolean = false) {
+        if (screen) { screens.incrementAndGet(); kick.trySend(Unit) }
         if (users.incrementAndGet() == 1 || loop?.isActive != true) start()
     }
 
-    @Synchronized fun release() {
+    @Synchronized fun release(screen: Boolean = false) {
+        if (screen && screens.decrementAndGet() < 0) screens.set(0)
         if (users.decrementAndGet() <= 0) {
             users.set(0)
             stop()
@@ -184,6 +198,7 @@ class HubClient(
     private fun stop() {
         loop?.cancel()
         loop = null
+        sampling = false
         ws?.close(1000, null)
         ws = null
         mqtt?.close()
@@ -319,6 +334,7 @@ class HubClient(
         fun connected() = ConnStatus(Conn.CONNECTED, "cloud",
             if (cloudHubOnline == false) "Through the cloud, but the caravan is offline" else "Through the cloud", cloud = true)
         _status.value = ConnStatus(Conn.CONNECTING, "cloud", "Away from the van: connecting through the cloud", cloud = true)
+        var gotState = false
         val client = MqttWs(http, object : MqttWs.Listener {
             override fun onConnAck(rc: Int) { acked.complete(rc) }
             override fun onClosed(why: String) { closed.complete(why) }
@@ -331,7 +347,9 @@ class HubClient(
                     updateAge()
                     return
                 }
-                if (sub == "cmd" || sub == "event") return
+                if (sub == "cmd") return
+                // An alert was raised or cleared: fetch the state now so the phone notification isn't held back by sampling.
+                if (sub == "event") { kick.trySend(Unit); return }
                 val o = try { JSONObject(payload) } catch (e: Exception) { return }
                 lastMsgMs = SystemClock.elapsedRealtime()
                 when (sub) {
@@ -344,6 +362,7 @@ class HubClient(
                         // A live (not stored) state proves the van is sending, even if a late
                         // "offline" from its last dropped connection is still sitting on the broker.
                         if (!retained) cloudHubOnline = true
+                        gotState = true
                         onState(st, fresh)
                     }
                     "meta" -> _meta.value = Meta.parse(o)
@@ -376,12 +395,42 @@ class HubClient(
             cloudBase = base
             mqtt = client
             lastMsgMs = SystemClock.elapsedRealtime()
-            client.subscribe(base + "#")
+            // Everything but the state is small and rare. The state (every 15 s from the hub) is
+            // taken in full while the app is on screen; with the app closed it's sampled once a
+            // minute (the broker hands over its stored copy on subscribe), and straight away on an
+            // alert event. That cuts the phone's mobile data about four-fold.
+            for (t in listOf("online", "meta", "rules", "resp", "event")) client.subscribe(base + t)
             _status.value = connected()
             var lastPing = SystemClock.elapsedRealtime()
             var lastLocalCheck = lastPing
+            var stateSub = false
+            var subAt = 0L
+            var lastSample = 0L
             while (!closed.isCompleted && scope.isActive) {
-                withTimeoutOrNull(5_000) { closed.await() }
+                val full = screens.get() > 0
+                val nowS = SystemClock.elapsedRealtime()
+                if (full) {
+                    kicked = false
+                    if (sampling) { sampling = false; freshGapMs = 0L }
+                    if (!stateSub) { client.subscribe(base + "state"); stateSub = true }
+                } else {
+                    sampling = true
+                    if (stateSub && (gotState || nowS - subAt > 10_000)) { client.unsubscribe(base + "state"); stateSub = false }
+                    else if (!stateSub && (nowS - lastSample >= DataAge.SAMPLE_MS || kicked)) {
+                        kicked = false
+                        gotState = false
+                        client.subscribe(base + "state"); stateSub = true
+                        subAt = nowS; lastSample = nowS
+                    }
+                }
+                updateAge()
+                withTimeoutOrNull(if (stateSub && !full) 1_000 else 5_000) {
+                    kotlinx.coroutines.selects.select<Unit> {
+                        closed.onAwait {}
+                        // Woken early when the app opens or an alert event comes in.
+                        kick.onReceive { kicked = true }
+                    }
+                }
                 val now = SystemClock.elapsedRealtime()
                 if (now - lastPing > 25_000) { client.ping(); lastPing = now }
                 // Back on the van's Wi-Fi? Go direct (quicker, and works without internet).
@@ -393,6 +442,7 @@ class HubClient(
             }
         } finally {
             if (mqtt === client) mqtt = null
+            sampling = false
             client.close()
             if (_status.value.cloud && _status.value.conn == Conn.CONNECTED)
                 _status.value = ConnStatus(Conn.OFFLINE, "cloud", "Lost the cloud connection, retrying", cloud = true)
