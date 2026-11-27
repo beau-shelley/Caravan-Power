@@ -53,10 +53,8 @@ Dev *slotFor(const char *addr) {
   return &gDevs[idx];
 }
 
-void onAdvert(NimBLEAdvertisedDevice *d) {
-  std::string addrS = d->getAddress().toString();
-  const char *addr = addrS.c_str();
-  std::string nameS = d->haveName() ? d->getName() : "";
+void onAdvert(const ble::Advert &a) {
+  const char *addr = a.addr;
 
   // Names often arrive in a separate scan response: remember them, because
   // ThermoPro is recognised by name.
@@ -65,27 +63,26 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
   for (int i = 0; i < gDevCount; i++)
     if (!strcmp(gDevs[i].addr, addr)) strncpy(name, gDevs[i].name, sizeof(name) - 1);
   portEXIT_CRITICAL(&gLock);
-  bool newName = !nameS.empty() && strncmp(name, nameS.c_str(), sizeof(name) - 1) != 0;
-  if (!nameS.empty()) strncpy(name, nameS.c_str(), sizeof(name) - 1);
+  bool newName = a.name[0] && strncmp(name, a.name, sizeof(name) - 1) != 0;
+  if (a.name[0]) strncpy(name, a.name, sizeof(name) - 1);
 
+  // Service data (16-bit UUIDs, AD type 0x16) straight from the raw advert:
+  // no heap copies per advert.
   cv::BleSensorReading r;
   bool ok = false;
-  for (int i = 0; !ok && i < (int)d->getServiceDataCount(); i++) {
-    NimBLEUUID u = d->getServiceDataUUID(i);
-    if (u.bitSize() != 16) continue;
-    std::string sd = d->getServiceData(i);
-    ok = cv::decodeBleServiceData(blec::uuid16(u), (const uint8_t *)sd.data(), sd.size(), r);
+  const uint8_t *sd;
+  uint8_t sdLen;
+  for (int i = 0; !ok && ble::findAd(a.raw, a.rawLen, 0x16, i, sd, sdLen); i++) {
+    if (sdLen < 2) continue;
+    ok = cv::decodeBleServiceData((uint16_t)(sd[0] | (sd[1] << 8)), sd + 2, sdLen - 2, r);
   }
-  if (!ok && d->haveManufacturerData()) {
-    std::string md = d->getManufacturerData();
-    ok = cv::decodeBleManufacturerData(name, (const uint8_t *)md.data(), md.size(), r);
-  }
+  if (!ok && a.mfg) ok = cv::decodeBleManufacturerData(name, a.mfg, a.mfgLen, r);
   if (!ok && !(newName && !strncmp(name, "TP3", 3))) return;
 
   char raw[125] = "";
   if (ok) {
-    const uint8_t *p = blec::payload(d);
-    size_t n = blec::payloadLen(d) < 62 ? blec::payloadLen(d) : 62;
+    const uint8_t *p = a.raw;
+    size_t n = a.rawLen < 62 ? a.rawLen : 62;
     for (size_t k = 0; k < n; k++) snprintf(raw + k * 2, 3, "%02x", p[k]);
   }
 
@@ -97,7 +94,7 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
     dev->tempC = r.tempC;
     dev->hum = r.hasHum ? r.humidity : -1;
     if (r.hasBatt) dev->batt = (int8_t)r.battPct;
-    dev->rssi = d->getRSSI();
+    dev->rssi = a.rssi;
     dev->lastMs = millis();
     if (strcmp(dev->raw, raw) != 0 || !dev->changedMs) dev->changedMs = millis();
     memcpy(dev->raw, raw, sizeof(dev->raw));

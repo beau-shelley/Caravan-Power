@@ -24,7 +24,7 @@ void WeatherClient::runSearch() {
     memcpy(q, query_, sizeof(q));
     query_[0] = 0;
   }
-  JsonDocument out;
+  PsDoc out;
   out["t"] = "loc_results";
   JsonArray list = out["list"].to<JsonArray>();
   char path[200];
@@ -37,7 +37,7 @@ void WeatherClient::runSearch() {
   if (WiFi.status() == WL_CONNECTED && http.begin(tcp, String("http://geocoding-api.open-meteo.com") + path)) {
     code = http.GET();
     if (code == 200) {
-      JsonDocument in;
+      PsDoc in;
       if (!deserializeJson(in, http.getString())) {
         for (JsonObjectConst r : in["results"].as<JsonArrayConst>()) {
           JsonObject o = list.add<JsonObject>();
@@ -91,7 +91,7 @@ void WeatherClient::loop(cv::State &s) {
   tryLon_ = lon;
   nextMs_ = millis() + 5UL * 60 * 1000;  // retry in 5 min if this fails
   if (viaDisplay) {
-    JsonDocument r;
+    PsDoc r;
     r["t"] = "wx_req";
     r["lat"] = lat;
     r["lon"] = lon;

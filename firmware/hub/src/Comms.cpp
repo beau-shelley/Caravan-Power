@@ -13,6 +13,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_random.h>
+#include <esp_heap_caps.h>
 
 #include "HubConfig.h"
 #include "LinkCodec.h"
@@ -54,8 +55,64 @@ static uint32_t gCloudConnects = 0;
 static struct {
   uint32_t boots = 0, prevUp = 0, prevHmin = 0, prevHlmin = 0, prevCc = 0;
   uint8_t prevRr = 0;
+  char prevWhy[40] = "";  // why the hub restarted itself last time ("" = it didn't)
 } gHealth;
 static uint32_t gLargestLow = 0xFFFFFFFF;  // lowest largest-free-block seen (sampled every 30 s)
+bool gTlsInPsram = false;
+
+// Internal RAM a TLS session needs in one block: ~40 KB while mbedTLS uses
+// internal RAM; with its buffers in PSRAM only the socket and handshake
+// scratch do.
+static uint32_t tlsBlockNeed() { return gTlsInPsram ? 16000 : 40000; }
+
+// ---------------------------------------------------------------- PSRAM JSON
+void *PsramJsonAllocator::allocate(size_t n) {
+#ifdef BOARD_HAS_PSRAM
+  void *p = heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (p) return p;
+#endif
+  return malloc(n);
+}
+void PsramJsonAllocator::deallocate(void *p) { free(p); }  // free() handles both kinds of RAM
+void *PsramJsonAllocator::reallocate(void *p, size_t n) {
+#ifdef BOARD_HAS_PSRAM
+  void *q = heap_caps_realloc(p, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (q || !n) return q;
+#endif
+  return realloc(p, n);
+}
+PsramJsonAllocator *PsramJsonAllocator::instance() {
+  static PsramJsonAllocator a;
+  return &a;
+}
+
+// ---------------------------------------------------------------- restarts
+void restartFor(const char *why) {
+  Serial.printf("[sys] restarting: %s (heap %u, largest %u)\n", why, (unsigned)ESP.getFreeHeap(),
+                (unsigned)ESP.getMaxAllocHeap());
+  Preferences p;
+  if (p.begin("health", false)) {
+    p.putString("why", why);
+    p.end();
+  }
+  delay(200);  // let the log line out
+  ESP.restart();
+  for (;;) {
+  }
+}
+
+static volatile uint32_t gBeatMs[BEAT_COUNT] = {};
+void beat(BeatId id) { gBeatMs[id] = millis() | 1; }
+
+void beatCheck(uint32_t now) {
+  static const char *kWhy[BEAT_COUNT] = {"BMPRO Bluetooth task stuck", "heater Bluetooth task stuck",
+                                         "push alert task stuck"};
+  static const uint32_t kLimitMs[BEAT_COUNT] = {180000, 180000, 300000};
+  for (int i = 0; i < BEAT_COUNT; i++) {
+    uint32_t b = gBeatMs[i];
+    if (b && now - b > kLimitMs[i]) restartFor(kWhy[i]);
+  }
+}
 
 // ================================================================ Net
 // Up to three Wi-Fi networks (e.g. home, phone hotspot, Starlink), the same
@@ -131,9 +188,7 @@ void Net::watchdog() {
       delay(200);
       joinNet(gNetIdx);
     } else {
-      Serial.println("[net] network still jammed after rejoining - restarting");
-      delay(100);
-      ESP.restart();
+      restartFor("network jammed after rejoining Wi-Fi");
     }
     return;
   }
@@ -166,10 +221,7 @@ void Net::loop(cv::State &s) {
   // The web server, WebSockets and MQTT all run on the net task: if it hasn't
   // looped for 2 minutes it's stuck (e.g. a socket write that never returns).
   if (netAliveMs_ && millis() - netAliveMs_ > 120000) {
-    Serial.printf("[net] net task stuck for 2 min (heap %u, min %u) - restarting\n", (unsigned)ESP.getFreeHeap(),
-                  (unsigned)ESP.getMinFreeHeap());
-    delay(100);
-    ESP.restart();
+    restartFor("net task stuck for 2 min");
   }
   static uint32_t nextHeapLog = 0;
   if ((int32_t)(millis() - nextHeapLog) >= 0) {
@@ -270,13 +322,13 @@ void DisplayLink::loop(const cv::State &s) {
   while (ser_->available()) {
     if (!reader.feed((uint8_t)ser_->read())) continue;
     lastRxMs_ = millis();
-    JsonDocument in;
+    PsDoc in;
     if (deserializeJson(in, reader.line(), reader.length())) continue;
     if (in["c"].is<const char *>()) {
       // "via":"cloud" = the display relaying a command from the app / web page
       // through the cloud broker: same rules as the hub's own MQTT link.
       bool cloud = !strcmp(in["via"] | "", "cloud");
-      JsonDocument reply;
+      PsDoc reply;
       handleCommand(in.as<JsonObjectConst>(), cloud ? SRC_CLOUD : SRC_DISPLAY, reply);
       if (cloud && reply.isNull()) reply["ok"] = true;  // the app waits for an answer
       if (cloud && in["rid"].is<const char *>()) reply["rid"] = in["rid"];
@@ -294,8 +346,8 @@ void DisplayLink::loop(const cv::State &s) {
     nextPollMs_ = now + kPollMs;
   } else if (configDirty_) {
     configDirty_ = false;
-    JsonDocument doc;
-    JsonDocument cmd;
+    PsDoc doc;
+    PsDoc cmd;
     cmd["c"] = "hello";
     handleCommand(cmd.as<JsonObjectConst>(), SRC_DISPLAY, doc);
     send(doc);
@@ -303,7 +355,7 @@ void DisplayLink::loop(const cv::State &s) {
   } else if ((int32_t)(now - nextStateMs_) >= 0) {
     nextStateMs_ = now + 1000;
     nextPollMs_ = now + kPollMs;
-    JsonDocument doc;
+    PsDoc doc;
     cv::stateToJson(s, doc.to<JsonObject>());
     send(doc);
   } else if ((int32_t)(now - nextPollMs_) >= 0) {
@@ -311,7 +363,7 @@ void DisplayLink::loop(const cv::State &s) {
     if (s.lvl.online) {
       // The poll slot carries the level reading, so the touchscreen's level
       // page updates 10x a second instead of once.
-      JsonDocument doc;
+      PsDoc doc;
       JsonObject o = doc.to<JsonObject>();
       o["t"] = "lvl";
       cv::levelToJson(s.lvl, o);
@@ -368,7 +420,7 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) 
   } else if (type == WStype_DISCONNECTED) {
     gWsAuthed[num] = false;
   } else if (type == WStype_TEXT) {
-    JsonDocument in;
+    PsDoc in;
     if (deserializeJson(in, payload, len)) return;
     if (!gWsAuthed[num]) {
       // Browsers can't send Basic auth on a WebSocket, so the page first
@@ -385,7 +437,7 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t *payload, size_t len) 
       gWs.sendTXT(num, "{\"t\":\"auth\",\"ok\":true}");
       return;
     }
-    JsonDocument reply;
+    PsDoc reply;
     handleCommand(in.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
     if (!reply.isNull()) {
       String out;
@@ -414,21 +466,21 @@ void LocalWeb::begin() {
   });
   gHttp.on("/api/token", HTTP_GET, [] {
     if (!checkAuth()) return;
-    JsonDocument d;
+    PsDoc d;
     d["tok"] = gWsToken;
     d["wsPort"] = 81;
     sendJson(d);
   });
   gHttp.on("/api/state", HTTP_GET, [] {
     if (!checkAuth()) return;
-    JsonDocument reply, cmd;
+    PsDoc reply, cmd;
     cmd["c"] = "state";
     handleCommand(cmd.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
     sendJson(reply);
   });
   gHttp.on("/api/cmd", HTTP_POST, [] {
     if (!checkAuth()) return;
-    JsonDocument in, reply;
+    PsDoc in, reply;
     if (deserializeJson(in, gHttp.arg("plain"))) {
       gHttp.send(400, "text/plain", "bad json");
       return;
@@ -439,7 +491,7 @@ void LocalWeb::begin() {
   });
   gHttp.on("/api/config", HTTP_GET, [] {
     if (!checkAuth()) return;
-    JsonDocument d;
+    PsDoc d;
     {
       StateLock l;
       gConfig.toJson(d.to<JsonObject>());
@@ -448,12 +500,12 @@ void LocalWeb::begin() {
   });
   gHttp.on("/api/config", HTTP_POST, [] {
     if (!checkAuth()) return;
-    JsonDocument in;
+    PsDoc in;
     if (deserializeJson(in, gHttp.arg("plain"))) {
       gHttp.send(400, "text/plain", "bad json");
       return;
     }
-    JsonDocument cmd, reply;
+    PsDoc cmd, reply;
     cmd["c"] = "config_set";
     cmd["cfg"] = in.as<JsonObjectConst>();
     handleCommand(cmd.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
@@ -461,7 +513,7 @@ void LocalWeb::begin() {
   });
   gHttp.on("/api/bmpro/log", HTTP_GET, [] {
     if (!checkAuth()) return;
-    JsonDocument cmd, reply;
+    PsDoc cmd, reply;
     cmd["c"] = "bmpro_log";
     handleCommand(cmd.as<JsonObjectConst>(), SRC_LOCAL_WEB, reply);
     gHttp.send(200, "text/plain", reply["log"] | "");
@@ -499,7 +551,7 @@ void LocalWeb::loop(const cv::State &s) {
   gWs.loop();
   if ((int32_t)(millis() - nextPushMs_) >= 0 && gWs.connectedClients() > 0) {
     nextPushMs_ = millis() + 1000;
-    JsonDocument doc;
+    PsDoc doc;
     {
       StateLock l;
       cv::stateToJson(s, doc.to<JsonObject>());
@@ -528,7 +580,7 @@ struct EventMsg {
 };
 
 static void onMqtt(char *topic, byte *payload, unsigned int len) {
-  JsonDocument in, reply;
+  PsDoc in, reply;
   if (deserializeJson(in, payload, len)) return;
   handleCommand(in.as<JsonObjectConst>(), SRC_CLOUD, reply);
   if (!reply.isNull()) {
@@ -544,14 +596,6 @@ void DisplayLink::queueOut(JsonDocument &doc) {
   xQueueSend(outQ_, &m, 0);
 }
 
-// Internal RAM a TLS session needs in one block. On the S3 hub's Arduino 3 build
-// mbedTLS allocates from PSRAM (main.cpp tlsInPsram), so only the socket and
-// handshake scratch need internal RAM.
-#if defined(BOARD_HAS_PSRAM) && ESP_IDF_VERSION_MAJOR >= 5
-static constexpr uint32_t kTlsBlockNeed = 16000;
-#else
-static constexpr uint32_t kTlsBlockNeed = 40000;
-#endif
 static uint8_t gMemSkips = 0;  // cloud reconnects skipped for lack of RAM, in a row
 
 void addSysStats(JsonObject o) {
@@ -574,6 +618,7 @@ void addSysStats(JsonObject o) {
   p["hmin"] = gHealth.prevHmin;
   p["hlmin"] = gHealth.prevHlmin;
   p["cc"] = gHealth.prevCc;
+  if (gHealth.prevWhy[0]) p["why"] = gHealth.prevWhy;
 }
 
 // Called at boot: load last run's figures and count this boot.
@@ -587,6 +632,12 @@ void healthBegin() {
   gHealth.prevHmin = p.getUInt("hmin", 0);
   gHealth.prevHlmin = p.getUInt("hlmin", 0);
   gHealth.prevCc = p.getUInt("cc", 0);
+  // Saved by restartFor(); cleared so a power cut or crash next time isn't
+  // blamed on an old reason (the reset reason "rr" tells those apart).
+  if (p.isKey("why")) {
+    p.getString("why", gHealth.prevWhy, sizeof(gHealth.prevWhy));
+    p.remove("why");
+  }
   p.putUChar("rrNow", (uint8_t)esp_reset_reason());
   p.end();
 }
@@ -663,20 +714,15 @@ void Cloud::loop(const cv::State &s) {
     // classic ESP32 hub rarely has one, and failed handshakes fragment the
     // heap further (2026-11-19: largest block shrank ~1 KB a minute). Wait
     // for memory instead of trying; the display board will take over cloud.
-    if (ESP.getMaxAllocHeap() < kTlsBlockNeed) {
+    if (ESP.getMaxAllocHeap() < tlsBlockNeed()) {
       // Fragmented RAM doesn't heal by itself (2026-11-25: after a push alert
       // the S3 hub sat at a 33 KB largest block and the cloud stayed down for
       // hours). Phone alerts need the cloud, so retry every minute and after
       // three tries (~3 min) restart: Bluetooth, the display link and the
       // cloud are all back within ~30 s with a clean heap.
-      if (++gMemSkips >= 3) {
-        Serial.printf("[cloud] still no %u-byte block after %u tries (largest %u) - restarting to recover the cloud\n", (unsigned)kTlsBlockNeed,
-                      gMemSkips, (unsigned)ESP.getMaxAllocHeap());
-        delay(200);
-        ESP.restart();
-      }
+      if (++gMemSkips >= 3) restartFor("no RAM block for the cloud link");
       Serial.printf("[cloud] skipped: largest free block %u bytes, need %u - retry in 1 min\n",
-                    (unsigned)ESP.getMaxAllocHeap(), (unsigned)kTlsBlockNeed);
+                    (unsigned)ESP.getMaxAllocHeap(), (unsigned)tlsBlockNeed());
       nextTryMs_ = millis() + 60000;
       return;
     }
@@ -705,7 +751,7 @@ void Cloud::loop(const cv::State &s) {
     gMqtt.publish((gBase + "event").c_str(), ev.json);
   if (metaDirty_) {
     metaDirty_ = false;
-    JsonDocument m, r;
+    PsDoc m, r;
     {
       StateLock l;
       cv::metaToJson(gConfig.meta, m.to<JsonObject>());
@@ -718,7 +764,7 @@ void Cloud::loop(const cv::State &s) {
   }
   if ((int32_t)(millis() - nextStateMs_) >= 0) {
     nextStateMs_ = millis() + gConfig.cloudIntervalSec * 1000UL;
-    JsonDocument doc;
+    PsDoc doc;
     {
       StateLock l;
       cv::stateToJson(s, doc.to<JsonObject>());
@@ -737,26 +783,31 @@ struct PushMsg {
 };
 static QueueHandle_t gPushQ;
 
-static constexpr uint32_t kPushHeapNeed = kTlsBlockNeed < 30000 ? kTlsBlockNeed : 30000;
+// HTTPS needs this much internal RAM in one go (much less once TLS is in PSRAM).
+static uint32_t pushHeapNeed() { return tlsBlockNeed() < 30000 ? tlsBlockNeed() : 30000; }
 
 static void pushTask(void *) {
   PushMsg m;
   for (;;) {
-    if (xQueueReceive(gPushQ, &m, portMAX_DELAY) != pdTRUE) continue;
+    beat(BEAT_PUSH);
+    // Wake once a minute even with nothing to send, to keep the heartbeat.
+    if (xQueueReceive(gPushQ, &m, pdMS_TO_TICKS(60000)) != pdTRUE) continue;
     for (int attempt = 0; attempt < 5; attempt++) {
+      beat(BEAT_PUSH);
       if (WiFi.status() != WL_CONNECTED) {
         vTaskDelay(pdMS_TO_TICKS(10000));
         continue;
       }
-      // HTTPS needs ~35 KB in one go. If the cloud link holds it, ask it to
-      // step aside (it comes back by itself) and wait up to 5 s for the RAM.
-      if (ESP.getMaxAllocHeap() < kPushHeapNeed) {
-        gCloud.pauseFor(30000);
-        for (int i = 0; i < 50 && ESP.getMaxAllocHeap() < kPushHeapNeed; i++) vTaskDelay(pdMS_TO_TICKS(100));
+      // Not enough RAM for the HTTPS send. With TLS in PSRAM the cloud link
+      // and a push fit side by side, so just wait a moment. Without it (the
+      // classic ESP32), ask the cloud link to step aside for 30 s.
+      if (ESP.getMaxAllocHeap() < pushHeapNeed()) {
+        if (!gTlsInPsram) gCloud.pauseFor(30000);
+        for (int i = 0; i < 50 && ESP.getMaxAllocHeap() < pushHeapNeed(); i++) vTaskDelay(pdMS_TO_TICKS(100));
         Serial.printf("[push] largest free block %u before sending\n", (unsigned)ESP.getMaxAllocHeap());
         // Still not enough: a TLS handshake now could run the heap dry
         // (2026-11-25: 792 bytes free). Wait and try again instead.
-        if (ESP.getMaxAllocHeap() < kPushHeapNeed) {
+        if (ESP.getMaxAllocHeap() < pushHeapNeed()) {
           vTaskDelay(pdMS_TO_TICKS(20000));
           continue;
         }
@@ -789,7 +840,7 @@ void Notifier::begin() {
 void Notifier::push(const char *title, const char *msg, uint8_t sev, bool cleared) {
   if (CLOUD_ON_DISPLAY) {
     // The display sends it to ntfy: {"t":"push","title":..,"msg":..,"sev":..,"clr":..}
-    JsonDocument d;
+    PsDoc d;
     d["t"] = "push";
     d["title"] = title;
     d["msg"] = msg;

@@ -26,6 +26,37 @@ void addSysStats(JsonObject o);
 void healthBegin();  // at boot: load the previous run's figures, count the boot
 void healthLoop();   // every loop: saves this run's figures every 10 min
 
+// Every self-restart goes through here: the reason is saved (NVS) and shows
+// in the next run's "sys.prev.why", so a morning check says what happened.
+[[noreturn]] void restartFor(const char *why);
+
+// Heartbeats from the background tasks that can block inside a Bluetooth or
+// network call. beatCheck() (main loop) restarts the hub if a task that has
+// started beating goes quiet: 3 min for the Bluetooth tasks, 5 min for push.
+enum BeatId : uint8_t { BEAT_BMPRO, BEAT_HEATER, BEAT_PUSH, BEAT_COUNT };
+void beat(BeatId id);
+void beatCheck(uint32_t now);
+
+// True once mbedTLS allocates from PSRAM (main.cpp tlsInPsram): then a TLS
+// session no longer needs a ~40 KB block of internal RAM, so the cloud link
+// and a push alert fit side by side.
+extern bool gTlsInPsram;
+
+// JSON documents whose memory comes from PSRAM when the board has it. The hub
+// builds and drops state messages several times a second; in internal RAM
+// that churn fragments the heap the Wi-Fi and Bluetooth stacks need.
+class PsramJsonAllocator : public ArduinoJson::Allocator {
+ public:
+  void *allocate(size_t n) override;
+  void deallocate(void *p) override;
+  void *reallocate(void *p, size_t n) override;
+  static PsramJsonAllocator *instance();
+};
+class PsDoc : public JsonDocument {
+ public:
+  PsDoc() : JsonDocument(PsramJsonAllocator::instance()) {}
+};
+
 // ---------------------------------------------------------------- RS485 link
 class DisplayLink {
  public:
