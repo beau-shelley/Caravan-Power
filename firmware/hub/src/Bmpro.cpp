@@ -289,6 +289,7 @@ void dumpAndSubscribe() {
   for (auto *svc : blec::services(gClient, true)) {
     logLine(String("SVC ") + svc->getUUID().toString().c_str());
     for (auto *c : blec::chars(svc, true)) {
+      beat(BEAT_BMPRO);  // each read can take seconds: don't look stuck mid-discovery
       String props;
       if (c->canRead()) props += "R";
       if (c->canWrite()) props += "W";
@@ -352,7 +353,9 @@ void bleTask(void *) {
       }
       uint8_t type = gTargetType;
       // One connect at a time (the heater task pauses the same scan).
-      if (ble::lockConnect()) {
+      bool locked = ble::lockConnect();
+      beat(BEAT_BMPRO);  // may have waited up to 60 s for the heater's connect
+      if (locked) {
         logLine(String("connecting to ") + gTargetAddr + (type == BLE_ADDR_PUBLIC ? " (public)" : " (random)"));
         ble::pauseScan();
         if (gClient->connect(NimBLEAddress(std::string(gTargetAddr), type))) {
