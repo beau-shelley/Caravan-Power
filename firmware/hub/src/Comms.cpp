@@ -3,6 +3,7 @@
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <PubSubClient.h>
 #include <WebServer.h>
 #include <WebSocketsServer.h>
@@ -50,6 +51,10 @@ Net gNet;
 SemaphoreHandle_t gStateMux = nullptr;  // created in setup()
 
 static uint32_t gCloudConnects = 0;
+static struct {
+  uint32_t boots = 0, prevUp = 0, prevHmin = 0, prevHlmin = 0, prevCc = 0;
+  uint8_t prevRr = 0;
+} gHealth;
 static uint32_t gLargestLow = 0xFFFFFFFF;  // lowest largest-free-block seen (sampled every 30 s)
 
 // ================================================================ Net
@@ -79,7 +84,12 @@ void Net::begin() {
   WiFi.setHostname(HOSTNAME);
   WiFi.setAutoReconnect(true);
   joinNet(0);
-  configTzTime(TZ_INFO, "pool.ntp.org", "time.google.com");
+  // By IP address (Google's anycast time servers), not host name: on Arduino 3 /
+  // IDF 5 an SNTP host-name lookup that fires while the MQTT connect resolves
+  // the broker creates a UDP socket without the lwIP core lock and the hub
+  // panics (2026-11-26 coredump: udp_new_ip_type assert from sntp_dns_found,
+  // every ~40 min). The display hit the same bug (d2d2f6d).
+  configTzTime(TZ_INFO, "216.239.35.0", "216.239.35.4");
 }
 
 // Wi-Fi off build: the display sends the time ({"c":"time"}); keep the
@@ -534,6 +544,14 @@ void DisplayLink::queueOut(JsonDocument &doc) {
   xQueueSend(outQ_, &m, 0);
 }
 
+// Internal RAM a TLS session needs in one block. On the S3 hub's Arduino 3 build
+// mbedTLS allocates from PSRAM (main.cpp tlsInPsram), so only the socket and
+// handshake scratch need internal RAM.
+#if defined(BOARD_HAS_PSRAM) && ESP_IDF_VERSION_MAJOR >= 5
+static constexpr uint32_t kTlsBlockNeed = 16000;
+#else
+static constexpr uint32_t kTlsBlockNeed = 40000;
+#endif
 static uint8_t gMemSkips = 0;  // cloud reconnects skipped for lack of RAM, in a row
 
 void addSysStats(JsonObject o) {
@@ -547,6 +565,44 @@ void addSysStats(JsonObject o) {
   s["cc"] = gCloudConnects;
   s["pf"] = ESP.getFreePsram();   // PSRAM free / total: shows whether it's in use
   s["ps"] = ESP.getPsramSize();
+  // Saved across restarts and power cuts (NVS): how many boots, and the
+  // previous run's figures, so a soak test survives an unplug or a restart.
+  s["boots"] = gHealth.boots;
+  JsonObject p = s["prev"].to<JsonObject>();
+  p["up"] = gHealth.prevUp;
+  p["rr"] = gHealth.prevRr;
+  p["hmin"] = gHealth.prevHmin;
+  p["hlmin"] = gHealth.prevHlmin;
+  p["cc"] = gHealth.prevCc;
+}
+
+// Called at boot: load last run's figures and count this boot.
+void healthBegin() {
+  Preferences p;
+  if (!p.begin("health", false)) return;
+  gHealth.boots = p.getUInt("boots", 0) + 1;
+  p.putUInt("boots", gHealth.boots);
+  gHealth.prevUp = p.getUInt("up", 0);
+  gHealth.prevRr = p.getUChar("rrNow", 0);  // the reason the run before this one started
+  gHealth.prevHmin = p.getUInt("hmin", 0);
+  gHealth.prevHlmin = p.getUInt("hlmin", 0);
+  gHealth.prevCc = p.getUInt("cc", 0);
+  p.putUChar("rrNow", (uint8_t)esp_reset_reason());
+  p.end();
+}
+
+// Every 10 minutes: save this run's figures (a few bytes; NVS wear is negligible).
+void healthLoop() {
+  static uint32_t next = 600000;
+  if ((int32_t)(millis() - next) < 0) return;
+  next = millis() + 600000;
+  Preferences p;
+  if (!p.begin("health", false)) return;
+  p.putUInt("up", millis() / 1000);
+  p.putUInt("hmin", ESP.getMinFreeHeap());
+  p.putUInt("hlmin", gLargestLow == 0xFFFFFFFF ? 0 : gLargestLow);
+  p.putUInt("cc", gCloudConnects);
+  p.end();
 }
 
 static bool cloudConfigured() {
@@ -607,20 +663,20 @@ void Cloud::loop(const cv::State &s) {
     // classic ESP32 hub rarely has one, and failed handshakes fragment the
     // heap further (2026-11-19: largest block shrank ~1 KB a minute). Wait
     // for memory instead of trying; the display board will take over cloud.
-    if (ESP.getMaxAllocHeap() < 40000) {
+    if (ESP.getMaxAllocHeap() < kTlsBlockNeed) {
       // Fragmented RAM doesn't heal by itself (2026-11-25: after a push alert
       // the S3 hub sat at a 33 KB largest block and the cloud stayed down for
       // hours). Phone alerts need the cloud, so retry every minute and after
       // three tries (~3 min) restart: Bluetooth, the display link and the
       // cloud are all back within ~30 s with a clean heap.
       if (++gMemSkips >= 3) {
-        Serial.printf("[cloud] still no ~40 KB block after %u tries (largest %u) - restarting to recover the cloud\n",
+        Serial.printf("[cloud] still no %u-byte block after %u tries (largest %u) - restarting to recover the cloud\n", (unsigned)kTlsBlockNeed,
                       gMemSkips, (unsigned)ESP.getMaxAllocHeap());
         delay(200);
         ESP.restart();
       }
-      Serial.printf("[cloud] skipped: largest free block %u bytes, need ~40 KB - retry in 1 min\n",
-                    (unsigned)ESP.getMaxAllocHeap());
+      Serial.printf("[cloud] skipped: largest free block %u bytes, need %u - retry in 1 min\n",
+                    (unsigned)ESP.getMaxAllocHeap(), (unsigned)kTlsBlockNeed);
       nextTryMs_ = millis() + 60000;
       return;
     }
@@ -681,7 +737,7 @@ struct PushMsg {
 };
 static QueueHandle_t gPushQ;
 
-static constexpr uint32_t kPushHeapNeed = 30000;
+static constexpr uint32_t kPushHeapNeed = kTlsBlockNeed < 30000 ? kTlsBlockNeed : 30000;
 
 static void pushTask(void *) {
   PushMsg m;

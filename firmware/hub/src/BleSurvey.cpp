@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include "BleCompat.h"
 
 #include "Ble.h"
 #include "BleTag.h"
@@ -85,9 +86,9 @@ Dev *slotFor(const uint8_t *mac, cv::BleKind kind, uint32_t now) {
 
 // Called from the NimBLE host task for every advert heard.
 void onAdvert(NimBLEAdvertisedDevice *d) {
-  const uint8_t *mac = d->getAddress().getNative();
-  const uint8_t *raw = d->getPayload();
-  size_t rawLen = d->getPayloadLength();
+  const uint8_t *mac = blec::addrBytes(d->getAddress());
+  const uint8_t *raw = blec::payload(d);
+  size_t rawLen = blec::payloadLen(d);
   if (rawLen > MAX_RAW) rawLen = MAX_RAW;
 
   cv::BleTag tag;

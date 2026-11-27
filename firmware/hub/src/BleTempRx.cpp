@@ -1,6 +1,7 @@
 #include "BleTempRx.h"
 
 #include <NimBLEDevice.h>
+#include "BleCompat.h"
 
 #include "Ble.h"
 #include "BleSensors.h"
@@ -73,7 +74,7 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
     NimBLEUUID u = d->getServiceDataUUID(i);
     if (u.bitSize() != 16) continue;
     std::string sd = d->getServiceData(i);
-    ok = cv::decodeBleServiceData(u.getNative()->u16.value, (const uint8_t *)sd.data(), sd.size(), r);
+    ok = cv::decodeBleServiceData(blec::uuid16(u), (const uint8_t *)sd.data(), sd.size(), r);
   }
   if (!ok && d->haveManufacturerData()) {
     std::string md = d->getManufacturerData();
@@ -83,8 +84,8 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
 
   char raw[125] = "";
   if (ok) {
-    const uint8_t *p = d->getPayload();
-    size_t n = d->getPayloadLength() < 62 ? d->getPayloadLength() : 62;
+    const uint8_t *p = blec::payload(d);
+    size_t n = blec::payloadLen(d) < 62 ? blec::payloadLen(d) : 62;
     for (size_t k = 0; k < n; k++) snprintf(raw + k * 2, 3, "%02x", p[k]);
   }
 

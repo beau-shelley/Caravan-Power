@@ -1,6 +1,7 @@
 #include "LevelSensor.h"
 
 #include <NimBLEDevice.h>
+#include "BleCompat.h"
 #include <Wire.h>
 
 #include "Ble.h"
@@ -28,7 +29,11 @@ float gLocLat = 0, gLocLon = 0;
 char gLocName[24] = "";
 
 class CmdCb : public NimBLECharacteristicCallbacks {
+#if HUB_NIMBLE2
+  void onWrite(NimBLECharacteristic *c, NimBLEConnInfo &) override {
+#else
   void onWrite(NimBLECharacteristic *c) override {
+#endif
     std::string v = c->getValue();
     if (v == "zero") gPendingCmd = 1;
     else if (v == "front") gPendingCmd = 2;
@@ -242,7 +247,12 @@ void LevelSensor::startBle() {
   svc->start();
   NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
   adv->addServiceUUID(LEVEL_SVC);
+#if HUB_NIMBLE2
+  adv->enableScanResponse(true);  // device name goes in the scan response
+  adv->setName("caravan-hub");
+#else
   adv->setScanResponse(true);  // device name goes in the scan response
+#endif
   adv->start();
   Serial.println("[level] Bluetooth level service advertising");
 }

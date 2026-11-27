@@ -1,6 +1,7 @@
 #include "Heater.h"
 
 #include <NimBLEDevice.h>
+#include "BleCompat.h"
 
 #include "Ble.h"
 
@@ -114,12 +115,12 @@ bool write(const uint8_t *b) {
 void connectNow() {
   if (!gClient) {
     gClient = NimBLEDevice::createClient();
-    gClient->setConnectTimeout(8);
+    blec::setConnectTimeoutSec(gClient, 8);
   }
   gChr = nullptr;
   logLine(String("connecting to ") + gAddr);
   ble::pauseScan();
-  bool ok = gClient->connect(NimBLEAddress(std::string(gAddr)));
+  bool ok = gClient->connect(blec::makeAddr(std::string(gAddr)));
   ble::resumeScan();
   if (!ok) {
     logLine("connect failed - retrying in 15 s");
@@ -130,9 +131,9 @@ void connectNow() {
   if (!c) {
     // Not the expected layout: list what it does have, then give up on it.
     logLine("no FFE0/FFE1 - this heater uses another protocol. Its services:");
-    for (auto *s : *gClient->getServices(true)) {
+    for (auto *s : blec::services(gClient, true)) {
       logLine(String("  SVC ") + s->getUUID().toString().c_str());
-      for (auto *ch : *s->getCharacteristics(true))
+      for (auto *ch : blec::chars(s, true))
         logLine(String("    CHR ") + ch->getUUID().toString().c_str() + (ch->canNotify() ? " notify" : "") +
                 (ch->canWrite() || ch->canWriteNoResponse() ? " write" : ""));
     }

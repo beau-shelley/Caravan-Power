@@ -1,6 +1,7 @@
 #include "Bmpro.h"
 
 #include <NimBLEDevice.h>
+#include "BleCompat.h"
 
 #include "Ble.h"
 #include "BmproAdv.h"
@@ -109,7 +110,7 @@ void autoTarget(NimBLEAdvertisedDevice *d, const std::string &addr) {
 void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
   autoTarget(d, addr);
   cv::BmproAdvert b;
-  if (!cv::bmproParseAdvert(d->getPayload(), d->getPayloadLength(), b)) return;
+  if (!cv::bmproParseAdvert(blec::payload(d), blec::payloadLen(d), b)) return;
   if (!gAdvAddr[0]) {
     if (d->getRSSI() >= -80 && b.hasBattery) strncpy(gAdvAddr, addr.c_str(), 17);
     else return;
@@ -255,6 +256,18 @@ void onAuth(const uint8_t *data, size_t len) {
   if (len == sizeof(AUTH_CHALLENGE) && !memcmp(data, AUTH_CHALLENGE, len)) {
     logLine("login challenge received - answering");
     queueWrite(AUTH_UUID, AUTH_ANSWER, sizeof(AUTH_ANSWER));
+  } else if (len == sizeof(AUTH_CHALLENGE)) {
+    // 2026-11-27: the OdysseyLink started sending a different challenge
+    // (B8 D8 B3 61) and dropped the link every ~30 s when nothing answered.
+    // The app's answer looks like a lossy text conversion (EF BF BD is the
+    // UTF-8 replacement character), so try the same answer for any challenge,
+    // at most once every 10 s.
+    static uint32_t lastTry = 0;
+    if (!lastTry || millis() - lastTry > 10000) {
+      lastTry = millis() | 1;
+      logLine(String("new login challenge ") + hex(data, len) + "- answering with the known reply");
+      queueWrite(AUTH_UUID, AUTH_ANSWER, sizeof(AUTH_ANSWER));
+    }
   } else if (len >= 13 && !memcmp(data, "Authenticated", 13)) {
     logLine("logged in - starting the data stream");
     sendStartup();
@@ -277,11 +290,9 @@ void onNotify(NimBLERemoteCharacteristic *c, uint8_t *data, size_t len, bool isN
 }
 
 void dumpAndSubscribe() {
-  std::vector<NimBLERemoteService *> *svcs = gClient->getServices(true);
-  for (auto *svc : *svcs) {
+  for (auto *svc : blec::services(gClient, true)) {
     logLine(String("SVC ") + svc->getUUID().toString().c_str());
-    std::vector<NimBLERemoteCharacteristic *> *chrs = svc->getCharacteristics(true);
-    for (auto *c : *chrs) {
+    for (auto *c : blec::chars(svc, true)) {
       String props;
       if (c->canRead()) props += "R";
       if (c->canWrite()) props += "W";
@@ -307,8 +318,8 @@ void dumpAndSubscribe() {
 NimBLERemoteCharacteristic *findChar(const char *uuid) {
   if (!gClient || !gClient->isConnected()) return nullptr;
   NimBLEUUID want{std::string(uuid)};
-  for (auto *svc : *gClient->getServices(false))
-    for (auto *c : *svc->getCharacteristics(false))
+  for (auto *svc : blec::services(gClient, false))
+    for (auto *c : blec::chars(svc, false))
       if (c->getUUID() == want) return c;
   return nullptr;
 }
@@ -340,7 +351,7 @@ void bleTask(void *) {
       nextTry = millis() + (failures < 3 ? 10000 : 60000);
       if (!gClient) {
         gClient = NimBLEDevice::createClient();
-        gClient->setConnectTimeout(8);
+        blec::setConnectTimeoutSec(gClient, 8);  // NimBLE 2 takes ms: a raw 8 meant 8 ms
       }
       uint8_t type = gTargetType;
       logLine(String("connecting to ") + gTargetAddr + (type == BLE_ADDR_PUBLIC ? " (public)" : " (random)"));
@@ -351,7 +362,8 @@ void bleTask(void *) {
         dumpAndSubscribe();
       } else {
         failures++;
-        logLine(String("connect failed - retrying in ") + (failures < 3 ? 10 : 60) + " s");
+        logLine(String("connect failed (error ") + gClient->getLastError() + ") - retrying in " +
+                (failures < 3 ? 10 : 60) + " s");
       }
       ble::resumeScan();
     }

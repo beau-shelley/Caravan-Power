@@ -7,6 +7,8 @@
 #include <cctype>
 #include <LittleFS.h>
 #include <Wire.h>
+#include <esp_heap_caps.h>
+#include <mbedtls/platform.h>
 
 #include "AcCharge.h"
 #include "AlertEngine.h"
@@ -807,10 +809,33 @@ static void netTask(void *) {
 }
 
 // ---------------------------------------------------------------- setup / loop
+#if defined(BOARD_HAS_PSRAM) && ESP_IDF_VERSION_MAJOR >= 5
+// mbedTLS takes ~40-55 KB per TLS connection (cloud MQTT, ntfy pushes, the
+// forecast). On the S3 hub it comes from PSRAM, so internal RAM stays free
+// for Wi-Fi and Bluetooth and the cloud can always reconnect.
+static void *tlsCalloc(size_t n, size_t size) {
+  void *p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+#endif
+
+static void tlsInPsram() {
+#if defined(BOARD_HAS_PSRAM) && ESP_IDF_VERSION_MAJOR >= 5
+#if defined(MBEDTLS_PLATFORM_MEMORY) && !defined(MBEDTLS_PLATFORM_CALLOC_MACRO)
+  mbedtls_platform_set_calloc_free(tlsCalloc, heap_caps_free);
+  Serial.println("[mem] TLS buffers in PSRAM");
+#else
+#warning "mbedTLS allocator can't be changed at run time - TLS buffers stay in internal RAM"
+#endif
+#endif
+}
+
 void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println("\n=== Caravan Power hub ===");
+  tlsInPsram();
+  healthBegin();
   gStateMux = xSemaphoreCreateRecursiveMutex();
 
   pinMode(PIN_BUZZER, OUTPUT);
@@ -867,7 +892,14 @@ void setup() {
 
   // Watchdog: if loop() stops running for 30 s (a hang or a deadlock), the
   // hub restarts itself. The Arduino core feeds it after every loop().
+#if ESP_IDF_VERSION_MAJOR >= 5
+  esp_task_wdt_config_t wdt = {};
+  wdt.timeout_ms = 30000;
+  wdt.trigger_panic = true;
+  if (esp_task_wdt_reconfigure(&wdt) != ESP_OK) esp_task_wdt_init(&wdt);
+#else
   esp_task_wdt_init(30, true);
+#endif
   enableLoopWDT();
 }
 
@@ -930,12 +962,12 @@ void loop() {
     }
     gpsLoop(now);
     if (gBleTempsOn) gBleTemps.poll(gState);
-    // A Bluetooth thermometer that goes quiet, or keeps repeating exactly the
-    // same broadcast (stuck - 2026-11-25 the fridge ThermoPro froze twice), must
+    // A Bluetooth thermometer that goes quiet (flat battery, out of range) must
     // never be silent: its "too warm" rule can't fire without a live reading.
-    // Push a warning once when it goes wrong and once when it recovers.
+    // Push a warning once when it stops and once when it's back. (A "reading
+    // hasn't changed" alert was tried and dropped on 2026-11-27: a fridge is
+    // naturally steady, so it fired on a healthy sensor.)
     {
-      constexpr uint32_t FROZEN_MS = 45UL * 60 * 1000;
       static bool warned[cv::NUM_TEMPS] = {};
       static bool seenOk[cv::NUM_TEMPS] = {};
       for (int role = 0; role < cv::NUM_TEMPS; role++) {
@@ -944,14 +976,11 @@ void loop() {
           continue;
         }
         const cv::Temp &t = gState.temp[role];
-        bool frozen = t.online && gBleTemps.unchangedMs(gConfig.tempBle[role]) > FROZEN_MS;
-        bool bad = !t.online || frozen;
+        bool bad = !t.online;
         if (!bad) seenOk[role] = true;
         if (bad && !warned[role] && seenOk[role]) {
-          char msg[96];
-          snprintf(msg, sizeof(msg), frozen ? "Sensor reading hasn't changed for 45 min - it may be stuck"
-                                            : "No reading from the sensor for 2 min");
-          gNotify.push(gConfig.meta.tempName[role], msg, cv::SEV_WARN);
+          gNotify.push(gConfig.meta.tempName[role], "No reading from the sensor for 2 min - flat battery or out of range?",
+                       cv::SEV_WARN);
           warned[role] = true;
         } else if (!bad && warned[role]) {
           gNotify.push(gConfig.meta.tempName[role], "Sensor reading again", cv::SEV_WARN, true);
@@ -1028,6 +1057,7 @@ void loop() {
     gLink.loop(gState);
   }
   buzzerLoop(now);
+  healthLoop();
   statusLedLoop(now);
   if (survey::kOn) survey::loop();
   if (gRestartAtMs && millis() - gRestartAtMs > 1000) ESP.restart();
