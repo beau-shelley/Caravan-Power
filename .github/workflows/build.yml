@@ -64,4 +64,4 @@ jobs:
           # (IncompatiblePlatform). Its installer uses uv, so pin it here.
           UV_CONSTRAINT: ${{ github.workspace }}/.github/pio-constraints.txt
         # hub: the S3 N16R8 van board, the classic ESP32 boards and the generic S3 hub
-        run: pio run ${{ matrix.project == 'hub' && '-e hub-s3-n16r8 -e hub-s3-idf5 -e hub-esp32 -e hub-esp32-survey -e hub' || '' }}
+        run: pio run ${{ matrix.project == 'hub' && '-e hub-s3-n16r8 -e hub-esp32 -e hub-esp32-survey -e hub' || '' }}
