@@ -85,10 +85,11 @@ Dev *slotFor(const uint8_t *mac, cv::BleKind kind, uint32_t now) {
 }
 
 // Called from the NimBLE host task for every advert heard.
-void onAdvert(NimBLEAdvertisedDevice *d) {
+void onAdvert(const ble::Advert &a) {
+  NimBLEAdvertisedDevice *d = a.dev;
   const uint8_t *mac = blec::addrBytes(d->getAddress());
-  const uint8_t *raw = blec::payload(d);
-  size_t rawLen = blec::payloadLen(d);
+  const uint8_t *raw = a.raw;
+  size_t rawLen = a.rawLen;
   if (rawLen > MAX_RAW) rawLen = MAX_RAW;
 
   cv::BleTag tag;

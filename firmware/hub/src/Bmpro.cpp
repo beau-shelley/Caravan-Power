@@ -4,6 +4,7 @@
 #include "BleCompat.h"
 
 #include "Ble.h"
+#include "Comms.h"
 #include "BmproAdv.h"
 #include "BmproLink.h"
 
@@ -98,25 +99,25 @@ uint32_t gBatTakenMs = 0;
 // No OdysseyLink address set up yet: pick it out by its advert (service
 // 0xFE0E listed, no service data - the broadcaster carries the data) when it
 // is close (> -80 dBm), so the van works without setting anything up.
-void autoTarget(NimBLEAdvertisedDevice *d, const std::string &addr) {
-  if (gTargetAddr[0] || d->getRSSI() < -80 || d->getServiceDataCount() > 0) return;
-  if (!d->isAdvertisingService(NimBLEUUID((uint16_t)cv::BMPRO_SVC_UUID))) return;
-  strncpy(gTargetAddr, addr.c_str(), 17);
+void autoTarget(const ble::Advert &a) {
+  if (gTargetAddr[0] || a.rssi < -80 || a.dev->getServiceDataCount() > 0) return;
+  if (!a.dev->isAdvertisingService(NimBLEUUID((uint16_t)cv::BMPRO_SVC_UUID))) return;
+  strncpy(gTargetAddr, a.addr, 17);
   gTargetAddr[17] = 0;
-  gTargetType = d->getAddress().getType();
-  logLine(String("found the OdysseyLink at ") + gTargetAddr + " (rssi " + d->getRSSI() + ") - connecting");
+  gTargetType = a.dev->getAddress().getType();
+  logLine(String("found the OdysseyLink at ") + gTargetAddr + " (rssi " + a.rssi + ") - connecting");
 }
 
-void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
-  autoTarget(d, addr);
+void onBmproBroadcast(const ble::Advert &a) {
+  autoTarget(a);
   cv::BmproAdvert b;
-  if (!cv::bmproParseAdvert(blec::payload(d), blec::payloadLen(d), b)) return;
+  if (!cv::bmproParseAdvert(a.raw, a.rawLen, b)) return;
   if (!gAdvAddr[0]) {
-    if (d->getRSSI() >= -80 && b.hasBattery) strncpy(gAdvAddr, addr.c_str(), 17);
+    if (a.rssi >= -80 && b.hasBattery) strncpy(gAdvAddr, a.addr, 17);
     else return;
     logLine(String("reading broadcasts from ") + gAdvAddr);
   }
-  if (strcasecmp(gAdvAddr, addr.c_str()) != 0) return;
+  if (strcasecmp(gAdvAddr, a.addr) != 0) return;
   static BmproData out;  // NimBLE host task: small stack
   out = BmproData();
   if (b.hasBattery) {
@@ -135,44 +136,39 @@ void onBmproBroadcast(NimBLEAdvertisedDevice *d, const std::string &addr) {
   if (out.batValid) applyDecoded(out);
 }
 
-bool looksBmpro(const std::string &name) {
-  String n = String(name.c_str());
-  n.toUpperCase();
-  return n.indexOf("BMPRO") >= 0 || n.indexOf("ODYSSEY") >= 0 || n.indexOf("COMMLINK") >= 0 ||
-         n.indexOf("TREK") >= 0 || n.indexOf("SMART") >= 0;
+bool looksBmpro(const char *name) {
+  return ble::containsNoCase(name, "BMPRO") || ble::containsNoCase(name, "ODYSSEY") ||
+         ble::containsNoCase(name, "COMMLINK") || ble::containsNoCase(name, "TREK") ||
+         ble::containsNoCase(name, "SMART");
 }
 
-void onAdvert(NimBLEAdvertisedDevice *d) {
-  {
-    std::string addr = d->getAddress().toString();
-    std::string name = d->haveName() ? d->getName() : "";
-    xSemaphoreTake(gMux, portMAX_DELAY);
-    int slot = -1;
-    for (int i = 0; i < gSeenCount; i++)
-      if (addr == gSeen[i].addr) slot = i;
-    if (slot < 0 && gSeenCount < MAX_SEEN) slot = gSeenCount++;
-    if (slot >= 0) {
-      strncpy(gSeen[slot].addr, addr.c_str(), 17);
-      if (!name.empty()) strncpy(gSeen[slot].name, name.c_str(), 23);
-      gSeen[slot].rssi = d->getRSSI();
-      gSeen[slot].lastMs = millis();
+void onAdvert(const ble::Advert &a) {
+  NimBLEAdvertisedDevice *d = a.dev;
+  xSemaphoreTake(gMux, portMAX_DELAY);
+  int slot = -1;
+  for (int i = 0; i < gSeenCount; i++)
+    if (!strcmp(a.addr, gSeen[i].addr)) slot = i;
+  if (slot < 0 && gSeenCount < MAX_SEEN) slot = gSeenCount++;
+  if (slot >= 0) {
+    strncpy(gSeen[slot].addr, a.addr, 17);
+    if (a.name[0]) strncpy(gSeen[slot].name, a.name, 23);
+    gSeen[slot].rssi = a.rssi;
+    gSeen[slot].lastMs = millis();
+  }
+  xSemaphoreGive(gMux);
+  bool isTarget = strcasecmp(a.addr, gTargetAddr) == 0;
+  if (isTarget) gTargetType = d->getAddress().getType();
+  onBmproBroadcast(a);
+  // Wireless BMPRO sensors may broadcast their readings in adverts, so log
+  // manufacturer + service data of anything BMPRO-looking in full.
+  if (gVerbose && (looksBmpro(a.name) || isTarget)) {
+    String line = String("ADV ") + a.addr + " '" + a.name + "' rssi " + a.rssi + " mfg: " + hex(a.mfg, a.mfgLen);
+    for (int i = 0; i < d->getServiceDataCount(); i++) {
+      std::string sd = d->getServiceData(i);
+      line += " svc[" + String(d->getServiceDataUUID(i).toString().c_str()) + "]: " +
+              hex((const uint8_t *)sd.data(), sd.size());
     }
-    xSemaphoreGive(gMux);
-    if (addr == gTargetAddr) gTargetType = d->getAddress().getType();
-    onBmproBroadcast(d, addr);
-    // Wireless BMPRO sensors may broadcast their readings in adverts, so log
-    // manufacturer + service data of anything BMPRO-looking in full.
-    if (gVerbose && (looksBmpro(name) || addr == gTargetAddr)) {
-      std::string md = d->getManufacturerData();
-      String line = String("ADV ") + addr.c_str() + " '" + name.c_str() + "' rssi " + d->getRSSI() +
-                    " mfg: " + hex((const uint8_t *)md.data(), md.size());
-      for (int i = 0; i < d->getServiceDataCount(); i++) {
-        std::string sd = d->getServiceData(i);
-        line += " svc[" + String(d->getServiceDataUUID(i).toString().c_str()) + "]: " +
-                hex((const uint8_t *)sd.data(), sd.size());
-      }
-      logLine(line);
-    }
+    logLine(line);
   }
 }
 
@@ -328,6 +324,7 @@ void bleTask(void *) {
   uint32_t nextTry = 0;
   uint32_t failures = 0;
   for (;;) {
+    beat(BEAT_BMPRO);
     if (gRetargeted && gClient && gClient->isConnected()) gClient->disconnect();
     gRetargeted = false;
 
@@ -354,18 +351,22 @@ void bleTask(void *) {
         blec::setConnectTimeoutSec(gClient, 8);  // NimBLE 2 takes ms: a raw 8 meant 8 ms
       }
       uint8_t type = gTargetType;
-      logLine(String("connecting to ") + gTargetAddr + (type == BLE_ADDR_PUBLIC ? " (public)" : " (random)"));
-      ble::pauseScan();
-      if (gClient->connect(NimBLEAddress(std::string(gTargetAddr), type))) {
-        failures = 0;
-        logLine("connected");
-        dumpAndSubscribe();
-      } else {
-        failures++;
-        logLine(String("connect failed (error ") + gClient->getLastError() + ") - retrying in " +
-                (failures < 3 ? 10 : 60) + " s");
+      // One connect at a time (the heater task pauses the same scan).
+      if (ble::lockConnect()) {
+        logLine(String("connecting to ") + gTargetAddr + (type == BLE_ADDR_PUBLIC ? " (public)" : " (random)"));
+        ble::pauseScan();
+        if (gClient->connect(NimBLEAddress(std::string(gTargetAddr), type))) {
+          failures = 0;
+          logLine("connected");
+          dumpAndSubscribe();
+        } else {
+          failures++;
+          logLine(String("connect failed (error ") + gClient->getLastError() + ") - retrying in " +
+                  (failures < 3 ? 10 : 60) + " s");
+        }
+        ble::resumeScan();
+        ble::unlockConnect();
       }
-      ble::resumeScan();
     }
 
     WriteReq w;

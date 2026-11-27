@@ -1,5 +1,7 @@
 #include "HubConfig.h"
 
+#include "Comms.h"
+
 #include <LittleFS.h>
 
 HubConfig gConfig;
@@ -222,7 +224,7 @@ bool HubConfig::load() {
   setDefaults();
   File f = LittleFS.open(kPath, "r");
   if (!f) return false;
-  JsonDocument doc;
+  hub::PsDoc doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) {
@@ -234,7 +236,7 @@ bool HubConfig::load() {
 }
 
 bool HubConfig::save() const {
-  JsonDocument doc;
+  hub::PsDoc doc;
   toJson(doc.to<JsonObject>());
   // Write to a temp file then rename, so a brown-out can't corrupt config.
   File f = LittleFS.open("/config.tmp", "w");

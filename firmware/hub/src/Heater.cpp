@@ -4,6 +4,7 @@
 #include "BleCompat.h"
 
 #include "Ble.h"
+#include "Comms.h"
 
 namespace hub {
 
@@ -65,22 +66,19 @@ void logLine(const String &line) {
 }
 
 // Anything advertising the FFE0 service, or with "heater" in its name.
-void onAdvert(NimBLEAdvertisedDevice *d) {
-  std::string name = d->haveName() ? d->getName() : "";
-  String n = name.c_str();
-  n.toLowerCase();
-  bool looks = n.indexOf("heater") >= 0 || d->isAdvertisingService(NimBLEUUID(cv::airheater::SERVICE_UUID));
+void onAdvert(const ble::Advert &a) {
+  bool looks = ble::containsNoCase(a.name, "heater") ||
+               a.dev->isAdvertisingService(NimBLEUUID(cv::airheater::SERVICE_UUID));
   if (!looks) return;
-  std::string addr = d->getAddress().toString();
   xSemaphoreTake(gMux, portMAX_DELAY);
   int slot = -1;
   for (int i = 0; i < gSeenCount; i++)
-    if (addr == gSeen[i].addr) slot = i;
+    if (!strcmp(a.addr, gSeen[i].addr)) slot = i;
   if (slot < 0 && gSeenCount < MAX_SEEN) slot = gSeenCount++;
   if (slot >= 0) {
-    snprintf(gSeen[slot].addr, sizeof(gSeen[slot].addr), "%s", addr.c_str());
-    if (!name.empty()) snprintf(gSeen[slot].name, sizeof(gSeen[slot].name), "%s", name.c_str());
-    gSeen[slot].rssi = d->getRSSI();
+    snprintf(gSeen[slot].addr, sizeof(gSeen[slot].addr), "%s", a.addr);
+    if (a.name[0]) snprintf(gSeen[slot].name, sizeof(gSeen[slot].name), "%s", a.name);
+    gSeen[slot].rssi = a.rssi;
     gSeen[slot].lastMs = millis();
   }
   xSemaphoreGive(gMux);
@@ -150,6 +148,7 @@ void task(void *) {
   uint32_t nextTry = 0, nextPoll = 0;
   uint8_t poll[cv::airheater::CMD_LEN];
   for (;;) {
+    beat(BEAT_HEATER);
     if (gRetarget) {
       gRetarget = false;
       if (gClient && gClient->isConnected()) gClient->disconnect();
@@ -159,7 +158,11 @@ void task(void *) {
     bool up = gClient && gClient->isConnected() && gChr;
     if (!up && gAddr[0] && (int32_t)(millis() - nextTry) >= 0) {
       nextTry = millis() + 15000;
-      connectNow();
+      // One connect at a time (the BMPRO task pauses the same scan).
+      if (ble::lockConnect()) {
+        connectNow();
+        ble::unlockConnect();
+      }
       up = gClient && gClient->isConnected() && gChr;
     }
     if (up) {

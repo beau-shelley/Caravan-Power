@@ -21,6 +21,7 @@
 #include "Inputs.h"
 #include "Outputs.h"
 #include "VictronBle.h"
+#include "Ble.h"
 #include "BleTempRx.h"
 #include "BleSurvey.h"
 #include "LevelSensor.h"
@@ -237,7 +238,7 @@ static void onAlert(const cv::AlertEngine::Event &ev, void *) {
   if (ev.rule.notify && ev.rule.name[0]) gNotify.push(ev.rule.name, ev.msg, ev.rule.sev, !raised);
   if (raised && ev.rule.action != cv::ACT_NONE) runAction(ev.rule.action);
 
-  JsonDocument d;
+  PsDoc d;
   d["t"] = "event";
   d["type"] = raised ? "raised" : "cleared";
   d["id"] = ev.rule.id;
@@ -809,20 +810,28 @@ static void netTask(void *) {
 }
 
 // ---------------------------------------------------------------- setup / loop
-#if defined(BOARD_HAS_PSRAM) && ESP_IDF_VERSION_MAJOR >= 5
-// mbedTLS takes ~40-55 KB per TLS connection (cloud MQTT, ntfy pushes, the
-// forecast). On the S3 hub it comes from PSRAM, so internal RAM stays free
-// for Wi-Fi and Bluetooth and the cloud can always reconnect.
+#if defined(BOARD_HAS_PSRAM)
+// mbedTLS takes ~40-55 KB per TLS connection (cloud MQTT, ntfy pushes). On the
+// S3 hub it comes from PSRAM, so internal RAM stays free for Wi-Fi and
+// Bluetooth, and the cloud link and a push alert fit side by side. Works on
+// both frameworks: Arduino 2 / IDF 4.4 forces mbedTLS into internal RAM by
+// default, but still lets the allocator be swapped at run time.
 static void *tlsCalloc(size_t n, size_t size) {
   void *p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 }
 #endif
 
+// Must run before anything uses TLS.
 static void tlsInPsram() {
-#if defined(BOARD_HAS_PSRAM) && ESP_IDF_VERSION_MAJOR >= 5
+#if defined(BOARD_HAS_PSRAM)
 #if defined(MBEDTLS_PLATFORM_MEMORY) && !defined(MBEDTLS_PLATFORM_CALLOC_MACRO)
+  if (!psramFound()) {
+    Serial.println("[mem] no PSRAM found - TLS buffers stay in internal RAM");
+    return;
+  }
   mbedtls_platform_set_calloc_free(tlsCalloc, heap_caps_free);
+  gTlsInPsram = true;
   Serial.println("[mem] TLS buffers in PSRAM");
 #else
 #warning "mbedTLS allocator can't be changed at run time - TLS buffers stay in internal RAM"
@@ -923,7 +932,7 @@ static void serialCommands() {
     if (tooLong) {
       Serial.printf("[usb] line too long (max %u characters)\n", (unsigned)MAX_LINE);
     } else if (line.startsWith("{")) {
-      JsonDocument in, reply;
+      PsDoc in, reply;
       if (deserializeJson(in, line)) {
         Serial.println("[usb] not valid JSON");
       } else {
@@ -1056,6 +1065,8 @@ void loop() {
     }
     gLink.loop(gState);
   }
+  ble::watchdog(now);  // restarts a silent Bluetooth scan
+  beatCheck(now);      // restarts the hub if a Bluetooth or push task is stuck
   buzzerLoop(now);
   healthLoop();
   statusLedLoop(now);

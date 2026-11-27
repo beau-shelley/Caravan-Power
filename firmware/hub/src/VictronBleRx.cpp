@@ -37,19 +37,18 @@ SeenDev gSeen[MAX_SEEN];
 int gSeenCount = 0;
 portMUX_TYPE gLock = portMUX_INITIALIZER_UNLOCKED;
 
-void onAdvert(NimBLEAdvertisedDevice *d) {
-  if (!d->haveManufacturerData()) return;
-  std::string md = d->getManufacturerData();
+void onAdvert(const ble::Advert &a) {
+  if (!a.mfg) return;
   cv::VictronAdvert adv;
-  if (!cv::victronParseAdvert((const uint8_t *)md.data(), md.size(), adv)) return;
-  std::string addr = d->getAddress().toString();  // lower-case aa:bb:...
+  if (!cv::victronParseAdvert(a.mfg, a.mfgLen, adv)) return;
+  const char *addr = a.addr;  // lower-case aa:bb:...
 
   int8_t matched = -1;
   if (adv.record == cv::VREC_SOLAR_CHARGER) {
     for (int i = 0; i < cv::NUM_SOLAR; i++) {
       Slot &s = gSlots[i];
       if (!s.configured || adv.keyCheck != s.key[0]) continue;
-      if (s.addr[0] && strcasecmp(s.addr, addr.c_str()) != 0) continue;
+      if (s.addr[0] && strcasecmp(s.addr, addr) != 0) continue;
       uint8_t dec[32];
       size_t n = 0;
       if (!cv::victronDecrypt(adv, s.key, dec, n)) continue;
@@ -70,7 +69,7 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
       if (!s.lastLogMs || millis() - s.lastLogMs >= 10000) {
         s.lastLogMs = millis();
         Serial.printf("[victron] solar %d %s: %.2f V %.1f A %.0f W, today %.2f kWh, state %u, rssi %d\n", i + 1,
-                      addr.c_str(), tmp.batV, tmp.batA, tmp.pvW, tmp.yieldTodayKwh, tmp.cs, d->getRSSI());
+                      addr, tmp.batV, tmp.batA, tmp.pvW, tmp.yieldTodayKwh, tmp.cs, a.rssi);
       }
       break;
     }
@@ -80,14 +79,14 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
   portENTER_CRITICAL(&gLock);
   int idx = -1;
   for (int i = 0; i < gSeenCount; i++)
-    if (!strcmp(gSeen[i].addr, addr.c_str())) idx = i;
+    if (!strcmp(gSeen[i].addr, addr)) idx = i;
   if (idx < 0 && gSeenCount < MAX_SEEN) idx = gSeenCount++;
   if (idx >= 0) {
-    strncpy(gSeen[idx].addr, addr.c_str(), 17);
+    strncpy(gSeen[idx].addr, addr, 17);
     gSeen[idx].addr[17] = 0;
     gSeen[idx].model = adv.model;
     gSeen[idx].record = adv.record;
-    gSeen[idx].rssi = d->getRSSI();
+    gSeen[idx].rssi = a.rssi;
     bool fresh = gSeen[idx].lastMs == 0;
     if (fresh) gSeen[idx].hintMs = 0;
     if (matched >= 0 || fresh) gSeen[idx].slot = matched;
@@ -104,7 +103,7 @@ void onAdvert(NimBLEAdvertisedDevice *d) {
   if (hint)
     Serial.printf("[victron] %s (%s, model 0x%04X) heard, but no saved key matches - its key starts with %02x. "
                   "Enter it on the phone: Setup > Victron solar controllers\n",
-                  addr.c_str(), cv::victronRecordName(adv.record), adv.model, adv.keyCheck);
+                  addr, cv::victronRecordName(adv.record), adv.model, adv.keyCheck);
 }
 }  // namespace
 
