@@ -256,6 +256,18 @@ void onAuth(const uint8_t *data, size_t len) {
   if (len == sizeof(AUTH_CHALLENGE) && !memcmp(data, AUTH_CHALLENGE, len)) {
     logLine("login challenge received - answering");
     queueWrite(AUTH_UUID, AUTH_ANSWER, sizeof(AUTH_ANSWER));
+  } else if (len == sizeof(AUTH_CHALLENGE)) {
+    // 2026-11-27: the OdysseyLink started sending a different challenge
+    // (B8 D8 B3 61) and dropped the link every ~30 s when nothing answered.
+    // The app's answer looks like a lossy text conversion (EF BF BD is the
+    // UTF-8 replacement character), so try the same answer for any challenge,
+    // at most once every 10 s.
+    static uint32_t lastTry = 0;
+    if (!lastTry || millis() - lastTry > 10000) {
+      lastTry = millis() | 1;
+      logLine(String("new login challenge ") + hex(data, len) + "- answering with the known reply");
+      queueWrite(AUTH_UUID, AUTH_ANSWER, sizeof(AUTH_ANSWER));
+    }
   } else if (len >= 13 && !memcmp(data, "Authenticated", 13)) {
     logLine("logged in - starting the data stream");
     sendStartup();
