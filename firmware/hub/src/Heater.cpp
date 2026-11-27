@@ -159,8 +159,11 @@ void task(void *) {
     if (!up && gAddr[0] && (int32_t)(millis() - nextTry) >= 0) {
       nextTry = millis() + 15000;
       // One connect at a time (the BMPRO task pauses the same scan).
-      if (ble::lockConnect()) {
+      bool locked = ble::lockConnect();
+      beat(BEAT_HEATER);  // may have waited up to 60 s for the BMPRO's connect
+      if (locked) {
         connectNow();
+        beat(BEAT_HEATER);
         ble::unlockConnect();
       }
       up = gClient && gClient->isConnected() && gChr;

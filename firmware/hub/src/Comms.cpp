@@ -104,13 +104,19 @@ void restartFor(const char *why) {
 static volatile uint32_t gBeatMs[BEAT_COUNT] = {};
 void beat(BeatId id) { gBeatMs[id] = millis() | 1; }
 
-void beatCheck(uint32_t now) {
+void beatCheck(uint32_t) {
   static const char *kWhy[BEAT_COUNT] = {"BMPRO Bluetooth task stuck", "heater Bluetooth task stuck",
                                          "push alert task stuck"};
-  static const uint32_t kLimitMs[BEAT_COUNT] = {180000, 180000, 300000};
+  static const int32_t kLimitMs[BEAT_COUNT] = {180000, 180000, 300000};
   for (int i = 0; i < BEAT_COUNT; i++) {
+    // Read the beat BEFORE the clock. The tasks beat from other cores/tasks,
+    // so a beat can land after loop() took its "now": with now < beat,
+    // now - beat wrapped to ~4 billion ms and every boot restarted itself
+    // within seconds (2026-11-27 bench, PR 40). Signed difference as well.
     uint32_t b = gBeatMs[i];
-    if (b && now - b > kLimitMs[i]) restartFor(kWhy[i]);
+    if (!b) continue;
+    int32_t age = (int32_t)(millis() - b);
+    if (age > kLimitMs[i]) restartFor(kWhy[i]);
   }
 }
 
@@ -220,7 +226,8 @@ void Net::watchdog() {
 void Net::loop(cv::State &s) {
   // The web server, WebSockets and MQTT all run on the net task: if it hasn't
   // looped for 2 minutes it's stuck (e.g. a socket write that never returns).
-  if (netAliveMs_ && millis() - netAliveMs_ > 120000) {
+  uint32_t alive = netAliveMs_;  // read before the clock: the net task updates it (see beatCheck)
+  if (alive && (int32_t)(millis() - alive) > 120000) {
     restartFor("net task stuck for 2 min");
   }
   static uint32_t nextHeapLog = 0;
