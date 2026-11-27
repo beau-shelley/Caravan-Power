@@ -962,12 +962,12 @@ void loop() {
     }
     gpsLoop(now);
     if (gBleTempsOn) gBleTemps.poll(gState);
-    // A Bluetooth thermometer that goes quiet, or keeps repeating exactly the
-    // same broadcast (stuck - 2026-11-25 the fridge ThermoPro froze twice), must
+    // A Bluetooth thermometer that goes quiet (flat battery, out of range) must
     // never be silent: its "too warm" rule can't fire without a live reading.
-    // Push a warning once when it goes wrong and once when it recovers.
+    // Push a warning once when it stops and once when it's back. (A "reading
+    // hasn't changed" alert was tried and dropped on 2026-11-27: a fridge is
+    // naturally steady, so it fired on a healthy sensor.)
     {
-      constexpr uint32_t FROZEN_MS = 45UL * 60 * 1000;
       static bool warned[cv::NUM_TEMPS] = {};
       static bool seenOk[cv::NUM_TEMPS] = {};
       for (int role = 0; role < cv::NUM_TEMPS; role++) {
@@ -976,14 +976,11 @@ void loop() {
           continue;
         }
         const cv::Temp &t = gState.temp[role];
-        bool frozen = t.online && gBleTemps.unchangedMs(gConfig.tempBle[role]) > FROZEN_MS;
-        bool bad = !t.online || frozen;
+        bool bad = !t.online;
         if (!bad) seenOk[role] = true;
         if (bad && !warned[role] && seenOk[role]) {
-          char msg[96];
-          snprintf(msg, sizeof(msg), frozen ? "Sensor reading hasn't changed for 45 min - it may be stuck"
-                                            : "No reading from the sensor for 2 min");
-          gNotify.push(gConfig.meta.tempName[role], msg, cv::SEV_WARN);
+          gNotify.push(gConfig.meta.tempName[role], "No reading from the sensor for 2 min - flat battery or out of range?",
+                       cv::SEV_WARN);
           warned[role] = true;
         } else if (!bad && warned[role]) {
           gNotify.push(gConfig.meta.tempName[role], "Sensor reading again", cv::SEV_WARN, true);
